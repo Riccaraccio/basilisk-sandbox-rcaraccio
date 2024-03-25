@@ -1,7 +1,7 @@
 /**
 # Darcy flow
 
-We solve the Darcy equation for the pressure field $p$ in a porous medium
+We implement the acceleration term due to flow in porous media.
 */
 
 event defaults (i = 0) {  
@@ -14,11 +14,12 @@ event defaults (i = 0) {
   }
 }
 
-double Da = 0;
+double Da = 200; //to be chaged to coord Da
+
 event acceleration (i++){
     face vector av = a;
     foreach_face(){
         double ff = face_value (f, 0);
-        av.x[] += (mu2*Da*ff*uf.x[]/rho2);
+        av.x[] -= alpha.x[]/(fm.x[] + SEPS)*(mu.x[]*Da*ff*uf.x[]);
     }
 }

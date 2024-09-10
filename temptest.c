@@ -1,18 +1,19 @@
 #include "navier-stokes/centered.h"
 #include "two-phase.h"
 #include "temperature.h"
+#include "view.h"
+double TS0 = 300.;
+double TG0 = 500.;
 
-double TS0 = 25.;
-double TG0 = 300.;
-
-double lambda1 = 1.;
+double lambda1 = 1e-2;
 double cp1 =1.;
 
-double lambda2 = 1.;
+double lambda2 = 1e-1;
 double cp2 =1.;
 
 int main() {
-  init_grid(1 << 6);
+  DT = 1e-2;
+  init_grid(1 << 5);
   run();
 }
 
@@ -22,5 +23,15 @@ event init(i=0) {
   fraction (f, circle (x, y, 0.5));
 }
 
-event stop (t = 100);
+event movie (t += 0.1) {
+  clear();
+  view (tx=-0.5, ty=-0.5);
+  draw_vof ("f", lw=1.5);
+  box();
+  squares ("T", linear = true, min=TS0, max=TG0);
+  save ("movie.mp4");
+}
+
+
+event stop (t = 10);
 

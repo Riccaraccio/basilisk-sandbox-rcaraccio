@@ -45,16 +45,16 @@ event defaults (i=0) {
 
 }
 
-event cleanup (t=end) {
-  delete ({TS,TG});
-}
-
 event init (i=0) {
   foreach() {
     TS[] = TS0*f[];
     TG[] = TG0*(1. - f[]);
     T[]  = TS[] + TG[];
   }
+}
+
+event cleanup (t=end) {
+  delete ({TS,TG});
 }
 
 event reset_sources (i++) {
@@ -87,11 +87,15 @@ event phasechange (i++) {
     TInt[] = 0.;
     if (f[] > F_ERR && f[] < 1.-F_ERR)
       TInt[] = avg_neighbor (point, TS, f);
-    fprintf(stderr, "fs = %g\t fsS = %g\n", fS[], fsS.x[]);
+  }
+
+  //Force interface temperature 
+  foreach() { 
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
+      TInt[] = TG0;
   }
 
   //Compute source terms 
-  fprintf(stderr, "i = %d\n", i);
   foreach() {
     if (f[] > F_ERR && f[] < 1.-F_ERR) {
       coord n = facet_normal (point, fS, fsS), p;
@@ -101,9 +105,8 @@ event phasechange (i++) {
 
       double bc = TInt[];
       double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true, bc, &success);
-      double Strgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, false, bc, &success);
-      fprintf(stderr, "%d\n", success);
-      fprintf(stderr, "%g\n",Strgrad);
+      double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
+
       double Sheatflux = lambda1*Strgrad;
       double Gheatflux = lambda2*Gtrgrad;
 #ifdef AXI
@@ -154,7 +157,7 @@ event tracer_diffusion (i++) {
 
   foreach() {
     TS[] *= f[];
-    TG[] *= (1. - f[]); //TODO should check for f[]?
+    TG[] *= (1. - f[]);
   }
   foreach() 
     T[] = TS[] + TG[];

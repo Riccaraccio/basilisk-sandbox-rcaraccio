@@ -71,8 +71,9 @@ event init (i = 0) {
   }
 
   foreach(){
-    omega[] = circle (x-0.5, y, 0.5*D0) > 0 ? 2. : 0.;
+    //omega[] = circle (x-0.5, y, 0.5*D0) > 0 ? 2. : 0.;
     //omega[] = 2.5*x +2.5;
+    omega[] = 1.;
   }
 
   zeta_policy = ZETA_LEVELSET;

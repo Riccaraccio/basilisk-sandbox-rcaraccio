@@ -9,6 +9,7 @@ extern scalar omega;
 extern scalar levelset;
 scalar feps[], * f_tracers = NULL;
 scalar zeta[];
+scalar levelset[];
 
 typedef enum {
   ZETA_SHRINK = 0,
@@ -37,7 +38,6 @@ mgstats mgpsf;
 
 trace
 mgstats project_sv (face vector ubf, scalar psi,
-    (const) face vector alpha = unityf,
     double dt = 1.,
     int nrelax = 4)
 {
@@ -45,11 +45,11 @@ mgstats project_sv (face vector ubf, scalar psi,
   foreach()
     prod[] = (omega[]*f[]*zeta[]/rhos)/dt;
 
-  mgstats mgp = poisson (psi, prod, alpha,
-      tolerance = TOLERANCE/sq(dt), nrelax = nrelax);
+  mgstats mgp = poisson (psi, prod, tolerance = TOLERANCE/sq(dt),
+      nrelax = nrelax);
 
   foreach_face()
-    ubf.x[] = -dt*alpha.x[]*face_gradient_x (psi, 0);
+    ubf.x[] = -dt*face_gradient_x (psi, 0);
 
   return mgp;
 }
@@ -81,8 +81,8 @@ event phasechange (i++) {
   }
 
   // compute radius
-  double radius = sqrt(statsf(f).sum/pi);
- 
+  double radius = sqrt(statsf(f).sum/pi)*2; //*2 TEMP
+
   //compute zeta
   switch (zeta_policy) {
     case 0: // ZETA_SHRINK
@@ -102,14 +102,14 @@ event phasechange (i++) {
         zeta[] = (sqrt(sq(x) + sq(y)) > radius*0.8) ? 1. : 0.;
       break;
     case 4: // ZETA_LEVELSET
-      vof_to_ls (f, levelset);
+      vof_to_ls (f, levelset, imax=10); //Solution is sensible to imax value
       foreach()
-        zeta[] = levelset[] > -0.07 ? 1. : 0.; //TODO: change this value
+        zeta[] = levelset[] > 0.8*statsf(levelset).min ? 1. : 0.;
       break;
   }
 
   //calculate gas source, epsi evolution and interface regression velocity
-  mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
+  mgpsf = project_sv (ubf, psi, dt, mgpsf.nrelax);
 
   foreach() {
   //drhodt[] = omega/rhos*f[]*zeta[]; // solid shrinking
@@ -119,11 +119,10 @@ event phasechange (i++) {
 
 }
 
-//face vector uf_save[];
-
+face vector ufsave[];
 event vof(i++) {
   foreach_face()
-    uf_save.x[] = uf.x[];
+    ufsave.x[] = uf.x[];
 
   foreach_face()
     uf.x[] = ubf.x[];
@@ -131,7 +130,7 @@ event vof(i++) {
 
 event tracer_advection (i++) {
   foreach_face()
-    uf.x[] = uf_save.x[];
+    uf.x[] = ufsave.x[];
 }
 
 event cleanup (t = end) {

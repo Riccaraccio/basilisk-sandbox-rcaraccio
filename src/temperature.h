@@ -2,6 +2,7 @@
 #include "fracface.h"
 #include "diffusion.h"
 #include "common-evaporation.h"
+#include "int-temperature.h"
 
 extern double lambda1, lambda2, dhR, cp1, cp2;
 extern double TS0, TG0;
@@ -9,7 +10,7 @@ bool success;
 
 scalar T[], TInt[];
 scalar TS, TG;
-scalar sST[], sGT[], sSTimp[], sGTimp[];
+scalar sST[], sGT[];
 face vector lambda1f[], lambda2f[];
 
 scalar fG[], fS[];
@@ -29,9 +30,8 @@ event defaults (i=0) {
 
   sST.nodump = true;
   sGT.nodump = true;
-  sGTimp.nodump = true;
-  sSTimp.nodump = true;
 
+  f.tracers = NULL;
   f.tracers = list_append (f.tracers, TS);
   f.tracers = list_append (f.tracers, TG);
 
@@ -50,6 +50,7 @@ event init (i=0) {
     TS[] = TS0*f[];
     TG[] = TG0*(1. - f[]);
     T[]  = TS[] + TG[];
+    TInt[] = f[]<1-F_ERR && f[] > F_ERR ? TS0 : 0.;
   }
 }
 
@@ -61,39 +62,59 @@ event reset_sources (i++) {
   foreach(){
     sST[] = 0.;
     sGT[] = 0.;
-    sSTimp[] = 0.;
-    sGTimp[] = 0.;
   }
 }
 
-event phasechange (i++) {
+#include "bcg.h"
+extern face vector ufsave;
+event tracer_advection (i++) {
+#if 0 
+ //Reconstrucy T
+ foreach()
+   T[] = TS[] + TG[];
 
-  foreach() {
-    f[] = clamp (f[], 0., 1.);
-    f[] = (f[] > F_ERR) ? f[] : 0.;
-    f0[] = f[];
-    fS[] = f[]; fG[] = 1. - f[];
+ //Advection of T using ug !!WARN!! should reconstruct the darcy velocity
+ advection ({T}, ufsave, dt);
 
-    TS[] = f[] > F_ERR ? TS[]/f[] : 0.;
-    TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
-  }
+ //Reconstruct TG, TS is kept
+ foreach()
+    TG[] =T[]*(1-f[]);
+#endif
+}
 
-  //Compute face gradients
-  face_fraction (fS, fsS);
-  face_fraction (fG, fsG);
+event tracer_diffusion (i++) {
 
-  //Assign interface temperature
+ foreach() {
+   f[] = clamp (f[], 0., 1.);
+   f[] = (f[] > F_ERR) ? f[] : 0.;
+   fS[] = f[]; fG[] = 1. - f[];
+   TS[] = f[] > F_ERR ? TS[]/f[] : 0.;
+   TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
+ }
+
+ //Compute face gradients
+ face_fraction (fS, fsS);
+ face_fraction (fG, fsG);
+
+ //Assign interface temperature first guess
   foreach() {
     TInt[] = 0.;
     if (f[] > F_ERR && f[] < 1.-F_ERR)
       TInt[] = avg_neighbor (point, TS, f);
   }
 
-  //Force interface temperature 
-  foreach() { 
-    if (f[] > F_ERR && f[] < 1.-F_ERR)
-      TInt[] = TG0;
-  }
+//  //Force interface temperature 
+//  foreach() { 
+//    if (f[] > F_ERR && f[] < 1.-F_ERR)
+//      TInt[] = TG0;
+//  }
+
+  //Solve interface balance
+  ijc_CoupledTemperature();
+
+  //foreach()
+  //  if (f[] > F_ERR && f[] < 1.-F_ERR)
+  //    fprintf(stderr, "%g %g\n", t, TInt[]);
 
   //Compute source terms 
   foreach() {
@@ -113,39 +134,25 @@ event phasechange (i++) {
       sST[] += Sheatflux/rho1/cp1*area*(y + p.y*Delta)/(Delta*y)*cm[];
       sGT[] += Gheatflux/rho2/cp2*area*(y + p.y*Delta)/(Delta*y)*cm[];
 #else
-      sST[] += Sheatflux/rho1/cp1*area/Delta*cm[];
+      sST[] += Sheatflux/rho1/cp1*area/Delta*cm[]; // add dhR
       sGT[] += Gheatflux/rho2/cp2*area/Delta*cm[];
 #endif
     }
   }
-  foreach() {
-    TS[] *= f[];
-    TG[] *= (1. - f[]);
-  }
-}
-
-event tracer_advection (i++);
-
-event tracer_diffusion (i++) {
-
-  foreach() {
-    f[] = clamp (f[], 0., 1.);
-    f[] = (f[] > F_ERR) ? f[] : 0.;
-    fS[] = f[]; fG[] = 1. - f[];
-    TS[] = f[] > F_ERR ? TS[]/f[] : 0.;
-    TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
-  }
-
-  //Compute face gradients
-  face_fraction (fS, fsS);
-  face_fraction (fG, fsG);
 
   scalar theta1[], theta2[];
+
+#if TREE
+  theta1.refine = theta1.prolongation = fraction_refine;
+  theta2.refine = theta2.prolongation = fraction_refine;
+  theta1.dirty = true;
+  theta2.dirty = true;
+#endif
 
   foreach_face() {
     lambda1f.x[] = lambda1/rho1/cp1*fsS.x[]*fm.x[];
     lambda2f.x[] = lambda2/rho2/cp2*fsG.x[]*fm.x[];
-  }
+ }
 
   foreach() {
     theta1[] = cm[]*max(fS[], F_ERR);
@@ -159,7 +166,10 @@ event tracer_diffusion (i++) {
     TS[] *= f[];
     TG[] *= (1. - f[]);
   }
-  foreach() 
+  foreach()
     T[] = TS[] + TG[];
 }
 
+event stability (i++) {
+  //TO be done, dt = pow(DELTA,2)/(2*max(lambda1f, lambda2f)) or something like that
+}

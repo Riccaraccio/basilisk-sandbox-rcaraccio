@@ -126,7 +126,7 @@ int main (void) {
   We change the dimension of the domain as a function
   of the initial diameter of the droplet. */
 
-  L0 = 1.7*D0;
+  L0 = 3.5*D0;
 
   /**
   We change the surface tension coefficient. and we

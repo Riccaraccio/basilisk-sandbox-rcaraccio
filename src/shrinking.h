@@ -133,6 +133,13 @@ event tracer_advection (i++) {
     uf.x[] = ufsave.x[];
 }
 
+event stability (i++,last) {
+  face vector us[];
+  foreach_face()
+    us.x[] = ubf.x[];
+  dt = dtnext (timestep (us, dtmax));
+}
+
 event cleanup (t = end) {
   free (f.tracers), f.tracers = f_tracers;
 }

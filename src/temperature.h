@@ -170,6 +170,18 @@ event tracer_diffusion (i++) {
     T[] = TS[] + TG[];
 }
 
-event stability (i++) {
-  //TO be done, dt = pow(DELTA,2)/(2*max(lambda1f, lambda2f)) or something like that
+event stability (i++, last) {
+
+  double dtmax = DT;
+  foreach_face (reduction(min:dtmax))
+    if (lambda1f.x[] != 0 && lambda2f.x[] != 0){
+
+      dt = Delta*Delta/(2*dimension)/max(lambda1f.x[],lambda2f.x[]);
+
+      if (fm.x[] >0.)
+        dt *= fm.x[];
+
+      if (dt < dtmax) dtmax = dt;
+    }
+  dt = dtnext (dtmax);
 }

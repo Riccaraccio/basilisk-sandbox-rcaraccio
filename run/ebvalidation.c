@@ -1,11 +1,9 @@
-#define ufext uf
 #define NO_ADVECTION_DIV 1
 #define FSOLVE_ABSTOL 1.e-3
 
-//#include "axi.h" 
-#include "navier-stokes/centered-evaporation.h"
+#include "axi.h" 
+#include "navier-stokes/centered-phasechange.h"
 #include "two-phase.h"
-#include "evaporation.h"
 #include "temperature.h"
 #include "shrinking.h"
 //#include "darcy.h"
@@ -40,6 +38,7 @@ int main() {
   rho1 = 681.042, rho2 = 9.75415;
   mu1 = 0.00037446, mu2 = 2.02391e-5;
   L0 = 3.5*D0;
+  DT = 5e-3;
   for (maxlevel = 7; maxlevel <=7; maxlevel++) {
     init_grid(1 << maxlevel);
     run();

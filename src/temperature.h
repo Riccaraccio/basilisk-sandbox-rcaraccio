@@ -52,9 +52,14 @@ event init (i=0) {
     T[]  = TS[] + TG[];
     TInt[] = f[]<1-F_ERR && f[] > F_ERR ? TS0 : 0.;
   }
+
+  foreach_face() {
+    lambda1f.x[] = lambda1/rho1/cp1; //first guess needed for stability event
+    lambda2f.x[] = lambda2/rho2/cp2;
+ }
 }
 
-event cleanup (t=end) {
+event cleanup (t = end) {
   delete ({TS,TG});
 }
 
@@ -68,7 +73,6 @@ event reset_sources (i++) {
 #include "bcg.h"
 extern face vector ufsave;
 event tracer_advection (i++) {
-#if 0 
  //Reconstrucy T
  foreach()
    T[] = TS[] + TG[];
@@ -79,7 +83,6 @@ event tracer_advection (i++) {
  //Reconstruct TG, TS is kept
  foreach()
     TG[] =T[]*(1-f[]);
-#endif
 }
 
 event tracer_diffusion (i++) {
@@ -111,10 +114,6 @@ event tracer_diffusion (i++) {
 
   //Solve interface balance
   ijc_CoupledTemperature();
-
-  //foreach()
-  //  if (f[] > F_ERR && f[] < 1.-F_ERR)
-  //    fprintf(stderr, "%g %g\n", t, TInt[]);
 
   //Compute source terms 
   foreach() {
@@ -170,18 +169,15 @@ event tracer_diffusion (i++) {
     T[] = TS[] + TG[];
 }
 
-event stability (i++, last) {
-
-  double dtmax = DT;
-  foreach_face (reduction(min:dtmax))
-    if (lambda1f.x[] != 0 && lambda2f.x[] != 0){
-
-      dt = Delta*Delta/(2*dimension)/max(lambda1f.x[],lambda2f.x[]);
-
-      if (fm.x[] >0.)
-        dt *= fm.x[];
-
-      if (dt < dtmax) dtmax = dt;
-    }
-  dt = dtnext (dtmax);
-}
+//event stability (i++, last) {
+//  // does not work, dt found is 100x smaller than actual dtmin
+//  double dtmax = DT;
+//  foreach_face (reduction(min:dtmax))
+//    if (lambda1f.x[] > 0 || lambda2f.x[] > 0){
+// 
+//      dt = Delta*Delta/(2*dimension)/max(lambda1f.x[],lambda2f.x[]);
+// 
+//      if (dt < dtmax) dtmax = dt;
+//    }
+//  dt = dtnext (dtmax);
+//}

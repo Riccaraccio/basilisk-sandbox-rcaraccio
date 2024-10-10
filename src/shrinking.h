@@ -1,5 +1,6 @@
 #include "vofToLs.h"
-scalar mEvap[], * mEvapList = {mEvap};
+#include "velocity-potential.h"
+#include "common-evaporation.h"
 
 double eps0 = 0.5;
 double rhos = 100.;
@@ -32,45 +33,9 @@ event init (i=0) {
   f.tracers = list_append (f.tracers, feps);
 }
 
-scalar psi[];
-face vector ubf[];
-mgstats mgpsf;
+event reset_sources (i++);
 
-trace
-mgstats project_sv (face vector ubf, scalar psi,
-    double dt = 1.,
-    int nrelax = 4)
-{
-  scalar prod[];
-  foreach()
-    prod[] = (omega[]*f[]*zeta[]/rhos)/dt;
-
-  mgstats mgp = poisson (psi, prod, tolerance = TOLERANCE/sq(dt),
-      nrelax = nrelax);
-
-  foreach_face()
-    ubf.x[] = -dt*face_gradient_x (psi, 0);
-
-  return mgp;
-}
-
-psi[right] = neumann (neumann_pressure(ghost));
-psi[left]  = neumann (- neumann_pressure(0));
-
-#if AXI
-ubf.n[bottom] = 0.;
-ubf.t[bottom] = dirichlet(0);
-psi[top]    = neumann (neumann_pressure(ghost));
-#else // !AXI
-#  if dimension > 1
-psi[top]    = neumann (neumann_pressure(ghost));
-psi[bottom] = neumann (- neumann_pressure(0));
-#  endif
-#  if dimension > 2
-psi[front]  = neumann (neumann_pressure(ghost));
-psi[back]   = neumann (- neumann_pressure(0));
-#  endif
-#endif // !AX
+event chemistry (i++);
 
 event phasechange (i++) {
 
@@ -112,11 +77,9 @@ event phasechange (i++) {
   mgpsf = project_sv (ubf, psi, dt, mgpsf.nrelax);
 
   foreach() {
-  //drhodt[] = omega/rhos*f[]*zeta[]; // solid shrinking
-  drhodt[] = -omega[]/rhog*f[]; // gas production
-  feps[] += (feps[] > F_ERR) ? -dt*omega[]/rhos*feps[]*(1-zeta[]) : 0.; //epsi evolution
+    gasSource[] = -omega[]/rhog*f[]; // gas production
+    feps[] += (feps[] > F_ERR) ? -dt*omega[]/rhos*feps[]*(1-zeta[]) : 0.; //epsi evolution
   }
-
 }
 
 face vector ufsave[];
@@ -133,7 +96,7 @@ event tracer_advection (i++) {
     uf.x[] = ufsave.x[];
 }
 
-event stability (i++,last) {
+event stability (i++, last) {
   face vector us[];
   foreach_face()
     us.x[] = ubf.x[];

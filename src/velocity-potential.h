@@ -1,51 +1,43 @@
-scalar ps[];
-face vector ufs[], ufext[];
+extern scalar omega;
+extern scalar zeta;
+extern double rhos;
+
+scalar psi[];
+face vector ubf[];
 mgstats mgpsf;
 
-scalar zeta[];
-scalar omega[];
 trace
-mgstats project_sv (face vector uf, scalar p,
-     (const) face vector alpha = unityf,
-     double dt = 1.,
-     int nrelax = 4)
+mgstats project_sv (face vector ubf, scalar psi,
+    double dt = 1.,
+    int nrelax = 4)
 {
-  scalar div[];
+  scalar prod[];
   foreach()
-    div[] = (omega[]*f[])/dt;
+    prod[] = (omega[]*f[]*zeta[]/rhos)/dt;
 
-  mgstats mgp = poisson (ps, div, alpha,
-      tolerance = TOLERANCE/sq(dt), nrelax = nrelax);
+  mgstats mgp = poisson (psi, prod, tolerance = TOLERANCE/sq(dt),
+      nrelax = nrelax);
 
   foreach_face()
-    ufs.x[] = -dt*alpha.x[]*face_gradient_x (ps, 0);
+    ubf.x[] = -dt*face_gradient_x (psi, 0);
 
   return mgp;
 }
 
-ps[right] = neumann (neumann_pressure(ghost));
-ps[left]  = neumann (- neumann_pressure(0));
+psi[right] = neumann (neumann_pressure(ghost));
+psi[left]  = neumann (- neumann_pressure(0));
 
 #if AXI
-ufs.n[bottom] = 0.;
-ufs.t[bottom] = dirichlet(0);
-ps[top]    = neumann (neumann_pressure(ghost));
+ubf.n[bottom] = 0.;
+ubf.t[bottom] = dirichlet(0);
+psi[top]    = neumann (neumann_pressure(ghost));
 #else // !AXI
 #  if dimension > 1
-ps[top]    = neumann (neumann_pressure(ghost));
-ps[bottom] = neumann (- neumann_pressure(0));
+psi[top]    = neumann (neumann_pressure(ghost));
+psi[bottom] = neumann (- neumann_pressure(0));
 #  endif
 #  if dimension > 2
-ps[front]  = neumann (neumann_pressure(ghost));
-ps[back]   = neumann (- neumann_pressure(0));
+psi[front]  = neumann (neumann_pressure(ghost));
+psi[back]   = neumann (- neumann_pressure(0));
 #  endif
-#endif // !AXI
-
-event end_timestep (i++, last)
-{
-
-  mgpsf = project_sv (ufs, ps, alpha, dt, mgpsf.nrelax);
-
-}
-
-
+#endif // !AX

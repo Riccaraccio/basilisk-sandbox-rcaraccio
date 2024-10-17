@@ -4,7 +4,7 @@
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "two-phase.h"
-#include "temperature.h"
+#include "temperature-of.h"
 #include "shrinking.h"
 //#include "darcy.h"
 #include "view.h"
@@ -13,17 +13,21 @@ u.n[top] = neumann (0.);
 u.t[top] = neumann (0.);
 p[top] = dirichlet (0.);
 psi[top] = dirichlet (0.);
+T[top] = dirichlet (TG0);
 
 u.n[right] = neumann (0.);
 u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 psi[right] = dirichlet (0.);
+T[right] = dirichlet (TG0);
+
+T[left] = neumann (-neumann_pressure(0));
+T[bottom] = neumann (-neumann_pressure(0));
 
 int maxlevel = 6; int minlevel = 2;
 double D0 = 1e-3;
 
 scalar omega[];
-double solid_mass0;
 
 double lambda1 = 0.124069;
 double lambda2 = 0.0295641;
@@ -38,6 +42,7 @@ int main() {
   rho1 = 681.042, rho2 = 9.75415;
   mu1 = 0.00037446, mu2 = 2.02391e-5;
   L0 = 3.5*D0;
+  eps0 = 0.; //No internal gas
   DT = 5e-3;
   for (maxlevel = 7; maxlevel <=7; maxlevel++) {
     init_grid(1 << maxlevel);
@@ -51,17 +56,7 @@ event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
   foreach()
-     porosity[] = eps0*f[];
-
-  solid_mass0 = 0.;
-  foreach (reduction(+:solid_mass0)) {
-    solid_mass0 += porosity[]*rhoS*dv();
-  }
-}
-
-event bcs (i=0) {
-  TG[top] = dirichlet (TG0);
-  TG[right] = dirichlet (TG0);
+    porosity[] = eps0*f[];
 }
 
 event phasechange (i++){
@@ -79,7 +74,7 @@ event logprofile (t += 0.01) {
   coord p = {D0/2, 0}; //interface @ y = 0
   double Tinterface = 0.;
   foreach_point (p.x, p.y)
-    Tinterface = TInt[];
+    Tinterface = 0.;
 
   fprintf (fp, "%g %g\n", t, Tinterface);
   fflush (fp);

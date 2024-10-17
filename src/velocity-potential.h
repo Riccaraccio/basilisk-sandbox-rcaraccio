@@ -1,6 +1,6 @@
 extern scalar omega;
 extern scalar zeta;
-extern double rhos;
+extern double rhoS;
 
 scalar psi[];
 face vector ubf[];
@@ -13,7 +13,7 @@ mgstats project_sv (face vector ubf, scalar psi,
 {
   scalar prod[];
   foreach()
-    prod[] = (omega[]*f[]*zeta[]/rhos)/dt;
+    prod[] = (omega[]*f[]*zeta[]/rhoS)/dt;
 
   mgstats mgp = poisson (psi, prod, tolerance = TOLERANCE/sq(dt),
       nrelax = nrelax);
@@ -40,4 +40,4 @@ psi[bottom] = neumann (- neumann_pressure(0));
 psi[front]  = neumann (neumann_pressure(ghost));
 psi[back]   = neumann (- neumann_pressure(0));
 #  endif
-#endif // !AX
+#endif // !AXI

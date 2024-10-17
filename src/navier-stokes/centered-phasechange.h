@@ -1,4 +1,5 @@
 #include "poisson.h"
+extern double rhoG;
 
 scalar gasSource[];
 scalar drhodt[];
@@ -20,7 +21,7 @@ mgstats project_sf (face vector uf, scalar p,
 
   foreach() {
     div[] += gasSource[]/dt;
-    div[] += drhodt[]/dt;
+    div[] += drhodt[]/dt; //not used rn
   }
 
   mgstats mgp = poisson (p, div, alpha,
@@ -36,9 +37,8 @@ mgstats project_sf (face vector uf, scalar p,
 #include "bcg.h"
 
 void advection_div (scalar * tracers, face vector u, double dt,
-		scalar * src = NULL)
+    scalar * src = NULL)
 {
- 
   scalar * psrc = src;
   if (!src)
     for (scalar s in tracers) {

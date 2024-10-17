@@ -3,12 +3,12 @@
 #include "common-evaporation.h"
 
 double eps0 = 0.5;
-double rhos = 100.;
-double rhog = 1;
+double rhoS = 100.;
+double rhoG = 1.;
+double muG = 1e-5;
 
 extern scalar omega;
-extern scalar levelset;
-scalar feps[], * f_tracers = NULL;
+scalar porosity[], * f_tracers = NULL;
 scalar zeta[];
 scalar levelset[];
 
@@ -27,10 +27,8 @@ event defaults (i=0) {
 }
 
 event init (i=0) {
-  foreach()
-    feps[] = eps0*f[];
   f_tracers = f.tracers;
-  f.tracers = list_append (f.tracers, feps);
+  f.tracers = list_append (f.tracers, porosity);
 }
 
 event reset_sources (i++);
@@ -39,16 +37,13 @@ event chemistry (i++);
 
 event phasechange (i++) {
 
-  // remove spurious values
   foreach() {
     f[] = clamp(f[], 0.,1.);
-    feps[] = clamp(feps[], 0., 1.);
+    porosity[] = clamp(porosity[], 0., 1.);
   }
 
-  // compute radius
   double radius = sqrt(statsf(f).sum/pi)*2; //*2 TEMP
 
-  //compute zeta
   switch (zeta_policy) {
     case 0: // ZETA_SHRINK
       foreach()
@@ -73,12 +68,12 @@ event phasechange (i++) {
       break;
   }
 
-  //calculate gas source, epsi evolution and interface regression velocity
   mgpsf = project_sv (ubf, psi, dt, mgpsf.nrelax);
 
   foreach() {
-    gasSource[] = -omega[]/rhog*f[]; // gas production
-    feps[] += (feps[] > F_ERR) ? -dt*omega[]/rhos*feps[]*(1-zeta[]) : 0.; //epsi evolution
+    gasSource[] = -omega[]*f[]/rhoG*cm[]; // gas production
+    porosity[] += dt*omega[]/rhoS*(f[]-porosity[])*(1-zeta[])*cm[]; //epsi evolution
+    porosity[] = clamp(porosity[], 0., 1.);
   }
 }
 

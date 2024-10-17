@@ -1,10 +1,12 @@
 #define NO_ADVECTION_DIV 1
 #define FSOLVE_ABSTOL 1.e-3
 
+#define SHIFT
+
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "two-phase.h"
-#include "temperature.h"
+#include "temperature-v.h"
 #include "shrinking.h"
 //#include "darcy.h"
 #include "view.h"
@@ -13,11 +15,15 @@ u.n[top] = neumann (0.);
 u.t[top] = neumann (0.);
 p[top] = dirichlet (0.);
 psi[top] = dirichlet (0.);
+ubf.t[top] = neumann (0.);
+ubf.n[top] = neumann (0.);
 
 u.n[right] = neumann (0.);
 u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 psi[right] = dirichlet (0.);
+ubf.t[right] = neumann (0.);
+ubf.n[right] = neumann (0.);
 
 int maxlevel = 6; int minlevel = 2;
 double D0 = 1e-3;
@@ -25,19 +31,25 @@ double D0 = 1e-3;
 scalar omega[];
 double solid_mass0;
 
-double lambda1 = 0.124069;
-double lambda2 = 0.0295641;
-
-double cp1 = 2244.92;
-double cp2 = 1041.52;
-
-double TG0 = 1000.;
-double TS0 = 300.;
 
 int main() {
-  rho1 = 681.042, rho2 = 9.75415;
+
+  lambdaS = 0.124069;
+  lambdaG = 0.0295641;
+
+  cpS = 2244.92;
+  cpG = 1041.52;
+ 
+  TG0 = 1000.;
+  TS0 = 300.;
+
+  rhoS = 681.042;
+  rhoG = 9.75415;
+
+  rho1 = rhoG, rho2 = rhoG; //we solve using Gas prop both phases
   mu1 = 0.00037446, mu2 = 2.02391e-5;
   L0 = 3.5*D0;
+  eps0 = 0.;
   DT = 5e-3;
   for (maxlevel = 7; maxlevel <=7; maxlevel++) {
     init_grid(1 << maxlevel);
@@ -51,12 +63,14 @@ event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
   foreach()
-     porosity[] = eps0*f[];
+     porosity[] = f[]*eps0;
 
   solid_mass0 = 0.;
   foreach (reduction(+:solid_mass0)) {
-    solid_mass0 += porosity[]*rhoS*dv();
+    solid_mass0 += (1-porosity[])*rhoS*dv();
   }
+
+  zeta_policy = ZETA_SWELLING;
 }
 
 event bcs (i=0) {
@@ -66,7 +80,9 @@ event bcs (i=0) {
 
 event phasechange (i++){
   foreach()
-    omega[] = 0.; //fixed interface
+    //omega[] = 0.;//fixed interface
+    omega[] = T[]/TG0*10;
+    //omega[] = 10;
 }
 
 event logprofile (t += 0.01) {

@@ -4,11 +4,11 @@
 #include "common-evaporation.h"
 #include "int-temperature.h"
 
-extern scalar Qr;
 extern double lambda1, lambda2, cp1, cp2;
 extern double TS0, TG0;
 bool success;
 
+mgstats diffstats;
 scalar T[], TInt[];
 scalar TS, TG;
 scalar sST[], sGT[];
@@ -130,11 +130,15 @@ event tracer_diffusion (i++) {
       double Sheatflux = lambda1*Strgrad;
       double Gheatflux = lambda2*Gtrgrad;
 #ifdef AXI
-      sST[] += Sheatflux/rho1/cp1*area*(y + p.y*Delta)/(Delta*y)*cm[];
-      sGT[] += Gheatflux/rho2/cp2*area*(y + p.y*Delta)/(Delta*y)*cm[];
+      sST[] += Sheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
+      sGT[] += Gheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
+      //sST[] += Sheatflux/rho1/cp1*area*(y + p.y*Delta)/(Delta*y)*cm[];
+      //sGT[] += Gheatflux/rho2/cp2*area*(y + p.y*Delta)/(Delta*y)*cm[];
 #else
-      sST[] += Sheatflux/rho1/cp1*area/Delta*cm[]; // add dhR
-      sGT[] += Gheatflux/rho2/cp2*area/Delta*cm[];
+      sST[] += Sheatflux*area/Delta*cm[]; // add dhR
+      sGT[] += Gheatflux*area/Delta*cm[];
+      //sST[] += Sheatflux/rho1/cp1*area/Delta*cm[]; // add dhR
+      //sGT[] += Gheatflux/rho2/cp2*area/Delta*cm[];
 #endif
     }
   }
@@ -149,17 +153,27 @@ event tracer_diffusion (i++) {
 #endif
 
   foreach_face() {
-    lambda1f.x[] = lambda1/rho1/cp1*fsS.x[]*fm.x[];
-    lambda2f.x[] = lambda2/rho2/cp2*fsG.x[]*fm.x[];
+    lambda1f.x[] = lambda1*fsS.x[]*fm.x[];
+    lambda2f.x[] = lambda2*fsG.x[]*fm.x[];
+    //lambda1f.x[] = lambda1/rho1/cp1*fsS.x[]*fm.x[];
+    //lambda2f.x[] = lambda2/rho2/cp2*fsG.x[]*fm.x[];
  }
 
   foreach() {
-    theta1[] = cm[]*max(fS[], F_ERR);
-    theta2[] = cm[]*max(fG[], F_ERR);
+    theta1[] = cm[]*max(fS[]*rho1*cp1, F_ERR);
+    theta2[] = cm[]*max(fG[]*rho2*cp2, F_ERR);
+    //theta1[] = cm[]*max(fS[], F_ERR);
+    //theta2[] = cm[]*max(fG[], F_ERR);
   }
 
-  diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
+  diffstats = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
   diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
+  fprintf(stderr, "Number of iterations: %d\n", diffstats.i);
+  fprintf(stderr, "Maximum residual before iterations: %f\n", diffstats.resb);
+  fprintf(stderr, "Maximum residual after iterations: %f\n", diffstats.resa);
+  fprintf(stderr, "Sum of r.h.s.: %f\n", diffstats.sum);
+  fprintf(stderr, "Number of relaxations: %d\n", diffstats.nrelax);
+  fprintf(stderr, "Minimum level of the multigrid hierarchy: %d\n", diffstats.minlevel);
 
   foreach() {
     TS[] *= f[];

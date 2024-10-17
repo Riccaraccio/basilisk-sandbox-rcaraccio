@@ -7,6 +7,8 @@ The system of ODEs is solved using the *batch* method.
 
 //#include "radiation.h" not included for now
 
+#define R_GAS 8.31446261815324
+
 typedef struct {
   double rho;
   double cp;

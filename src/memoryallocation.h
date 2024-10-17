@@ -1,8 +1,3 @@
-/*
-** TO BE REVISED **
-Memory allocation for the OpenSMOKE_Interface
-*/
-
 #include "OpenSMOKE_Interface.h"
 
 #pragma autolink -L$OPENSMOKE_INTERFACE/build -lopensmoke
@@ -14,25 +9,13 @@ unsigned int NGS, NSS;
 scalar* YGList = NULL;
 scalar* YSList = NULL;
 scalar* Dmix2List = NULL;
-scalar T[];
-scalar epsilon[];
+scalar* sgimList = NULL;
 
-double* gas_start; 
+double* gas_start;
 double* sol_start;
 double* gas_MWs;
 double* sol_MWs;
-double Pref;
-double cp1, cp2;
-double mass0 = 0;
-scalar f0[], fS[], fG[];
-face vector fsS[], fsG[];
-
-#ifdef SOLVE_TEMPERATURE
-extern double lambda1, lambda2, cp1, cp2;
-
-scalar TInt[];
-face vector lambda1f[], lambda2f[];
-#endif
+double Pref = 101325.;
 
 event defaults (i = 0) {
 
@@ -49,26 +32,28 @@ event defaults (i = 0) {
   NSS = OpenSMOKE_NumberOfSolidSpecies(); 
 
   //Allocate gas species fields
-  for (int jj = 0; jj<NGS; jj++){
+  for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
     char name[20];
     sprintf (name, "%s",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     YGList = list_append (YGList, a);
-  } 
-  
+  }
+  reset (YGList, 0.);
+
   //Allocate solid species fields
-  for (int jj = 0; jj<NSS; jj++){
+  for (int jj = 0; jj<NSS; jj++) {
     scalar a = new scalar;
     free (a.name);
     char name[20];
     sprintf (name, "%s",OpenSMOKE_NamesOfSolidSpecies(jj));
     a.name = strdup (name);
     YSList = list_append (YSList, a);
-  } 
+  }
+  reset (YSList, 0.);
 
-  //Allocate diff coeff fields, not used for now
+  //Allocate diff coeff fields
   for (int jj = 0; jj<NGS; jj++) {
     scalar s = new scalar;
     free (s.name);
@@ -76,7 +61,7 @@ event defaults (i = 0) {
     sprintf (name, "D_%s",OpenSMOKE_NamesOfSpecies(jj));
     s.name = strdup (name);
     Dmix2List = list_append (Dmix2List, s);
-  }  
+  }
 
   //initialize vector with initial values
   gas_start = (double *)malloc(NGS * sizeof(double));
@@ -84,17 +69,25 @@ event defaults (i = 0) {
   gas_MWs = (double *)malloc(NGS * sizeof(double));
   sol_MWs = (double *)malloc(NSS * sizeof(double));
 
-  for (int jj=0; jj<NGS; jj++){
+  for (int jj=0; jj<NGS; jj++) {
     gas_start[jj] = 0.;
     gas_MWs[jj] = OpenSMOKE_MW(jj);
   }
 
-  for (int jj=0; jj<NSS; jj++){
+  for (int jj=0; jj<NSS; jj++) {
     sol_start[jj] = 0.;
     sol_MWs[jj] = OpenSMOKE_MW_Solid(jj);
   }
 
-// For adaptive meshes, not used for now
+  for (scalar s in YGList)
+    s.inverse = true;
+
+  for (scalar s in YSList)
+    s.inverse = false;
+
+  f.tracers = list_concat (f.tracers, YGList);
+  f.tracers = list_concat (f.tracers, YSList);
+
 #if TREE
   for (scalar s in YGList) {
 #if EMBED
@@ -103,7 +96,7 @@ event defaults (i = 0) {
     s.refine  = refine_linear;
 #endif
     s.restriction = restriction_volume_average;
-    s.dirty = true; // boundary conditions need to be updated
+    s.dirty = true;
   }
 #endif
 
@@ -115,41 +108,30 @@ event defaults (i = 0) {
     s.refine  = refine_linear;
 #endif
     s.restriction = restriction_volume_average;
-    s.dirty = true; // boundary conditions need to be updated
+    s.dirty = true;
   }
 #endif
 
 }
 
-event init(i = 0){
+event init (i = 0){
   //initialize gas fractions fields
-  foreach(){
-    for (int jj = 0; jj<NGS; jj++){
+  foreach() {
+    for (int jj = 0; jj<NGS; jj++) {
       scalar YG = YGList[jj];
       YG[] = gas_start[jj];
     }
   }
   //initialize solid fractions fields
-  foreach(){
-    for (int jj = 0; jj<NSS; jj++){
+  foreach() {
+    for (int jj = 0; jj<NSS; jj++) {
       scalar YS = YSList[jj];
       YS[] = sol_start[jj]*f[];
     }
   }
-  // calculate initial mass
-
-  foreach(){
-    if(f[]>F_ERR){
-      for (int jj=0; jj<NSS; jj++) {
-        scalar YS = YSList[jj];
-        mass0 += YS[]*rho1*epsilon[]*f[];
-      }
-    }
-  }
 }
 
-event cleanup (t = end)
-{
+event cleanup (t = end) {
   OpenSMOKE_Clean ();
 
   delete (YSList), free (YSList), YSList = NULL;
@@ -159,24 +141,4 @@ event cleanup (t = end)
   free(sol_start), sol_start = NULL;
   free(gas_MWs), gas_MWs = NULL;
   free(sol_MWs), sol_MWs = NULL;
-  #ifdef SOLVE_TEMPERATURE
-    delete ({T});
-  #endif
-}
-
-
-// EVAPORATIO  TESTS
-// double mEvapVal = 0.1;
-scalar mEvap[];
-scalar * mEvapList = {mEvap};
-double omega = 0;
-event phasechange (i++)
-{
-  // foreach() {
-  //   mEvap[] = 0.;
-  //   if (f[] > F_ERR && f[] < 1.-F_ERR)
-  //     mEvap[] = mEvapVal;
-  //   //drhodt[] = -0.1;
-  // }
-
 }

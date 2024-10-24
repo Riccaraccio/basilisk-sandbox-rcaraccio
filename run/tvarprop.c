@@ -1,10 +1,11 @@
 #define NO_ADVECTION_DIV 1
 #define FSOLVE_ABSTOL 1.e-3
 
-#define SHIFT
+//#define SHIFT
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
+#include "var-prop.h"
 #include "two-phase.h"
 #include "temperature-v.h"
 #include "shrinking.h"
@@ -25,7 +26,7 @@ psi[right] = dirichlet (0.);
 ubf.t[right] = neumann (0.);
 ubf.n[right] = neumann (0.);
 
-int maxlevel = 6; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 double D0 = 1e-3;
 
 scalar omega[];
@@ -45,16 +46,19 @@ int main() {
 
   rhoS = 681.042;
   rhoG = 9.75415;
+  muG = 2.02391e-5;
 
-  rho1 = rhoG, rho2 = rhoG; //we solve using Gas prop both phases
-  mu1 = 0.00037446, mu2 = 2.02391e-5;
+  rho1 = 1., rho2 = 1.;
+  mu1 = 1., mu2 = 1.;
   L0 = 3.5*D0;
   eps0 = 0.;
   DT = 5e-3;
-  for (maxlevel = 7; maxlevel <=7; maxlevel++) {
-    init_grid(1 << maxlevel);
-    run();
-  }
+  //for (maxlevel = 7; maxlevel <=7; maxlevel++) {
+  //  init_grid(1 << maxlevel);
+  //  run();
+  //}
+  init_grid(1 << maxlevel);
+  run();
 }
 
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
@@ -80,8 +84,8 @@ event bcs (i=0) {
 
 event phasechange (i++){
   foreach()
-    //omega[] = 0.;//fixed interface
-    omega[] = T[]/TG0*10;
+    omega[] = 0.;//fixed interface
+    //omega[] = T[]/TG0*10;
     //omega[] = 10;
 }
 

@@ -1,6 +1,7 @@
 #define ufext uf
 //#define VARPROP
 
+#include "axi.h"
 #include "navier-stokes/centered-evaporation.h"
 #include "two-phase.h"
 #include "temperature.h"
@@ -17,32 +18,25 @@ u.t[top] = neumann (0.);
 p[top] = dirichlet (0.);
 psi[top] = dirichlet (0.);
 
-//u.n[bottom] = neumann (0.);
-//u.t[bottom] = neumann (0.);
-//p[bottom] = dirichlet (0.);
-//psi[bottom] = dirichlet (0.);
-//
-//u.n[left] = neumann (0.);
-//u.t[left] = neumann (0.);
-//p[left] = dirichlet (0.);
-//psi[left]  = dirichlet (0.);
-
 u.n[right] = neumann (0.);
 u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 psi[right] = dirichlet (0.);
 
-int maxlevel = 5; int minlevel = 5;
-double D0 = 2./3.;
+int maxlevel = 7; int minlevel = 5;
+double D0 = 1e-3;
 
 scalar omega[];
 double solid_mass0;
 
-double lambda1 = 2e-1;
-double cp1 =1.e3;
+double lambda1 = 0.124069;
+double lambda2 = 0.0295641;
 
-double lambda2 = 5e-2;
-double cp2 =1e3;
+double cp1 = 2244.92;
+double cp2 = 1041.52;
+
+double TG0 = 1000.;
+double TS0 = 300.;
 
 int main() {
   rho1 = 100., rho2 = 1.;

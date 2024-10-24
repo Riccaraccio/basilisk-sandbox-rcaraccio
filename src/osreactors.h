@@ -7,32 +7,38 @@ The system of ODEs is solved using the *batch* method.
 
 //#include "radiation.h" not included for now
 
+extern scalar f;
 #define R_GAS 8.31446261815324
 
 typedef struct {
-  double rho;
-  double cp;
+  double rhos;
+  double rhog;
+  double cps;
+  double cpg;
   double P;
   double T;
-  int isinterface;  //1 if interface, 0 if not
-  double epsi;      //porosity, used when isinterface = 1
+  double zeta;
+  double f;
+  double sources[1];
 } UserDataODE;
 
 
 void batch_isothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
-  
+
   /**
   Unpack data for the ODE system. */
 
   UserDataODE data = *(UserDataODE *)args;
-  double rho = data.rho;
-  double cp = data.cp;
+  double rhos = data.rhos;
+  double rhog = data.rhog;
   double Pressure = data.P;
+  double zeta = data.zeta;
+  double f = data.f;
   double Temperature = data.T;
-  double porosity = y[NGS+NSS];;
 
-  //porosity = (porosity < 0.) ? 0. : porosity;
- 
+  double porosity = y[NGS+NSS];
+  porosity = clamp(porosity, 0., 1.);
+
   OpenSMOKE_SolProp_SetTemperature (Temperature);
   OpenSMOKE_SolProp_SetPressure (Pressure);
 
@@ -53,12 +59,11 @@ void batch_isothermal_constantpressure (const double * y, const double dt, doubl
   for (int jj=0; jj<NGS; jj++) {
     gasmassfracs[jj] = gasmass[jj]/totgasmass;
   }
-  
- 
+
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
   double MWMix = OpenSMOKE_MolecularWeight_From_MassFractions (gasmassfracs);
 
-  double ctot = Pressure/(R_GAS*1000.)/Temperature;
+  double ctot = Pressure/(R_GAS*1000.)/Temperature; //ideal gases
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
@@ -81,43 +86,33 @@ void batch_isothermal_constantpressure (const double * y, const double dt, doubl
 
   double solmassfracs[NSS];
   double csolid[NSS], rsolid[NSS];
-  for (int jj=0; jj<NSS; jj++){
+  for (int jj=0; jj<NSS; jj++) {
     solmassfracs[jj] = (totsolidmass < T_ERR) ? 0. : solidmass[jj]/totsolidmass;
-    csolid[jj] = rho1*solmassfracs[jj]/sol_MWs[jj];
+    csolid[jj] = rhos*solmassfracs[jj]/sol_MWs[jj];
   }
 
   //////////////////////////////////////////////////////////////////////////
- 
+
   OpenSMOKE_SolProp_KineticConstants ();
   OpenSMOKE_SolProp_ReactionRates (cgas,csolid);
-  OpenSMOKE_SolProp_FormationRates (rgas, rsolid);
- 
-  //fprintf(stderr, "CELL = % g\n", solmassfracs[0]);
+  OpenSMOKE_SolProp_FormationRates (rgas, rsolid); //rates are given per m3 of solid
 
   for (int jj=0; jj<NGS; jj++) {
-    dy[jj] = gas_MWs[jj]*rgas[jj]*porosity;
+    dy[jj] = gas_MWs[jj]*rgas[jj]*(1-porosity)*f;
   }
 
   for (int jj=0; jj<NSS; jj++) {
-    dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*porosity;
+    dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-porosity)*f;
   }
 
   double totsolidreaction = 0.;
   for (int jj=0; jj<NSS; jj++) {
-    totsolidreaction += (sol_MWs[jj]*rsolid[jj]); //epsilon equation
+    totsolidreaction += (sol_MWs[jj]*rsolid[jj]);
   }
 
-  //totsolidreaction = 1e-2;
-  if (data.isinterface == 1) {
-    //shrinking
-    dy[NGS+NSS] = 0;
-    omega = totsolidreaction*porosity;
-  } else {
-    // porosity loss  
-    dy[NGS+NSS] = totsolidreaction*porosity/rho1;
-    omega = 0;
-  }
-
+  //porosity equation
+  dy[NGS+NSS] = totsolidreaction/rhos*(1-porosity)*f*(1-zeta[]);
+  sources[0] = totsolidreaction;
 }
 
 
@@ -226,6 +221,6 @@ void batch_isothermal_constantpressure (const double * y, const double dt, doubl
   double QRsol = OpenSMOKE_SolProp_HeatRelease (rgas, rsolid);
 
   //dy[OpenSMOKE_NumberOfSpecies()] = (QR + divq_rad (&otp))/rho/cp; //NO RADIATION FOR NOW
-  //dy[NGS+NSS+1] = (QRsol*solvolume + QRgas*(1-solvolume))/(rho1*cp1*solvolume + rho*cp2*(1-solvolume));
+  dy[NGS+NSS+1] = (QRsol*solvolume + QRgas*(1-solvolume))/(rho1*cp1*solvolume + rho*cp2*(1-solvolume));
  
 }

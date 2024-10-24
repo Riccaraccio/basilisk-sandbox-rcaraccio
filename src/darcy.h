@@ -5,7 +5,8 @@ We implement the acceleration term due to flow in porous media.
 */
 
 // extern scalar epsi;
-extern scalar feps;
+extern scalar porosity;
+extern double rhoG, muG;
 
 event defaults (i = 0) {  
   if (is_constant(a.x)) {
@@ -25,11 +26,11 @@ event acceleration (i++){
       if (f[] > 1e-6)
       {
         //double epsif = face_value(epsi, 0);
-        double epsif = face_value(feps, 0);
+        double epsif = face_value(porosity, 0);
         double Cff = 1.75/pow(150*pow(1-epsif,3), 0.5);
 
-       av.x[] -= alpha.x[]/(fm.x[] + SEPS)*(mu2*uf.x[]*(1-epsif)/Da); // Darcy term 
-       av.x[] -= alpha.x[]/(fm.x[] + SEPS)*(rhog*pow((1-epsif),2)* Cff* fabs(uf.x[])* uf.x[]/ pow(Da,0.5) ); // Forcheimer term
+       av.x[] -= alpha.x[]/(fm.x[] + SEPS)*(muG*uf.x[]*(1-epsif)/Da); // Darcy term 
+       av.x[] -= alpha.x[]/(fm.x[] + SEPS)*(rhoG*pow((1-epsif),2)* Cff* fabs(uf.x[])* uf.x[]/ pow(Da,0.5) ); // Forcheimer term
       }
     }
 }

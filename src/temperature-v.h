@@ -4,9 +4,10 @@
 #include "common-evaporation.h"
 #include "int-temperature-v.h"
 
+#define SOLVE_TEMPERATURE
+
 extern scalar porosity;
 extern double rhoS, rhoG;
-mgstats diffstat;
 
 double lambdaS = 1.; double lambdaG = 1.;
 double cpS = 1.; double cpG = 1.;
@@ -18,17 +19,12 @@ scalar TS, TG;
 scalar sST[], sGT[];
 face vector lambda1f[], lambda2f[];
 
-(const) scalar lambda1v, lambda2v;
-(const) scalar rhocp1v, rhocp2v;
-(const) scalar rho1v, rho2v;
-(const) scalar cp1v, cp2v;
-
 scalar fG[], fS[];
 face vector fsS[], fsG[];
 scalar f0[];
 
 vector gT[], grc[];
-#define pavg(p, vg, vs) (p*vg + (1-p)*vs)
+
 
 event defaults (i=0) {
 
@@ -63,24 +59,6 @@ event init (i=0) {
     TG[] = TG0*(1. - f[]);
     T[]  = TS[] + TG[];
     TInt[] = f[]<1-F_ERR && f[] > F_ERR ? TS0 : 0.;
-  }
-
-  lambda1v = new scalar;
-  lambda2v = new scalar;
-  rho1v = new scalar;
-  rho2v = new scalar;
-  rhocp1v = new scalar;
-  rhocp2v = new scalar;
-
-  foreach() {
-    lambda1v[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
-    lambda2v[] = lambdaG;
-
-    rho1v[] = f[] > F_ERR ? pavg (porosity[]/f[], rhoG, rhoS) : rhoG;
-    rho2v[] = rhoG;
-
-    rhocp1v[] =  f[] > F_ERR ? pavg (porosity[]/f[], rhoG*cpG, rhoS*cpS) : rhoG*cpG;
-    rhocp2v[] =  rhoG*cpG;
   }
 }
 
@@ -155,14 +133,18 @@ event tracer_diffusion (i++) {
       TInt[] = avg_neighbor (point, TS, f);
   }
 
-//  //Force interface temperature 
-//  foreach() { 
-//    if (f[] > F_ERR && f[] < 1.-F_ERR)
-//      TInt[] = TG0;
-//  }
+#ifdef FIXED_INT_TEMP
+  //Force interface temperature 
+  foreach() { 
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
+      TInt[] = TG0;
+  }
+#else //default
 
   //Solve interface balance
   ijc_CoupledTemperature();
+
+#endif
 
   //Compute source terms 
   foreach() {
@@ -176,7 +158,7 @@ event tracer_diffusion (i++) {
       double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true, bc, &success);
       double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
 
-      double Sheatflux = lambda1v[]*Strgrad;
+      double Sheatflux = lambda1v[]*Strgrad; //fprintf(stderr,"sST[] = %g\n", Sheatflux);
       double Gheatflux = lambda2v[]*Gtrgrad;
 
 #ifdef AXI
@@ -223,8 +205,8 @@ event tracer_diffusion (i++) {
     theta1[] = cm[]*max(fS[], F_ERR);
     theta2[] = cm[]*max(fG[], F_ERR);
 #else
-    theta1[] = f[] > F_ERR ? cm[]*max(fS[]*pavg (porosity[]/f[], rhoG*cpG, rhoS*cpS), F_ERR) : F_ERR;
-    theta2[] = cm[]*max(fG[]*rhoG*cpG, F_ERR);
+    theta1[] = cm[]*max(fS[]*rhocp1v[], F_ERR);
+    theta2[] = cm[]*max(fG[]*rhocp2v[], F_ERR);
 #endif
   }
 
@@ -249,15 +231,8 @@ event tracer_diffusion (i++) {
 
 #endif
 
-  diffstat = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
+  diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
   diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
-
-  //fprintf(stderr,"Nmber of iterations: %d\n", diffstat.i);
-  //fprintf(stderr,"Maximum residual before iterations: %f\n", diffstat.resb);
-  //fprintf(stderr,"Maximum residual after iterations: %f\n", diffstat.resa);
-  //fprintf(stderr,"Sum of r.h.s.: %f\n", diffstat.sum);
-  //fprintf(stderr,"Number of relaxations: %d\n", diffstat.nrelax);
-  //fprintf(stderr,"Minimum level of the multigrid hierarchy: %d\n", diffstat.minlevel);
 
   foreach() {
     TS[] *= f[];
@@ -267,19 +242,19 @@ event tracer_diffusion (i++) {
     T[] = TS[] + TG[];
 }
 
-event properties (i++) {
-  foreach() {
-    lambda1v[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
-    lambda2v[] = lambdaG;
-
-    rho1v[] = f[] > F_ERR ? pavg (porosity[]/f[], rhoG, rhoS) : rhoG;
-    rho2v[] = rhoG;
-
-    rhocp1v[] =  f[] > F_ERR ? pavg (porosity[]/f[], rhoG*cpG, rhoS*cpS) : rhoG*cpG;
-    rhocp2v[] =  rhoG*cpG;
-  }
-
-}
+//event properties (i++) { //to be moved to var-prop module
+//  foreach() {
+//    lambda1v[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
+//    lambda2v[] = lambdaG;
+//
+//    rho1v[] = f[] > F_ERR ? pavg (porosity[]/f[], rhoG, rhoS) : rhoG;
+//    rho2v[] = rhoG;
+//
+//    rhocp1v[] =  f[] > F_ERR ? pavg (porosity[]/f[], rhoG*cpG, rhoS*cpS) : rhoG*cpG;
+//    rhocp2v[] =  rhoG*cpG;
+//  }
+//
+//}
 
 //event stability (i++, last) {
 //  // does not work, dt found is 100x smaller than actual dtmin
@@ -293,6 +268,3 @@ event properties (i++) {
 //    }
 //  dt = dtnext (dtmax);
 //}
-//
-
-

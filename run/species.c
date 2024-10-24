@@ -3,8 +3,9 @@
 
 //#include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
+#include "var-prop"
 #include "two-phase.h"
-#include "temperature.h"
+#include "temperature-v.h"
 #include "multicomponent_r.h"
 #include "shrinking.h"
 //#include "darcy.h"

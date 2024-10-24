@@ -19,7 +19,7 @@ mgstats project_sv (face vector ubf, scalar psi,
       nrelax = nrelax);
 
   foreach_face()
-    ubf.x[] = -dt*face_gradient_x (psi, 0);
+    ubf.x[] = -dt*face_gradient_x (psi, 0)*fm.x[];
 
   return mgp;
 }

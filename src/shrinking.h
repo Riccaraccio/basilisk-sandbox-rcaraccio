@@ -55,7 +55,8 @@ event phasechange (i++) {
       break;
     case 2: // ZETA_SMOOTH
       foreach()
-        zeta[] = 1 / (1 + exp(32*radius - 40*sqrt(sq(x)+sq(y))));
+          //zeta[] = 1 / (1 + exp(32*radius - 40*sqrt(sq(x)+sq(y)+sq(z))));
+          zeta[] = 1 / (1 + exp(-(sqrt(sq(x)+sq(y)+sq(z))-radius/2)/pow(radius, 4./3.)));
       break;
     case 3: // ZETA_SHARP
       foreach()

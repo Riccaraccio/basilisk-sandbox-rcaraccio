@@ -90,18 +90,20 @@ event logprofile (t += 0.01) {
 //      (double[]){1.e0,1.e-1,1.e-1,1.e-1,1.e-1}, maxlevel, minlevel, 1);
 //}
 
-//event movie (t += 10) {
-//  clear();
-//  view (ty=-0.5, width=1400.);
-//  draw_vof ("f", lw=2);
-//  squares ("T", min=TS0, max=TG0, linear=true);
+event movie (t += 0.01) {
+  clear();
+  box();
+// view (ty=-0.5, width=1400.);
+  view (ty=-0.5, tx=-0.5);
+  draw_vof ("f", lw=2);
+  squares ("T", min=TS0, max=TG0, linear=true);
 //  mirror ({1.,0.}) {
 //    vectors ("ubf", scale=10);
 //    draw_vof ("f", lw=2);
 //    squares ("feps", min=0., max=eps0, linear=true);
 //  }
-//  save ("movie.mp4");
-//}
+  save ("movie.mp4");
+}
 
 int count = 1;
 event profiles (t = {0.056606, 0.541909}) {
@@ -129,24 +131,25 @@ event stop (t=1) {
 ~~~gnuplot Interface temperature
 reset
 set terminal pngcairo enhanced size 960, 540
+set output "plot0.png"
 set xlabel "t [s]"
 set ylabel "T [k]"
 set key bottom right
 set xrange [0:1]
 set yrange [250:600]
 set grid
+set title "Interfacial Temperature"
 
-plot "data/Output-R1000K/Interface.out" u 1:12 w l lw 2 t "microgravity", \
-     "OutputData-6" u 1:2 w l lw 2 t "LEVEL 6", \
-     "OutputData-7" u 1:2 w l lw 2 t "LEVEL 7", \
-     "OutputData-8" u 1:2 w l lw 2 t "LEVEL 8", \
-     "../c7pathak/log" u 1:2 w l lw 2 t "Edo, LEVEL 6"
+plot "data/Output-R1000K/Interface.out" u 1:12 w l lw 2 t "Microgravity", \
+     "OutputData-7" u 1:2 w l lw 2 t "RC's", \
+     "../c7pathak/log" u 1:2 w l lw 2 t "EC's"
 ~~~
 
 ~~~gnuplot T profiles
 reset
-set terminal pngcairo enhanced size 960, 960
-set multiplot layout 2,1 title "Temperature snapshots"
+set terminal pngcairo enhanced size 960, 540
+set output "plot1.png"
+set multiplot layout 1,2 title "Temperature snapshots"
 
 set xlabel "x [mm]"
 set ylabel "T [k]"

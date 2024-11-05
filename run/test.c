@@ -26,7 +26,7 @@ psi[right] = dirichlet (0.);
 ubf.t[right] = neumann (0.);
 ubf.n[right] = neumann (0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 8; int minlevel = 2;
 double D0 = 1e-3;
 
 scalar omega[];
@@ -45,7 +45,7 @@ int main() {
   mu1 = 1., mu2 = 1.;
   L0 = 3.5*D0;
   eps0 = 0.;
-  DT = 5e-3;
+  DT = 1e-3;
   //for (maxlevel = 7; maxlevel <=7; maxlevel++) {
   //  init_grid(1 << maxlevel);
   //  run();
@@ -104,29 +104,29 @@ event adapt (i++) {
       (double[]){1.e0,1.e-1,1.e-1,1.e-1,1.e-1}, maxlevel, minlevel, 1);
 }
 
-event movie (t += 0.1) {
-  clear();
-  view (ty=-0.5, width=1400.);
-  draw_vof ("f", lw=2);
-  squares ("T", min=TS0, max=TG0, linear=true);
-  mirror ({1.,0.}) {
-    vectors ("ubf", scale=1);
-    draw_vof ("f", lw=2);
-    squares ("porosity", min=0., max=1., linear=true);
-  }
-  save ("movie.mp4");
-}
 //event movie (t += 0.1) {
 //  clear();
-//  view (ty=-0.5, width=1400.);
-//  cells ();
+//  view (ty=-0.3, width=1400., fov=17);
 //  draw_vof ("f", lw=2);
+//  squares ("T", min=TS0, max=TG0, linear=true);
 //  mirror ({1.,0.}) {
-//    vectors ("u", scale=0.1);
+//    vectors ("ubf", scale=1);
 //    draw_vof ("f", lw=2);
+//    squares ("porosity", min=0., max=1., linear=true);
 //  }
 //  save ("movie.mp4");
 //}
+event movie (t += 0.1) {
+  clear();
+  view (ty=-0.5, width=1400.);
+  cells ();
+  draw_vof ("f", lw=2);
+  mirror ({1.,0.}) {
+    vectors ("u", scale=0.1);
+    draw_vof ("f", lw=2);
+  }
+  save ("movie.mp4");
+}
 
 //int count = 1;
 //event profiles (t = {0.056606, 0.541909}) {

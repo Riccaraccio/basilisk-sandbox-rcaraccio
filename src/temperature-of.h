@@ -3,16 +3,20 @@
 #include "diffusion.h"
 #include "common-evaporation.h"
 
+#define SOLVE_TEMPERATURE
+
 extern scalar porosity;
-extern double lambda1, lambda2, cp1, cp2;
-extern double TS0, TG0;
+extern double rhoS, rhoG;
+
+double lambdaS = 1.; double lambdaG = 1.;
+double cpS = 1.; double cpG = 1.;
+double TS0 = 300.; double TG0 = 600.;
 
 scalar T[];
-scalar sT[];
+scalar sGT[];
 face vector lambdaf[];
-face vector fs[];
 
-scalar rhocpeff[], lambdaeff[];
+face vector fsS[];
 
 #ifndef RADIATION_INTERFACE
 # define RADIATION_INTERFACE 0.
@@ -22,6 +26,14 @@ double divq_rad_int (double TInti, double Tbulk = 300., double alphacorr = 1.) {
   return alphacorr*5.670373e-8*(pow(Tbulk, 4.) - pow(TInti, 4.));
 }
 
+event defaults (i=0){
+  sGT.nodump = true;
+
+  T.refine = refine_linear;
+  T.restriction  = restriction_volume_average;
+  T.dirty = true;
+}
+
 event init (i=0) {
   foreach()
     T[] = TS0*f[] + TG0*(1-f[]);
@@ -29,16 +41,27 @@ event init (i=0) {
 
 event reset_sources (i++) {
   foreach()
-    sT[] = 0.;
+    sGT[] = 0.;
 }
 
-#include "bcg.h" // TO BE CHANGED
+#include "bcg.h"
 extern face vector ufsave;
 event tracer_advection (i++) {
 
- //Advection of T using ug !!WARN!! should reconstruct the darcy velocity
- //advection ({T}, ufsave, dt);
+  face_fraction (f, fsS);
+  foreach()
+    porosity[] = f[] > F_ERR ? porosity[]/f[] : 0.;
 
+  face vector darcyv[];
+  foreach_face() {
+    darcyv.x[] = fsS.x[] > F_ERR ? ufsave.x[]*porosity[]: ufsave.x[];
+  }
+
+  //Advection of T using the darcy velocity
+  advection ({T}, darcyv, dt);
+
+  foreach()
+    porosity[] *= f[];
 }
 
 event tracer_diffusion (i++) {
@@ -46,32 +69,26 @@ event tracer_diffusion (i++) {
   foreach() {
     f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
-    porosity[] = f[] > F_ERR ? porosity[]/f[] : 1.;
   }
 
-  face_fraction (f, fs);
+  face_fraction (f, fsS);
 
-  foreach() {
-    rhocpeff[] = (f[]-porosity[]*f[])*rho1*cp1 + (1-f[]+porosity[]*f[])*rho2*cp2;
-    lambdaeff[] = (f[]-porosity[]*f[])*lambda1 + (1-f[]+porosity[]*f[])*lambda2;
- }
-
-  //Compute source terms
-  foreach ()
+  //Compute radiation source terms
+  foreach () {
     if (f[] > F_ERR && f[] < 1-F_ERR) {
 
-      coord n = facet_normal (point, f, fs), p;
+      coord n = facet_normal (point, f, fsS), p;
       double alpha = plane_alpha (f[], n);
       double area = plane_area_center (n, alpha, &p);
       normalize (&n);
 
-      //rho and cp should be weighted by porosity
 #ifdef AXI
-      sT[] += divq_rad_int(T[], TG0, RADIATION_INTERFACE)/rho2/cp2*area*(y + p.y*Delta)/(Delta*y)*cm[];
+      sGT[] += divq_rad_int(T[], TG0, RADIATION_INTERFACE)*area*(y + p.y*Delta)/(Delta*y)*cm[];
 #else
-      sT[] += divq_rad_int(T[], TG0, RADIATION_INTERFACE)/rho2/cp2*area/Delta*cm[];
+      sGT[] += divq_rad_int(T[], TG0, RADIATION_INTERFACE)*area/Delta*cm[];
 #endif
     }
+  }
 
   scalar theta[];
 
@@ -80,13 +97,12 @@ event tracer_diffusion (i++) {
   theta.dirty = true;
 #endif
 
-
-  foreach_face(){
-    lambdaf.x[] = face_value(lambdaeff, 0)/ face_value(rhocpeff, 0) *fm.x[];
-  }
+  foreach_face()
+    // lambdaf.x[] = (lambda1v[]*fsS.x[] + (1-fsS.x[])*lambda2v[])*fm.x[];
+    lambdaf.x[] = (face_value(lambda1v, 0)*fsS.x[] + (1-fsS.x[])*face_value(lambda2v, 0))*fm.x[];
 
   foreach()
-    theta[] = cm[];
+    theta[] = cm[]*max(rhocp1v[]*f[] + (1-f[])*rhocp2v[], F_ERR);
 
-  diffusion (T, dt, D=lambdaf, r=sT, theta=theta);
+    diffusion (T, dt, D=lambdaf, r=sGT, theta=theta);
 }

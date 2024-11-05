@@ -75,13 +75,13 @@ event reset_sources (i++) {
 
 #include "bcg.h"
 extern face vector ufsave;
-face vector darcyv[];
 
 event tracer_advection (i++) {
   //Reconstrucy T
   foreach()
     T[] = TS[] + TG[];
 
+  face vector darcyv[];
   foreach_face() {
     double ff = face_value (f, 0);
     darcyv.x[] = ff>F_ERR ? ufsave.x[]*face_value(porosity, 0)/ff : ufsave.x[];
@@ -90,9 +90,10 @@ event tracer_advection (i++) {
   //Advection of T using the darcy velocity
   advection ({T}, darcyv, dt);
 
-  //Reconstruct TG, TS is kept
-  foreach()
+  foreach() {
+    TS[] = T[]*f[];
     TG[] = T[]*(1-f[]);
+  }
 }
 
 void gradients_f (scalar c, scalar* s, vector* g) {
@@ -114,19 +115,19 @@ void gradients_f (scalar c, scalar* s, vector* g) {
 
 event tracer_diffusion (i++) {
 
- foreach() {
+  foreach() {
    f[] = clamp (f[], 0., 1.);
    f[] = (f[] > F_ERR) ? f[] : 0.;
    fS[] = f[]; fG[] = 1. - f[];
    TS[] = f[] > F_ERR ? TS[]/f[] : 0.;
    TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
- }
+  }
 
- //Compute face gradients
- face_fraction (fS, fsS);
- face_fraction (fG, fsG);
+  //Compute face gradients
+  face_fraction (fS, fsS);
+  face_fraction (fG, fsG);
 
- //Assign interface temperature first guess
+  //Assign interface temperature first guess
   foreach() {
     TInt[] = 0.;
     if (f[] > F_ERR && f[] < 1.-F_ERR)

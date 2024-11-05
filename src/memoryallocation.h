@@ -3,8 +3,8 @@
 #pragma autolink -L$OPENSMOKE_INTERFACE/build -lopensmoke
 
 char* kinfolder;
-
 unsigned int NGS, NSS;
+scalar omega[];
 
 scalar* YGList = NULL;
 scalar* YSList = NULL;
@@ -62,6 +62,7 @@ event defaults (i = 0) {
     s.name = strdup (name);
     Dmix2List = list_append (Dmix2List, s);
   }
+  reset (Dmix2List, 0.);
 
   //initialize vector with initial values
   gas_start = (double *)malloc(NGS * sizeof(double));
@@ -78,14 +79,14 @@ event defaults (i = 0) {
     sol_start[jj] = 0.;
     sol_MWs[jj] = OpenSMOKE_MW_Solid(jj);
   }
-
+ 
   for (scalar s in YGList)
     s.inverse = true;
 
   for (scalar s in YSList)
     s.inverse = false;
 
-  f.tracers = list_concat (f.tracers, YGList);
+  //f.tracers = list_concat (f.tracers, YGList);
   f.tracers = list_concat (f.tracers, YSList);
 
 #if TREE

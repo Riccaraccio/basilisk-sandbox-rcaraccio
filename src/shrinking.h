@@ -24,6 +24,9 @@ zeta_types zeta_policy;
 
 event defaults (i=0) {
   zeta_policy = ZETA_SHRINK;
+
+  foreach ()
+    zeta[] = 1.;
 }
 
 event init (i=0) {
@@ -73,7 +76,7 @@ event phasechange (i++) {
 
   foreach() {
     gasSource[] = -omega[]*f[]/rhoG*cm[]; // gas production
-    porosity[] += dt*omega[]/rhoS*(f[]-porosity[])*(1-zeta[])*cm[]; //epsi evolution
+    //porosity[] += dt*omega[]/rhoS*(f[]-porosity[])*(1-zeta[])*cm[]; //epsi evolution
     porosity[] = clamp(porosity[], 0., 1.);
   }
 }

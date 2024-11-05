@@ -3,6 +3,7 @@
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
+#include "var-prop.h"
 #include "two-phase.h"
 #include "temperature-of.h"
 #include "shrinking.h"
@@ -13,14 +14,15 @@ u.n[top] = neumann (0.);
 u.t[top] = neumann (0.);
 p[top] = dirichlet (0.);
 psi[top] = dirichlet (0.);
-T[top] = dirichlet (TG0);
+
 
 u.n[right] = neumann (0.);
 u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 psi[right] = dirichlet (0.);
-T[right] = dirichlet (TG0);
 
+T[right] = dirichlet (TG0);
+T[top] = dirichlet (TG0);
 T[left] = neumann (-neumann_pressure(0));
 T[bottom] = neumann (-neumann_pressure(0));
 
@@ -29,18 +31,23 @@ double D0 = 1e-3;
 
 scalar omega[];
 
-double lambda1 = 0.124069;
-double lambda2 = 0.0295641;
-
-double cp1 = 2244.92;
-double cp2 = 1041.52;
-
-double TG0 = 1000.;
-double TS0 = 300.;
-
 int main() {
-  rho1 = 681.042, rho2 = 9.75415;
-  mu1 = 0.00037446, mu2 = 2.02391e-5;
+  lambdaS = 0.124069;
+  lambdaG = 0.0295641;
+
+  cpS = 2244.92;
+  cpG = 1041.52;
+
+  TG0 = 1000.;
+  TS0 = 300.;
+
+  rhoS = 681.042;
+  rhoG = 9.75415;
+  muG = 2.02391e-5;
+
+  rho1 = 1., rho2 = 1.;
+  mu1 = 1., mu2 = 1.;
+
   L0 = 3.5*D0;
   eps0 = 0.; //No internal gas
   DT = 5e-3;
@@ -74,7 +81,7 @@ event logprofile (t += 0.01) {
   coord p = {D0/2, 0}; //interface @ y = 0
   double Tinterface = 0.;
   foreach_point (p.x, p.y)
-    Tinterface = 0.;
+    Tinterface = T[];
 
   fprintf (fp, "%g %g\n", t, Tinterface);
   fflush (fp);
@@ -113,7 +120,6 @@ event profiles (t = {0.056606, 0.541909}) {
   count++;
 }
 
-
 event stop (t=1) {
   return 1;
 }
@@ -131,9 +137,7 @@ set xrange [0:1]
 set yrange [250:600]
 set grid
 
-plot "data/Output-R1000K/Interface.out" u 1:12 w l lw 2 t "microgravity", \
-     "OutputData-6" u 1:2 w l lw 2 t "LEVEL 6", \
-     "OutputData-7" u 1:2 w l lw 2 t "LEVEL 7", \
+plot "../ebvalidation/data/Output-R1000K/Interface.out" u 1:12 w l lw 2 t "microgravity", \
      "OutputData-8" u 1:2 w l lw 2 t "LEVEL 8", \
      "../c7pathak/log" u 1:2 w l lw 2 t "Edo, LEVEL 6"
 ~~~
@@ -151,7 +155,7 @@ set yrange [250:1100]
 set grid
 set title "t = 0.056606"
 plot "T-Profile-1" u ($1*1000):2 w l lw 2 t "Basilisk", \
-     "data/Output-R1000K/Snapshot-0.056606.txt" every 5 u 3:5 w p ps 2 t "microgravity"
+     "../ebvalidation/data/Output-R1000K/Snapshot-0.056606.txt" every 5 u 3:5 w p ps 2 t "microgravity"
 
 set xlabel "x [mm]"
 set ylabel "T [k]"
@@ -161,7 +165,7 @@ set yrange [250:1100]
 set grid
 set title "t = 0.541909"
 plot "T-Profile-2" u ($1*1000):2 w l lw 2 t "Basilisk", \
-     "data/Output-R1000K/Snapshot-0.541909.txt" every 5 u 3:5 w p ps 2 t "microgravity"
+     "../ebvalidation/data/Output-R1000K/Snapshot-0.541909.txt" every 5 u 3:5 w p ps 2 t "microgravity"
 
 unset multiplot
 

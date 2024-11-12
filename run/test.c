@@ -1,4 +1,5 @@
 #define NO_ADVECTION_DIV 1
+//#define NO_1D_COMPRESSION 1
 #define FSOLVE_ABSTOL 1.e-3
 
 //#define SHIFT
@@ -7,7 +8,7 @@
 #include "navier-stokes/centered-phasechange.h"
 #include "var-prop.h"
 #include "two-phase.h"
-#include "temperature-v.h"
+#include "temperature-vt.h"
 #include "shrinking.h"
 #include "darcy.h"
 #include "view.h"
@@ -32,7 +33,6 @@ double D0 = 1e-3;
 scalar omega[];
 double solid_mass0;
 
-
 int main() {
 
   lambdaS = 0.124069; lambdaG = 0.0295641;
@@ -43,9 +43,10 @@ int main() {
 
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
+  //L0 = 1*D0;
   L0 = 3.5*D0;
   eps0 = 0.;
-  DT = 1e-3;
+  DT = 0.5e-3;
   //for (maxlevel = 7; maxlevel <=7; maxlevel++) {
   //  init_grid(1 << maxlevel);
   //  run();
@@ -67,7 +68,7 @@ event init(i=0) {
     solid_mass0 += (1-porosity[])*rhoS*dv();
   }
 
-  zeta_policy = ZETA_SMOOTH;
+  zeta_policy = ZETA_SWELLING;
 }
 
 event bcs (i=0) {
@@ -77,10 +78,10 @@ event bcs (i=0) {
 
 event phasechange (i++){
   foreach()
-    omega[] = f[]>F_ERR ? 2e4*exp(-5000/TS[]*f[]) : 0.;
+    //omega[] = f[]>F_ERR ? 2e4*exp(-5000/TS[]*f[]) : 0.;
     //omega[] = f[] > F_ERR ? 100.*cm[] : 0.;//fixed interface
     //omega[] = T[]/TG0*10;
-    //omega[] = 10;
+    omega[] =  100;
 }
 
 event logprofile (t += 0.01) {
@@ -116,17 +117,17 @@ event adapt (i++) {
 //  }
 //  save ("movie.mp4");
 //}
-event movie (t += 0.1) {
-  clear();
-  view (ty=-0.5, width=1400.);
-  cells ();
-  draw_vof ("f", lw=2);
-  mirror ({1.,0.}) {
-    vectors ("u", scale=0.1);
-    draw_vof ("f", lw=2);
-  }
-  save ("movie.mp4");
-}
+// event movie (t += 0.1) {
+//   clear();
+//   view (ty=-0.5, width=1400.);
+//   cells ();
+//   draw_vof ("f", lw=2);
+//   mirror ({1.,0.}) {
+//     vectors ("u", scale=0.1);
+//     draw_vof ("f", lw=2);
+//   }
+//   save ("movie.mp4");
+// }
 
 //int count = 1;
 //event profiles (t = {0.056606, 0.541909}) {
@@ -143,8 +144,23 @@ event movie (t += 0.1) {
 //  count++;
 //}
 
+int count = 1;
+event profiles (t = {0.3, 0.6}) {
+  char name[80];
+  fprintf (stderr, "%d %g\n", count, t);
+  sprintf (name, "T-Profile-%d-T", count);
 
-event stop (t=20) {
+  FILE* fpp = fopen (name, "w");
+  for (double x = 0.; x < L0; x+= 0.5*L0/(1<<maxlevel)) {
+    fprintf (fpp, "%g %g\n", x, interpolate (T, x, 0.));
+  }
+
+  fflush (fpp);
+  count++;
+}
+
+
+event stop (t=1) {
   return 1;
 }
 

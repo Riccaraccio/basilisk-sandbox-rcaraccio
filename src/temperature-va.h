@@ -23,10 +23,6 @@ scalar fG[], fS[];
 face vector fsS[], fsG[];
 scalar f0[];
 
-#ifdef SHIFT
-vector gT[], grc[];
-#endif
-
 event defaults (i=0) {
 
   fS.nodump = true;
@@ -68,58 +64,37 @@ event cleanup (t = end) {
 }
 
 event reset_sources (i++) {
-  foreach(){
+  foreach() {
     sST[] = 0.;
     sGT[] = 0.;
   }
 }
 
-#include "bcg.h"
 extern face vector ufsave;
-face vector darcyv[];
-
 event tracer_advection (i++) {
-
-  scalar TS_old[];
-  //Reconstrucy T
-  foreach(){
-    TS_old[] = TS[];
-    T[] = TS[] + TG[];
+  //recover pure form
+  foreach() {
+    TS[] *= f[] > F_ERR ? 1./f[] : 0.;
+    TG[] *= f[] < 1-F_ERR ? 1./(1-f[]) : 0.;
+    porosity[] *= f[] > F_ERR ? 1./f[] : 0.;
   }
 
-  face_fraction (f, fsS);
-  foreach()
-    porosity[] = f[] > F_ERR ? porosity[]/f[] : 0.;
+  //calculate darcy velocity
+  face vector darcyv[];
+  foreach_face() {
+    double epsif = face_value(porosity, 0);
+    darcyv.x[] = ufsave.x[]*epsif;
+  }
 
-  foreach_face()
-    darcyv.x[] = fsS.x[] > F_ERR ? ufsave.x[]*porosity[] : ufsave.x[];
+  //advect both temperature fields
+  advection_div ({TS}, ufsave, dt);
+  advection_div ({TG}, ufsave, dt);
 
-
-  //Advection of T using the darcy velocity
-  advection_div ({T}, darcyv, dt);
-
+  //remove values
   foreach() {
-    TS[] = T[]*f[];
-    TG[] = T[]*(1-f[]);
+    TS[] *= f[];
+    TG[] *= (1-f[]);
     porosity[] *= f[];
-  }
-
-}
-
-void gradients_f (scalar c, scalar* s, vector* g) {
-  assert (list_len(s) == vectors_len(g));
-  foreach() {
-    scalar a; vector v;
-    for (a,v in s,g) {
-      foreach_dimension() {
-        if (c[1] && c[-1]) //centered
-            v.x[] = (a[1]-a[-1])/(2.*Delta);
-        else
-            v.x[] = (a[]-a[-1])/Delta*ceil(c[-1]) + (a[1]-a[])/Delta*ceil(c[1]);
-
-        if (c[] == 0) v.x[] = 0.; //handle edgecase
-      }
-    }
   }
 }
 
@@ -144,17 +119,12 @@ event tracer_diffusion (i++) {
       TInt[] = avg_neighbor (point, TS, f);
   }
 
-#ifdef FIXED_INT_TEMP
-  //Force interface temperature 
-  foreach() { 
+#ifdef FIXED_INT_TEMP //Force interface temperature = TG0
+  foreach()
     if (f[] > F_ERR && f[] < 1.-F_ERR)
       TInt[] = TG0;
-  }
-#else //default
-
-  //Solve interface balance
+#else //default: solve interface balance
   ijc_CoupledTemperature();
-
 #endif
 
   //Compute source terms 
@@ -169,25 +139,15 @@ event tracer_diffusion (i++) {
       double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true, bc, &success);
       double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
 
-      double Sheatflux = lambda1v[]*Strgrad; //fprintf(stderr,"sST[] = %g\n", Sheatflux);
+      double Sheatflux = lambda1v[]*Strgrad;
       double Gheatflux = lambda2v[]*Gtrgrad;
 
 #ifdef AXI
-# ifdef SHIFT
-      sST[] += Sheatflux/rhocp1v[]*area*(y + p.y*Delta)/(Delta*y)*cm[];
-      sGT[] += Gheatflux/rhocp2v[]*area*(y + p.y*Delta)/(Delta*y)*cm[];
-# else
       sST[] += Sheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
       sGT[] += Gheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
-# endif
 #else
-# ifdef SHIFT
-      sST[] += Sheatflux/rhocp1v[]*area/Delta*cm[];
-      sGT[] += Gheatflux/rhocp2v[]*area/Delta*cm[];
-# else
       sST[] += Sheatflux*area/Delta*cm[];
       sGT[] += Gheatflux*area/Delta*cm[];
-# endif
 #endif
     }
   }
@@ -202,45 +162,14 @@ event tracer_diffusion (i++) {
 #endif
 
   foreach_face() {
-#ifdef SHIFT
-    lambda1f.x[] = face_value(lambda1v, 0)/face_value(rhocp1v, 0)*fsS.x[]*fm.x[];
-    lambda2f.x[] = face_value(lambda2v, 0)/face_value(rhocp2v, 0)*fsG.x[]*fm.x[];
-#else
     lambda1f.x[] = face_value(lambda1v, 0)*fsS.x[]*fm.x[];
     lambda2f.x[] = face_value(lambda2v, 0)*fsG.x[]*fm.x[];
-#endif
   }
 
   foreach() {
-#ifdef SHIFT
-    theta1[] = cm[]*max(fS[], F_ERR);
-    theta2[] = cm[]*max(fG[], F_ERR);
-#else
     theta1[] = cm[]*max(fS[]*rhocp1v[], F_ERR);
     theta2[] = cm[]*max(fG[]*rhocp2v[], F_ERR);
-#endif
   }
-
-#ifdef SHIFT
-  scalar t[];
-
-  foreach()
-    t[] = fS[]>F_ERR ? 1/rhocp1v[] : 0.;
-  gradients_f (fS, {TS, t}, {gT, grc});
-  foreach()
-    foreach_dimension()
-      sST[] -= fS[] > F_ERR ? lambda1v[]*gT.x[]*grc.x[] : 0.;
-
-  trash({gT, grc, t});
-
-  foreach()
-    t[] = fG[]>F_ERR ? 1/rhocp2v[] : 0.;
-  gradients_f (fG, {TG, t}, {gT, grc});
-  foreach()
-    foreach_dimension()
-      sGT[] -= fG[] > F_ERR ? lambda2v[]*gT.x[]*grc.x[] : 0.;
-
-#endif
 
   diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
   diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
@@ -251,20 +180,6 @@ event tracer_diffusion (i++) {
     T[] = TS[] + TG[];
   }
 }
-
-//event properties (i++) { //to be moved to var-prop module
-//  foreach() {
-//    lambda1v[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
-//    lambda2v[] = lambdaG;
-//
-//    rho1v[] = f[] > F_ERR ? pavg (porosity[]/f[], rhoG, rhoS) : rhoG;
-//    rho2v[] = rhoG;
-//
-//    rhocp1v[] =  f[] > F_ERR ? pavg (porosity[]/f[], rhoG*cpG, rhoS*cpS) : rhoG*cpG;
-//    rhocp2v[] =  rhoG*cpG;
-//  }
-//
-//}
 
 //event stability (i++, last) {
 //  // does not work, dt found is 100x smaller than actual dtmin

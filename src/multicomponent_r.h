@@ -16,7 +16,7 @@ event tracer_advection (i++) {
   }
 
   //advection of YGList
-  advection (YGList, darcyv, dt);
+  advection_div (YGList, ufsave, dt);
 
   // ensure that sum(YG) = 1
   foreach() {
@@ -65,12 +65,12 @@ event tracer_diffusion (i++) {
     //calculate diff coeff
     for (int jj=0; jj<NGS; jj++) {
       scalar Dmix = Dmix2List[jj];
-      Dmix[] = OpenSMOKE_GasProp_Dmix(gasmolefracs, jj); // *0 TEMP 
+      Dmix[] = OpenSMOKE_GasProp_Dmix(gasmolefracs, jj);
       Dmix[] *= f[] > F_ERR ? pow(porosity[], 3./2.) : 1.; //effect of solid, to be revised
     }
   }
 
-  //diffuse each species
+  //diffuse gas species
   for (int jj=0; jj<NGS; jj++) {
 
     face vector Dmix2f[];

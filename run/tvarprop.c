@@ -3,7 +3,7 @@
 
 //#define SHIFT
 
-#include "axi.h" 
+//#include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "var-prop.h"
 #include "two-phase.h"
@@ -84,7 +84,7 @@ event bcs (i=0) {
 
 event phasechange (i++){
   foreach()
-    omega[] = 0.;//fixed interface
+    omega[] = 100.;//fixed interface
     //omega[] = T[]/TG0*10;
     //omega[] = 10;
 }

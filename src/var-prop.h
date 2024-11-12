@@ -31,7 +31,6 @@ event properties (i++) {
   foreach()
     rhov[] = rhoG*cm[];
 
-//#ifdef SOLVE_TEMPERATURE
   foreach() {
     lambda1v[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
     lambda2v[] = lambdaG;
@@ -45,5 +44,4 @@ event properties (i++) {
     rhocp1v[] =  f[] > F_ERR ? pavg (porosity[]/f[], rhoG*cpG, rhoS*cpS) : rhoG*cpG;
     rhocp2v[] =  rhoG*cpG;
   }
-//#endif
 }

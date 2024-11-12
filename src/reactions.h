@@ -1,7 +1,7 @@
 #include "osreactors.h"
 
 extern scalar zeta;
-extern scalar TS;
+extern scalar T;
 extern scalar porosity;
 extern scalar rho1v, cp1v;
 
@@ -68,10 +68,10 @@ event chemistry (i++) {
       y0ode[NGS+NSS] = porosity[];
 
 #ifdef SOLVE_TEMPERATURE
-      y0ode[NGS+NSS+1] = TS[];
+      y0ode[NGS+NSS+1] = TS[]/f[];
 #endif
 
-      OpenSMOKE_ODESolver (batch, NEQ, dt, y0ode, &data); 
+    OpenSMOKE_ODESolver (batch, NEQ, dt, y0ode, &data); 
 
       double totgasmass = 0;
       for (int jj=0; jj<NGS; jj++) {

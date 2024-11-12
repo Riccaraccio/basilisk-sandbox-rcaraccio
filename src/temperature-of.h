@@ -36,7 +36,8 @@ event defaults (i=0){
 
 event init (i=0) {
   foreach()
-    T[] = TS0*f[] + TG0*(1-f[]);
+    //T[] = TS0*f[] + TG0*(1-f[]);
+    T[] = f[] > F_ERR ? TS0 : TG0;
 }
 
 event reset_sources (i++) {
@@ -44,21 +45,20 @@ event reset_sources (i++) {
     sGT[] = 0.;
 }
 
-#include "bcg.h"
 extern face vector ufsave;
+face vector darcyv[];
 event tracer_advection (i++) {
 
   face_fraction (f, fsS);
   foreach()
     porosity[] = f[] > F_ERR ? porosity[]/f[] : 0.;
 
-  face vector darcyv[];
   foreach_face() {
-    darcyv.x[] = fsS.x[] > F_ERR ? ufsave.x[]*porosity[]: ufsave.x[];
+    darcyv.x[] = fsS.x[] > F_ERR ? ufsave.x[]*porosity[] : ufsave.x[];
   }
 
   //Advection of T using the darcy velocity
-  advection ({T}, darcyv, dt);
+  advection_div ({T}, darcyv, dt);
 
   foreach()
     porosity[] *= f[];
@@ -97,12 +97,16 @@ event tracer_diffusion (i++) {
   theta.dirty = true;
 #endif
 
-  foreach_face()
+  foreach_face() {
     // lambdaf.x[] = (lambda1v[]*fsS.x[] + (1-fsS.x[])*lambda2v[])*fm.x[];
     lambdaf.x[] = (face_value(lambda1v, 0)*fsS.x[] + (1-fsS.x[])*face_value(lambda2v, 0))*fm.x[];
+    //double ff = face_value(f, 0);
+    //lambdaf.x[] = (face_value(lambda1v, 0)*ff + (1-ff)*face_value(lambda2v, 0))*fm.x[];
+    //lambdaf.x[] = (lambda1v[]*f[] + (1-f[])*lambda2v[])*fm.x[];
+  }
 
   foreach()
-    theta[] = cm[]*max(rhocp1v[]*f[] + (1-f[])*rhocp2v[], F_ERR);
+    theta[] = cm[]*max(rhocp1v[]*f[] + (1-f[])*rhocp2v[], 1e-12);
 
-    diffusion (T, dt, D=lambdaf, r=sGT, theta=theta);
+  diffusion (T, dt, D=lambdaf, r=sGT, theta=theta);
 }

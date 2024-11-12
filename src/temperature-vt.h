@@ -2,13 +2,18 @@
 #include "fracface.h"
 #include "diffusion.h"
 #include "common-evaporation.h"
-#include "int-temperature.h"
+#include "int-temperature-v.h"
 
-extern double lambda1, lambda2, cp1, cp2;
-extern double TS0, TG0;
+#define SOLVE_TEMPERATURE
+
+extern scalar porosity;
+extern double rhoS, rhoG;
+
+double lambdaS = 1.; double lambdaG = 1.;
+double cpS = 1.; double cpG = 1.;
+double TS0 = 300.; double TG0 = 600.;
 bool success;
 
-mgstats diffstats;
 scalar T[], TInt[];
 scalar TS, TG;
 scalar sST[], sGT[];
@@ -17,6 +22,7 @@ face vector lambda1f[], lambda2f[];
 scalar fG[], fS[];
 face vector fsS[], fsG[];
 scalar f0[];
+scalar fu[]; //dummy tracer
 
 event defaults (i=0) {
 
@@ -32,8 +38,10 @@ event defaults (i=0) {
   sST.nodump = true;
   sGT.nodump = true;
 
-  f.tracers = list_append (f.tracers, TS);
-  f.tracers = list_append (f.tracers, TG);
+  fu.tracers = NULL;
+
+  fu.tracers = list_append (fu.tracers, TS);
+  fu.tracers = list_append (fu.tracers, TG);
 
   TS.refine = refine_linear;
   TS.restriction  = restriction_volume_average;
@@ -42,78 +50,116 @@ event defaults (i=0) {
   TG.refine = refine_linear;
   TG.restriction  = restriction_volume_average;
   TG.dirty = true;
-
 }
 
 event init (i=0) {
+
+  foreach()
+    fu[] = f[];
+
+#if TREE
+  {
+    fu.refine = fu.prolongation = fraction_refine;
+    fu.dirty = true;
+    scalar* tracers = fu.tracers;
+    for (scalar t in tracers) {
+      t.restriction = restriction_volume_average;
+      t.refine = t.prolongation = vof_concentration_refine;
+      t.dirty = true;
+      t.c = fu;
+    }
+  }
+#endif
+  {
+    scalar* tracers = fu.tracers;
+    for (scalar t in tracers)
+      t.depends = list_add (t.depends, fu);
+  }
+
   foreach() {
     TS[] = TS0*f[];
     TG[] = TG0*(1. - f[]);
     T[]  = TS[] + TG[];
     TInt[] = f[]<1-F_ERR && f[] > F_ERR ? TS0 : 0.;
   }
-
- //foreach_face() {
- //  lambda1f.x[] = lambda1/rho1/cp1; //first guess needed for stability event
- //  lambda2f.x[] = lambda2/rho2/cp2;
- //}
 }
 
 event cleanup (t = end) {
   delete ({TS,TG});
+  delete (fu.tracers), free(fu.tracers), fu.tracers = NULL;
 }
 
 event reset_sources (i++) {
-  foreach(){
+  foreach() {
     sST[] = 0.;
     sGT[] = 0.;
   }
 }
 
-#include "bcg.h"
 extern face vector ufsave;
 event tracer_advection (i++) {
- //Reconstrucy T
- foreach()
-   T[] = TS[] + TG[];
+  foreach() 
+    fu[] = f[];
 
- //Advection of T using ug !!WARN!! should reconstruct the darcy velocity
- advection ({T}, ufsave, dt);
+  //recover pure form
+  foreach() {
+  //   TS[] *= f[] > F_ERR ? 1./f[] : 0.;
+  //   TG[] *= f[] < 1-F_ERR ? 1./(1-f[]) : 0.;
+    porosity[] *= f[] > F_ERR ? 1./f[] : 0.;
+  }
 
- //Reconstruct TG, TS is kept
- foreach()
-    TG[] =T[]*(1-f[]);
+  //calculate darcy velocity
+  face vector darcyv[];
+  foreach_face() {
+    double epsif = face_value(porosity, 0);
+    darcyv.x[] = ufsave.x[]*epsif;
+  }
+
+  foreach_face()
+    uf.x[] = ufsave.x[];
+
+  vof_advection ({fu}, i);
+
+  // //advect both temperature fields
+  // advection_div ({TS}, ufsave, dt);
+  // advection_div ({TG}, ufsave, dt);
+
+  //remove values
+  foreach() {
+  //   TS[] *= f[];
+  //   TG[] *= (1-f[]);
+    porosity[] *= f[];
+  }
 }
 
 event tracer_diffusion (i++) {
 
- foreach() {
+  foreach() {
    f[] = clamp (f[], 0., 1.);
    f[] = (f[] > F_ERR) ? f[] : 0.;
    fS[] = f[]; fG[] = 1. - f[];
-   TS[] = f[] > F_ERR ? TS[]/f[] : 0.;
-   TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
- }
+   TS[] = fu[] > F_ERR ? TS[]/fu[] : 0.;
+   TG[] = ((1. - fu[]) > F_ERR) ? TG[]/(1. - fu[]) : 0.;
+  }
 
- //Compute face gradients
- face_fraction (fS, fsS);
- face_fraction (fG, fsG);
+  //Compute face gradients
+  face_fraction (fS, fsS);
+  face_fraction (fG, fsG);
 
- //Assign interface temperature first guess
+  //Assign interface temperature first guess
   foreach() {
     TInt[] = 0.;
     if (f[] > F_ERR && f[] < 1.-F_ERR)
       TInt[] = avg_neighbor (point, TS, f);
   }
 
-//  //Force interface temperature 
-//  foreach() { 
-//    if (f[] > F_ERR && f[] < 1.-F_ERR)
-//      TInt[] = TG0;
-//  }
-
-  //Solve interface balance
+#ifdef FIXED_INT_TEMP //Force interface temperature = TG0
+  foreach()
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
+      TInt[] = TG0;
+#else //default: solve interface balance
   ijc_CoupledTemperature();
+#endif
 
   //Compute source terms 
   foreach() {
@@ -127,18 +173,15 @@ event tracer_diffusion (i++) {
       double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true, bc, &success);
       double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
 
-      double Sheatflux = lambda1*Strgrad;
-      double Gheatflux = lambda2*Gtrgrad;
+      double Sheatflux = lambda1v[]*Strgrad;
+      double Gheatflux = lambda2v[]*Gtrgrad;
+
 #ifdef AXI
       sST[] += Sheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
       sGT[] += Gheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
-      //sST[] += Sheatflux/rho1/cp1*area*(y + p.y*Delta)/(Delta*y)*cm[];
-      //sGT[] += Gheatflux/rho2/cp2*area*(y + p.y*Delta)/(Delta*y)*cm[];
 #else
-      sST[] += Sheatflux*area/Delta*cm[]; // add dhR
+      sST[] += Sheatflux*area/Delta*cm[];
       sGT[] += Gheatflux*area/Delta*cm[];
-      //sST[] += Sheatflux/rho1/cp1*area/Delta*cm[]; // add dhR
-      //sGT[] += Gheatflux/rho2/cp2*area/Delta*cm[];
 #endif
     }
   }
@@ -153,34 +196,23 @@ event tracer_diffusion (i++) {
 #endif
 
   foreach_face() {
-    lambda1f.x[] = lambda1*fsS.x[]*fm.x[];
-    lambda2f.x[] = lambda2*fsG.x[]*fm.x[];
-    //lambda1f.x[] = lambda1/rho1/cp1*fsS.x[]*fm.x[];
-    //lambda2f.x[] = lambda2/rho2/cp2*fsG.x[]*fm.x[];
- }
-
-  foreach() {
-    theta1[] = cm[]*max(fS[]*rho1*cp1, F_ERR);
-    theta2[] = cm[]*max(fG[]*rho2*cp2, F_ERR);
-    //theta1[] = cm[]*max(fS[], F_ERR);
-    //theta2[] = cm[]*max(fG[], F_ERR);
+    lambda1f.x[] = face_value(lambda1v, 0)*fsS.x[]*fm.x[];
+    lambda2f.x[] = face_value(lambda2v, 0)*fsG.x[]*fm.x[];
   }
 
-  diffstats = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
+  foreach() {
+    theta1[] = cm[]*max(fS[]*rhocp1v[], F_ERR);
+    theta2[] = cm[]*max(fG[]*rhocp2v[], F_ERR);
+  }
+
+  diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
   diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
-  fprintf(stderr, "Number of iterations: %d\n", diffstats.i);
-  fprintf(stderr, "Maximum residual before iterations: %f\n", diffstats.resb);
-  fprintf(stderr, "Maximum residual after iterations: %f\n", diffstats.resa);
-  fprintf(stderr, "Sum of r.h.s.: %f\n", diffstats.sum);
-  fprintf(stderr, "Number of relaxations: %d\n", diffstats.nrelax);
-  fprintf(stderr, "Minimum level of the multigrid hierarchy: %d\n", diffstats.minlevel);
 
   foreach() {
     TS[] *= f[];
     TG[] *= (1. - f[]);
-  }
-  foreach()
     T[] = TS[] + TG[];
+  }
 }
 
 //event stability (i++, last) {

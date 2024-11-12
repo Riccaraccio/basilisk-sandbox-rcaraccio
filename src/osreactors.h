@@ -58,7 +58,7 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
   double MWMix = OpenSMOKE_MolecularWeight_From_MassFractions (gasmassfracs);
 
-  double ctot = Pressure/(R_GAS*1000.)/Temperature; //ideal gases
+  double ctot = Pressure/R_GAS/Temperature; //ideal gases, mol/m3
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
@@ -115,7 +115,7 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
 * *args*: structure with additional arguments to be passed to the system
 */
 
- void batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
+void batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
 
   /**
   Unpack data for the ODE system. */
@@ -133,10 +133,6 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
   double Temperature = y[NGS+NSS+1];
 
   epsilon = clamp(epsilon, 0., 1.);
-
-  /**
-  Set temperature and pressure of the system,
-  for the calculation of the kinetic constants. */
 
   OpenSMOKE_SolProp_SetTemperature (Temperature);
   OpenSMOKE_SolProp_SetPressure (Pressure);
@@ -158,14 +154,12 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
   double MWMix = OpenSMOKE_MolecularWeight_From_MassFractions (gasmassfracs);
 
-  double ctot = Pressure/(R_GAS*1000.)/Temperature; //ideal gases
+  double ctot = Pressure/R_GAS/Temperature; //ideal gases
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
-    rgas[jj] = 0.;
   }
-  //double rhog = ctot*MWMix;
-  double rhog = rhoG;
+  double rhog = ctot*MWMix;
 
   //////////////////////////////////////////////////////////////////////////
 
@@ -203,16 +197,21 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
 
   //epsilon equation
   dy[NGS+NSS] = -totsolidreaction*(1-epsilon)*(1-z)/rhos;
-  sources[0] = -totsolidreaction;
+  sources[NGS+NSS] = -totsolidreaction;
 
   /**
   Get the heat of reaction and compute the equation for the
   temperature. We add non-linear contributions such as the
   heat dissipated for radiation */
 
-  double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas); //should be 0 for now
+  //OpenSMOKE_GasProp_SetTemperature(Temperature);
+  //OpenSMOKE_GasProp_SetPressure(Pressure);
+  //double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas); //should be 0 for now
   double QRsol = OpenSMOKE_SolProp_HeatRelease (rgas, rsolid);
 
+  //fprintf (stderr, "QRgas = %g\tQRsol = %G\n", QRgas, QRsol);
   //dy[OpenSMOKE_NumberOfSpecies()] = (QR + divq_rad (&otp))/rho/cp; //NO RADIATION FOR NOW
-  dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*epsilon + rhos*cps*(1-epsilon));
+  //dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
+  dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f)/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
+  //dy[NGS+NSS+1] = 0.;
 }

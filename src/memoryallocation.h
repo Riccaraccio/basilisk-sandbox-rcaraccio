@@ -1,8 +1,5 @@
-#include "OpenSMOKE_Interface.h"
+#include "opensmoke.h"
 
-#pragma autolink -L$OPENSMOKE_INTERFACE/build -lopensmoke
-
-char* kinfolder;
 unsigned int NGS, NSS;
 scalar omega[];
 
@@ -27,7 +24,6 @@ event defaults (i = 0) {
   OpenSMOKE_Init();
   OpenSMOKE_ReadKinetics (kinfolder_root);
   OpenSMOKE_ReadSolidKinetics (kinfolder_root);
-
   NGS = OpenSMOKE_NumberOfSpecies();
   NSS = OpenSMOKE_NumberOfSolidSpecies(); 
 
@@ -133,8 +129,6 @@ event init (i = 0){
 }
 
 event cleanup (t = end) {
-  OpenSMOKE_Clean ();
-
   delete (YSList), free (YSList), YSList = NULL;
   delete (YGList), free (YGList), YGList = NULL;
   delete (Dmix2List), free (Dmix2List), Dmix2List = NULL;

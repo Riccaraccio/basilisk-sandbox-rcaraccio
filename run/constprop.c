@@ -12,19 +12,19 @@
 //#include "darcy.h"
 #include "view.h"
 
-u.n[top] = neumann (0.);
-u.t[top] = neumann (0.);
-p[top] = dirichlet (0.);
-psi[top] = dirichlet (0.);
-ubf.t[top] = neumann (0.);
-ubf.n[top] = neumann (0.);
+u.n[top]      = neumann (0.);
+u.t[top]      = neumann (0.);
+p[top]        = dirichlet (0.);
+psi[top]      = dirichlet (0.);
+ubf.t[top]    = neumann (0.);
+ubf.n[top]    = neumann (0.);
 
-u.n[right] = neumann (0.);
-u.t[right] = neumann (0.);
-p[right] = dirichlet (0.);
-psi[right] = dirichlet (0.);
-ubf.t[right] = neumann (0.);
-ubf.n[right] = neumann (0.);
+u.n[right]    = neumann (0.);
+u.t[right]    = neumann (0.);
+p[right]      = dirichlet (0.);
+psi[right]    = dirichlet (0.);
+ubf.t[right]  = neumann (0.);
+ubf.n[right]  = neumann (0.);
 
 int maxlevel = 8; int minlevel = 2;
 double D0 = 1e-2;
@@ -38,18 +38,12 @@ int main() {
   muG = 3.53e-5;
   eps0 = 0.4;
 
-  // lambdaS = 0.124069; lambdaG = 0.0295641;
-  // cpS = 2244.92; cpG = 1041.52;
-  // TS0 = 300.; TG0 = 1000.;
-  // rhoS = 1000; rhoG = 1.;
-  // muG = 2.02391e-5;
-  
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
   L0 = 3.5*D0;
   DT = 1e-3;
 
-  kinfolder = "biomass/Solid-only-2003";
+  kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
   run();
 
@@ -60,8 +54,8 @@ int main() {
 event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
-  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 1.;
+  gas_start[OpenSMOKE_IndexOfSpecies ("D")] = 1.;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("A")] = 1.;
 
   foreach()
     porosity[] = eps0*f[];
@@ -90,32 +84,32 @@ event output (t+=1) {
 scalar totG[], totS[];
 event end_timestep (i++) {
   foreach() {
-    totG[] = 0.; 
+    totG[] = 0.;
     for (int ii=0; ii<NGS; ii++) {
       scalar YG = YGList[ii];
       totG[] += YG[];
     }
 
-    totS[] = 0.; 
+    totS[] = 0.;
     for (int ii=0; ii<NSS; ii++) {
       scalar YS = YSList[ii];
       totS[] += YS[];
-   }
+    }
   }
 }
 
 event bcs (i=0) {
   TG[top] = dirichlet (TG0);
   TG[right] = dirichlet (TG0);
-  scalar inert = YGList[OpenSMOKE_IndexOfSpecies ("N2")];
+  scalar inert = YGList[OpenSMOKE_IndexOfSpecies ("D")];
 
   inert[top] = dirichlet (1.);
   inert[right] = dirichlet (1.);
 }
 
 event adapt (i++) {
-  scalar inert = YGList[OpenSMOKE_IndexOfSpecies ("N2")];
-  scalar fuel = YSList[OpenSMOKE_IndexOfSolidSpecies ("CELL")];
+  scalar inert = YGList[OpenSMOKE_IndexOfSpecies ("D")];
+  scalar fuel = YSList[OpenSMOKE_IndexOfSolidSpecies ("A")];
   adapt_wavelet_leave_interface ({fuel,inert, T, u.x, u.y, ubf.x, ubf.y}, {f},
      (double[]){1.e-3, 1e-2,1.e0,1.e-1,1.e-1,1.e-1,1.e-1}, maxlevel, minlevel, 1);
 }

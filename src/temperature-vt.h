@@ -21,7 +21,6 @@ face vector lambda1f[], lambda2f[];
 
 scalar fG[], fS[];
 face vector fsS[], fsG[];
-scalar f0[];
 scalar fu[]; //dummy tracer
 
 event defaults (i=0) {
@@ -102,11 +101,8 @@ event tracer_advection (i++) {
     fu[] = f[];
 
   //recover pure form
-  foreach() {
-  //   TS[] *= f[] > F_ERR ? 1./f[] : 0.;
-  //   TG[] *= f[] < 1-F_ERR ? 1./(1-f[]) : 0.;
+  foreach()
     porosity[] *= f[] > F_ERR ? 1./f[] : 0.;
-  }
 
   //calculate darcy velocity
   face vector darcyv[];
@@ -120,16 +116,8 @@ event tracer_advection (i++) {
 
   vof_advection ({fu}, i);
 
-  // //advect both temperature fields
-  // advection_div ({TS}, ufsave, dt);
-  // advection_div ({TG}, ufsave, dt);
-
-  //remove values
-  foreach() {
-  //   TS[] *= f[];
-  //   TG[] *= (1-f[]);
+  foreach()
     porosity[] *= f[];
-  }
 }
 
 event tracer_diffusion (i++) {

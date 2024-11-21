@@ -11,12 +11,11 @@ event tracer_advection (i++) {
   // reconstruct darcy velocity
   face vector darcyv[];
   foreach_face() {
-    double ff = face_value (f,0);
-    darcyv.x[] = ff > F_ERR ? ufsave.x[]*face_value(porosity, 0)/ff : ufsave.x[];
+    darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
   }
 
   //advection of YGList
-  advection_div (YGList, ufsave, dt);
+  advection_div (YGList, darcyv, dt);
 
   // ensure that sum(YG) = 1
   foreach() {

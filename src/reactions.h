@@ -7,6 +7,15 @@ extern scalar rho1v, cp1v;
 
 //TOBEDONE ADD cpsv, cpgv, rhosv, rhogv
 
+void OpenSMOKE_ODESolverEXP (odefunction ode, unsigned int neq, double dt, double* y, void* args) {
+
+  double dy[neq];
+  ode(y, dt, dy, args);
+
+  for (int jj=0; jj<neq; jj++)
+    y[jj] += dt*dy[jj];
+}
+
 event init (i = 0) {
   OpenSMOKE_InitODESolver ();
 }
@@ -71,7 +80,11 @@ event chemistry (i++) {
       y0ode[NGS+NSS+1] = TS[]/f[];
 #endif
 
+#ifdef EXPLICIT_REACTIONS
+    OpenSMOKE_ODESolverEXP (batch, NEQ, dt, y0ode, &data);
+#else //default
     OpenSMOKE_ODESolver (batch, NEQ, dt, y0ode, &data); 
+#endif
 
       double totgasmass = 0;
       for (int jj=0; jj<NGS; jj++) {

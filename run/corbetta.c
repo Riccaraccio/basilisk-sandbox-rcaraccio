@@ -1,6 +1,7 @@
-#define NO_ADVECTION_DIV 1
-#define FSOLVE_ABSTOL 1.e-3
-//#define FIXED_INT_TEMP 1
+#define NO_ADVECTION_DIV    1
+#define FSOLVE_ABSTOL       1.e-3
+#define EXPLICIT_REACTIONS  1
+//#define FIXED_INT_TEMP    1
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
@@ -27,21 +28,23 @@ ubf.t[right]  = neumann (0.);
 ubf.n[right]  = neumann (0.);
 
 int maxlevel = 8; int minlevel = 2;
-double D0 = 1e-2;
+double D0 = 1.27e-2;
 double solid_mass0 = 0.;
 
 int main() {
   lambdaS = 0.1987; lambdaG = 0.076;
   cpS = 1600; cpG = 1167;
-  TS0 = 650.; TG0 = 650.;
+  TS0 = 300.; TG0 = 743.;
   rhoS = 850; rhoG = 0.331;
   muG = 3.53e-5;
   eps0 = 0.4;
 
+  //dummy properties
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
+
   L0 = 3.5*D0;
-  DT = 1e-3;
+  DT = 0.5e-3;
 
   kinfolder = "biomass/Solid-only-2003";
   init_grid(1 << maxlevel);
@@ -54,31 +57,48 @@ event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 1.;
+
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4807;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.2611;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1325;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0957;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0214;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0086;
 
   foreach()
     porosity[] = eps0*f[];
 
+  foreach (reduction(+:solid_mass0))
+    solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-  foreach(reduction(+:solid_mass0))
-    solid_mass0 += (f[]-porosity[])*rhoS; //Note: (1-e) = (1-ef)!= (1-e)f
-
-  zeta_policy = ZETA_SMOOTH;
+  zeta_policy = ZETA_SWELLING;
 }
 
-event output (t+=1) {
+event output (t+=0.1) {
   fprintf (stderr, "%g\n", t);
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
   static FILE * fp = fopen (name, "w");
 
+  //log mass profile
   double solid_mass = 0.;
-  foreach (reduction(+:solid_mass)) {
-    solid_mass += (f[]-porosity[])*rhoS;
-  }
+  foreach (reduction(+:solid_mass))
+    solid_mass += (f[]-porosity[])*rhoS*dv();
 
-  fprintf (fp, "%g %g\n", t, solid_mass/solid_mass0);
+  double Tcore = 0.;
+  foreach_point (serial, 0., 0.)
+    Tcore = T[];
+
+  double Tr2 = 0.;
+  foreach_point (serial, D0/4, 0.)
+    Tr2 = T[];
+
+  double Tsurf = 0.;
+  foreach_point (serial, D0/2, 0.)
+    Tsurf = T[];
+
+  fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
   fflush(fp);
 }
 
@@ -123,6 +143,7 @@ event adapt (i++) {
 //   cells();
 //   save ("movie.mp4");
 // }
+
 #if TRACE > 1
   event profiling (i += 20) {
   static FILE * fp = fopen ("profiling", "w");
@@ -130,6 +151,6 @@ event adapt (i++) {
 }
 #endif
 
-event stop (t = 10) {
+event stop (t = 1) {
   return 1;
 }

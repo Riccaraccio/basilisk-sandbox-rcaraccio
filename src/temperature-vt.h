@@ -96,28 +96,22 @@ event reset_sources (i++) {
 }
 
 extern face vector ufsave;
+face vector darcyv[];
 event tracer_advection (i++) {
   foreach() 
     fu[] = f[];
 
-  //recover pure form
-  foreach()
-    porosity[] *= f[] > F_ERR ? 1./f[] : 0.;
-
   //calculate darcy velocity
-  face vector darcyv[];
   foreach_face() {
-    double epsif = face_value(porosity, 0);
-    darcyv.x[] = ufsave.x[]*epsif;
+    darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
+    uf.x[] = darcyv.x[];
   }
+
+  vof_advection ({fu}, i);
 
   foreach_face()
     uf.x[] = ufsave.x[];
 
-  vof_advection ({fu}, i);
-
-  foreach()
-    porosity[] *= f[];
 }
 
 event tracer_diffusion (i++) {

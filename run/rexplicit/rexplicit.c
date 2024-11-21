@@ -1,5 +1,6 @@
 #define NO_ADVECTION_DIV 1
 #define FSOLVE_ABSTOL 1.e-3
+#define EXPLICIT_REACTIONS 1
 //#define FIXED_INT_TEMP 1
 
 #include "axi.h" 

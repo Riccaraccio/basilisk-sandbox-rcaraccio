@@ -28,7 +28,7 @@ ubf.t[right]  = neumann (0.);
 ubf.n[right]  = neumann (0.);
 
 int maxlevel = 8; int minlevel = 2;
-double D0 = 1.27e-2;
+double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 
 int main() {

@@ -72,6 +72,13 @@ event init(i=0) {
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
   zeta_policy = ZETA_SWELLING;
+
+  TG[top] = dirichlet (TG0);
+  TG[right] = dirichlet (TG0);
+  scalar inert = YGList[OpenSMOKE_IndexOfSpecies ("N2")];
+
+  inert[top] = dirichlet (1.);
+  inert[right] = dirichlet (1.);
 }
 
 event output (t+=0.1) {
@@ -119,20 +126,9 @@ event end_timestep (i++) {
   }
 }
 
-event bcs (i=0) {
-  TG[top] = dirichlet (TG0);
-  TG[right] = dirichlet (TG0);
-  scalar inert = YGList[OpenSMOKE_IndexOfSpecies ("N2")];
-
-  inert[top] = dirichlet (1.);
-  inert[right] = dirichlet (1.);
-}
-
 event adapt (i++) {
-  scalar inert = YGList[OpenSMOKE_IndexOfSpecies ("N2")];
-  scalar fuel = YSList[OpenSMOKE_IndexOfSolidSpecies ("CELL")];
-  adapt_wavelet_leave_interface ({fuel,inert, T, u.x, u.y, ubf.x, ubf.y}, {f},
-     (double[]){1.e-3, 1e-2,1.e0,1.e-1,1.e-1,1.e-1,1.e-1}, maxlevel, minlevel, 1);
+  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
+     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
 }
 
 // event movie(t+=0.1) {
@@ -151,6 +147,4 @@ event adapt (i++) {
 }
 #endif
 
-event stop (t = 1) {
-  return 1;
-}
+event stop (t = 1);

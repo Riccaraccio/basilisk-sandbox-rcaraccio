@@ -1,6 +1,7 @@
 #define NO_ADVECTION_DIV    1
 #define FSOLVE_ABSTOL       1.e-3
 #define EXPLICIT_REACTIONS  1
+//#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
 
 #include "axi.h" 
@@ -44,7 +45,14 @@ int main() {
   mu1 = 1., mu2 = 1.;
 
   L0 = 3.5*D0;
-  DT = 0.5e-3;
+
+#ifdef EXPLICIT_DIFFUSION
+  fprintf(stderr, "Using EXPLICIT_DIFFUSION\n");
+  DT = 1e-2;
+#else
+  fprintf(stderr, "Using IMPLICIT_DIFFUSION\n");
+  DT = 1e-2;
+#endif
 
   kinfolder = "biomass/Solid-only-2003";
   init_grid(1 << maxlevel);
@@ -131,14 +139,24 @@ event adapt (i++) {
      (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
 }
 
-// event movie(t+=0.1) {
-//   clear();
-//   box();
-//   view (ty=-0.5, tx=-0.5);
-//   squares("C6H10O5");
-//   cells();
-//   save ("movie.mp4");
-// }
+event movie(t+=0.1) {
+  clear();
+  box();
+  view (ty=-0.5, tx=-0.5);
+  squares("T", max=TG0,  min=TS0);
+  draw_vof("f");
+  cells();
+  save ("temperature.mp4");
+
+  clear();
+  box();
+  view (ty=-0.5, tx=-0.5);
+  squares("C6H10O5", max=1,  min=0);
+  draw_vof("f");
+  cells();
+  save ("LVG.mp4");
+}
+
 
 #if TRACE > 1
   event profiling (i += 20) {

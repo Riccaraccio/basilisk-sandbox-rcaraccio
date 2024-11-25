@@ -1,8 +1,16 @@
 #include "intgrad.h"
 #include "fracface.h"
-#include "diffusion.h"
+
+#ifdef EXPLICIT_DIFFUSION
+  #include "diffusion-explicit.h"
+#else
+  #include "diffusion.h"
+#endif
+
 #include "memoryallocation.h"
 #include "reactions.h"
+
+
 
 extern scalar T;
 
@@ -81,8 +89,11 @@ event tracer_diffusion (i++) {
       thetaG[] = cm[];
 
     scalar YG = YGList[jj];
-
+#ifdef EXPLICIT_DIFFUSION
+    diffusion_explicit (YG, dt, D=Dmix2f, theta=thetaG);
+#else
     diffusion (YG, dt, D=Dmix2f, theta=thetaG);
+#endif
   }
 
   foreach() {

@@ -101,17 +101,10 @@ event output (t+=0.1) {
   foreach (reduction(+:solid_mass))
     solid_mass += (f[]-porosity[])*rhoS*dv();
 
-  double Tcore = 0.;
-  foreach_point (serial, 0., 0.)
-    Tcore = T[];
-
-  double Tr2 = 0.;
-  foreach_point (serial, D0/4, 0.)
-    Tr2 = T[];
-
-  double Tsurf = 0.;
-  foreach_point (serial, D0/2, 0.)
-    Tsurf = T[];
+  //save temperature profile
+  double Tcore  = interpolate (T, 0., 0.);
+  double Tr2    = interpolate (T, D0/4, 0.);
+  double Tsurf  = interpolate (T, D0/2, 0.);
 
   fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
   fflush(fp);

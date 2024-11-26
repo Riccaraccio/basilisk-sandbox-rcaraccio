@@ -10,8 +10,6 @@
 #include "memoryallocation.h"
 #include "reactions.h"
 
-
-
 extern scalar T;
 
 extern face vector ufsave;
@@ -23,7 +21,7 @@ event tracer_advection (i++) {
   }
 
   //advection of YGList
-  advection_div (YGList, darcyv, dt);
+  advection_div (YGList, ufsave, dt);
 
   // ensure that sum(YG) = 1
   foreach() {

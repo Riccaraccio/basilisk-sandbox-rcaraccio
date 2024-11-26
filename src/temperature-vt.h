@@ -4,8 +4,6 @@
 #include "common-evaporation.h"
 #include "int-temperature-v.h"
 
-#define SOLVE_TEMPERATURE
-
 extern scalar porosity;
 extern double rhoS, rhoG;
 
@@ -104,13 +102,13 @@ event tracer_advection (i++) {
   //calculate darcy velocity
   foreach_face() {
     darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
-    uf.x[] = darcyv.x[];
+    //uf.x[] = darcyv.x[];
   }
 
   vof_advection ({fu}, i);
 
-  foreach_face()
-    uf.x[] = ufsave.x[];
+  // foreach_face()
+  //   uf.x[] = ufsave.x[];
 
 }
 

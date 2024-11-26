@@ -1,6 +1,7 @@
 #define NO_ADVECTION_DIV    1
 #define FSOLVE_ABSTOL       1.e-3
-#define EXPLICIT_REACTIONS  1
+#define SOLVE_TEMPERATURE   1
+//#define EXPLICIT_REACTIONS  1
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
 
@@ -36,7 +37,7 @@ int main() {
   lambdaS = 0.1987; lambdaG = 0.076;
   cpS = 1600; cpG = 1167;
   TS0 = 300.; TG0 = 743.;
-  rhoS = 850; rhoG = 0.331;
+  rhoS = 850; rhoG = 0.674;
   muG = 3.53e-5;
   eps0 = 0.4;
 
@@ -138,7 +139,7 @@ event movie(t+=0.1) {
   view (ty=-0.5, tx=-0.5);
   squares("T", max=TG0,  min=TS0);
   draw_vof("f");
-  cells();
+  //cells();
   save ("temperature.mp4");
 
   clear();
@@ -146,7 +147,6 @@ event movie(t+=0.1) {
   view (ty=-0.5, tx=-0.5);
   squares("C6H10O5", max=1,  min=0);
   draw_vof("f");
-  cells();
   save ("LVG.mp4");
 }
 

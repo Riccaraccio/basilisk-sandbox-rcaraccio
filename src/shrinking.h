@@ -75,7 +75,7 @@ event phasechange (i++) {
   mgpsf = project_sv (ubf, psi, dt, mgpsf.nrelax);
 
   foreach() {
-    gasSource[] = -omega[]*f[]/rhoG*cm[]; // gas production
+    gasSource[] = -omega[]*(f[]-porosity[])/rhoG*cm[]; // gas production, *(f-ef)
     //porosity[] += dt*omega[]/rhoS*(f[]-porosity[])*(1-zeta[])*cm[]; //epsi evolution
     porosity[] = clamp(porosity[], 0., 1.);
   }

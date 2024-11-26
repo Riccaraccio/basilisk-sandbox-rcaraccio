@@ -90,7 +90,7 @@ event init(i=0) {
   inert[right] = dirichlet (1.);
 }
 
-event output (t+=0.1) {
+event output (t+=1) {
   fprintf (stderr, "%g\n", t);
 
   char name[80];
@@ -133,7 +133,7 @@ event adapt (i++) {
      (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
 }
 
-event movie(t+=0.1) {
+event movie(t+=1) {
   clear();
   box();
   view (ty=-0.5, tx=-0.5);
@@ -150,6 +150,19 @@ event movie(t+=0.1) {
   save ("LVG.mp4");
 }
 
+#if DUMP
+int count = 0;
+event snapshots (t += 1) {
+  // we keep overwriting the last two snapshots
+  if (count == 0) {
+    dump ("snapshot-0");
+    count++;
+  } else {
+    dump ("snapshot-1");
+    count = 0;
+  }
+}
+#endif
 
 #if TRACE > 1
   event profiling (i += 20) {
@@ -158,4 +171,4 @@ event movie(t+=0.1) {
 }
 #endif
 
-event stop (t = 1);
+event stop (t = 800);

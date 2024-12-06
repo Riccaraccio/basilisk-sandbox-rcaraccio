@@ -6,6 +6,9 @@ scalar omega[];
 scalar* YGList_G    = NULL;
 scalar* YGList_S    = NULL;
 scalar* YGList_Int  = NULL;
+scalar* XGList_G    = NULL;
+scalar* XGList_S    = NULL;
+scalar* XGList_Int  = NULL;
 scalar* YSList      = NULL;
 scalar* Dmix2List_G = NULL;
 scalar* Dmix2List_S = NULL;
@@ -15,6 +18,24 @@ double* sol_start;
 double* gas_MWs;
 double* sol_MWs;
 double Pref = 101325.;
+
+scalar T[];
+double lambdaS = 1.; double lambdaG = 1.;
+double cpS = 1.; double cpG = 1.;
+bool success;
+
+#ifdef SOLVE_TEMPERATURE
+double TS0 = 300.; double TG0 = 300.;
+
+scalar TInt[];
+scalar TS, TG;
+scalar sST[], sGT[];
+face vector lambda1f[], lambda2f[];
+#endif
+
+scalar fG[], fS[];
+face vector fsS[], fsG[];
+scalar fu[]; //dummy tracer
 
 event defaults (i = 0) {
 
@@ -50,6 +71,27 @@ event defaults (i = 0) {
   }
   reset (YGList_G, 0.);
 
+  //molar fields, for diffusion
+  for (int jj = 0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "X_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    XGList_S = list_append (XGList_S, a);
+  }
+  reset (XGList_S, 0.);
+
+  for (int jj = 0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "X_%s_G",OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    XGList_G = list_append (XGList_G, a);
+  }
+  reset (XGList_G, 0.);
+
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
@@ -59,6 +101,16 @@ event defaults (i = 0) {
     YGList_Int = list_append (YGList_Int, a);
   }
   reset (YGList_Int, 0.);
+
+  for (int jj = 0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "X_%s_Int",OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    XGList_Int = list_append (XGList_Int, a);
+  }
+  reset (XGList_Int, 0.);
 
   //Allocate solid species fields
   for (int jj = 0; jj<NSS; jj++) {
@@ -109,17 +161,27 @@ event defaults (i = 0) {
   }
 
   for (scalar s in YGList_S)
-    s.inverse = true;
+    s.inverse = false;
 
   for (scalar s in YGList_G)
+    s.inverse = true;
+
+  for (scalar s in XGList_S)
     s.inverse = false;
+
+  for (scalar s in XGList_G)
+    s.inverse = true;
 
   for (scalar s in YSList)
     s.inverse = false;
 
-  f.tracers = list_concat (f.tracers, YGList_S);
-  f.tracers = list_concat (f.tracers, YGList_G);
+  fu.tracers = NULL;
+  fu.tracers = list_concat (fu.tracers, YGList_S);
+  fu.tracers = list_concat (fu.tracers, YGList_G);
   f.tracers = list_concat (f.tracers, YSList);
+
+  fS.nodump = true;
+  fG.nodump =true;
 
 #if TREE
   for (scalar s in YGList_S) {
@@ -157,24 +219,45 @@ event defaults (i = 0) {
   }
 #endif
 
+#ifdef SOLVE_TEMPERATURE
+  TS = new scalar;
+  TG = new scalar;
+
+  TS.inverse = false;
+  TG.inverse = true;
+
+  sST.nodump = true;
+  sGT.nodump = true;
+
+  fu.tracers = list_append (fu.tracers, TS);
+  fu.tracers = list_append (fu.tracers, TG);
+
+  TS.refine = refine_linear;
+  TS.restriction  = restriction_volume_average;
+  TS.dirty = true;
+
+  TG.refine = refine_linear;
+  TG.restriction  = restriction_volume_average;
+  TG.dirty = true;
+#endif
 }
 
 event init (i = 0){
   //initialize gas fractions fields
   foreach() {
-    for (int jj = 0; jj<NGS; jj++) {
-      scalar YG = YGList_S[jj];
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YG = YGList_G[jj];
       YG[] = gas_start[jj]*(1-f[]);
     }
 
-    for (int jj = 0; jj<NGS; jj++) {
-      scalar YG = YGList_G[jj];
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YG = YGList_S[jj];
       YG[] = gas_start[jj]*f[];
     }
   }
 
   foreach() {
-    for (int jj 0; jj<NGS; jj++) {
+    for (int jj=0; jj<NGS; jj++) {
       scalar YGInt = YGList_Int[jj];
       YGInt[] = 0.;
     }
@@ -182,11 +265,42 @@ event init (i = 0){
 
   //initialize solid fractions fields
   foreach() {
-    for (int jj = 0; jj<NSS; jj++) {
+    for (int jj=0; jj<NSS; jj++) {
       scalar YS = YSList[jj];
       YS[] = sol_start[jj]*f[];
     }
   }
+
+  foreach()
+    fu[] = f[];
+
+#if TREE
+  {
+    fu.refine = fu.prolongation = fraction_refine;
+    fu.dirty = true;
+    scalar* tracers = fu.tracers;
+    for (scalar t in tracers) {
+      t.restriction = restriction_volume_average;
+      t.refine = t.prolongation = vof_concentration_refine;
+      t.dirty = true;
+      t.c = fu;
+    }
+  }
+#endif
+  {
+    scalar* tracers = fu.tracers;
+    for (scalar t in tracers)
+      t.depends = list_add (t.depends, fu);
+  }
+
+#ifdef SOLVE_TEMPERATURE
+  foreach() {
+    TS[] = TS0*f[];
+    TG[] = TG0*(1. - f[]);
+    T[]  = TS[] + TG[];
+    TInt[] = f[]<1-F_ERR && f[] > F_ERR ? TS0 : 0.;
+  }
+#endif
 }
 
 event cleanup (t = end) {
@@ -196,8 +310,15 @@ event cleanup (t = end) {
   delete (YGList_G), free (YGList_G), YGList_G = NULL;
   delete (Dmix2List_G), free (Dmix2List_G), Dmix2List_G = NULL;
   delete (YGList_Int), free (YGList_Int), YGList_Int = NULL;
+  delete (XGList_G), free (XGList_G), XGList_G = NULL;
+  delete (XGList_S), free (XGList_S), XGList_S = NULL;
+  delete (XGList_Int), free (XGList_Int), XGList_Int = NULL;
   free(gas_start), gas_start = NULL;
   free(sol_start), sol_start = NULL;
   free(gas_MWs), gas_MWs = NULL;
   free(sol_MWs), sol_MWs = NULL;
+#ifdef SOLVE_TEMPERATURE
+  delete ({TS,TG});
+  delete (fu.tracers), free(fu.tracers), fu.tracers = NULL;
+#endif
 }

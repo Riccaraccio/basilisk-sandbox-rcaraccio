@@ -1,56 +1,61 @@
-#define NO_ADVECTION_DIV 1
-//#define NO_1D_COMPRESSION 1
-#define FSOLVE_ABSTOL 1.e-3
-
-//#define SHIFT
+#define NO_ADVECTION_DIV    1
+#define FSOLVE_ABSTOL       1.e-3
+#define SOLVE_TEMPERATURE   1
+//#define EXPLICIT_REACTIONS  1
+//#define EXPLICIT_DIFFUSION  1
+//#define FIXED_INT_TEMP    1
 
 //#include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
-#include "var-prop.h"
+#include "prop.h"
 #include "two-phase.h"
-#include "temperature-vt.h"
+//#include "temperature-vt.h"
+#include "multicomponent-t.h"
 #include "shrinking.h"
-#include "darcy.h"
+//#include "darcy.h"
 #include "view.h"
 
-u.n[top] = neumann (0.);
-u.t[top] = neumann (0.);
-p[top] = dirichlet (0.);
-psi[top] = dirichlet (0.);
-ubf.t[top] = neumann (0.);
-ubf.n[top] = neumann (0.);
+u.n[top]      = neumann (0.);
+u.t[top]      = neumann (0.);
+p[top]        = dirichlet (0.);
+psi[top]      = dirichlet (0.);
+ubf.t[top]    = neumann (0.);
+ubf.n[top]    = neumann (0.);
 
-u.n[right] = neumann (0.);
-u.t[right] = neumann (0.);
-p[right] = dirichlet (0.);
-psi[right] = dirichlet (0.);
-ubf.t[right] = neumann (0.);
-ubf.n[right] = neumann (0.);
+u.n[right]    = neumann (0.);
+u.t[right]    = neumann (0.);
+p[right]      = dirichlet (0.);
+psi[right]    = dirichlet (0.);
+ubf.t[right]  = neumann (0.);
+ubf.n[right]  = neumann (0.);
 
-int maxlevel = 8; int minlevel = 2;
-double D0 = 1e-3;
-
-scalar omega[];
-double solid_mass0;
+int maxlevel = 6; int minlevel = 2;
+double D0 = 2*1.27e-2;
+double solid_mass0 = 0.;
 
 int main() {
+  lambdaS = 0.1987; lambdaG = 0.076;
+  cpS = 1600; cpG = 1167;
+  TS0 = 300.; TG0 = 300.;
+  rhoS = 850; rhoG = 0.674;
+  muG = 3.53e-5;
+  eps0 = 0.4;
 
-  lambdaS = 0.124069; lambdaG = 0.0295641;
-  cpS = 2244.92; cpG = 1041.52;
-  TS0 = 300.; TG0 = 1000.;
-  rhoS = 681.042; rhoG = 9.75415;
-  muG = 2.02391e-5;
-
+  //dummy properties
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
-  //L0 = 1*D0;
+
   L0 = 3.5*D0;
-  eps0 = 0.;
-  DT = 0.5e-3;
-  //for (maxlevel = 7; maxlevel <=7; maxlevel++) {
-  //  init_grid(1 << maxlevel);
-  //  run();
-  //}
+
+#ifdef EXPLICIT_DIFFUSION
+  fprintf(stderr, "Using EXPLICIT_DIFFUSION\n");
+  DT = 1e-2;
+#else
+  fprintf(stderr, "Using IMPLICIT_DIFFUSION\n");
+  DT = 1e-1;
+#endif
+
+  kinfolder = "biomass/Solid-only-2003";
   init_grid(1 << maxlevel);
   run();
 }
@@ -60,160 +65,110 @@ int main() {
 event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
+  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
+
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4807;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.2611;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1325;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0957;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0214;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0086;
+
   foreach()
-     porosity[] = f[]*eps0;
+    porosity[] = eps0*f[];
 
-  solid_mass0 = 0.;
-  foreach (reduction(+:solid_mass0)) {
-    solid_mass0 += (1-porosity[])*rhoS*dv();
-  }
+  foreach (reduction(+:solid_mass0))
+    solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-  zeta_policy = ZETA_SWELLING;
-}
+  zeta_policy = 1;
 
-event bcs (i=0) {
   TG[top] = dirichlet (TG0);
   TG[right] = dirichlet (TG0);
+  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
+
+  inert[top] = dirichlet (1.);
+  inert[right] = dirichlet (1.);
 }
 
-event phasechange (i++){
-  foreach()
-    //omega[] = f[]>F_ERR ? 2e4*exp(-5000/TS[]*f[]) : 0.;
-    //omega[] = f[] > F_ERR ? 100.*cm[] : 0.;//fixed interface
-    //omega[] = T[]/TG0*10;
-    omega[] =  100;
+event output (t+=1) {
+  fprintf (stderr, "%g\n", t);
+
+  char name[80];
+  sprintf(name, "OutputData-%d", maxlevel);
+  static FILE * fp = fopen (name, "w");
+
+  //log mass profile
+  double solid_mass = 0.;
+  foreach (reduction(+:solid_mass))
+    solid_mass += (f[]-porosity[])*rhoS*dv();
+
+  //save temperature profile
+  double Tcore  = interpolate (T, 0., 0.);
+  double Tr2    = interpolate (T, D0/4, 0.);
+  double Tsurf  = interpolate (T, D0/2, 0.);
+
+  fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
+  fflush(fp);
 }
 
-event logprofile (t += 0.01) {
-  fprintf(stderr, "t = %g\n", t);
+scalar totG[], totS[];
+event end_timestep (i++) {
+  foreach() {
+    totG[] = 0.;
+    for (int ii=0; ii<NGS; ii++) {
+      scalar YG = YGList_S[ii];
+      totG[] += YG[];
+    }
 
-//  char name[80];
-//  sprintf (name, "OutputData-%d", maxlevel);
-//  static FILE* fp = fopen (name, "w");
-//
-//  coord p = {D0/2, 0}; //interface @ y = 0
-//  double Tinterface = 0.;
-//  foreach_point (p.x, p.y)
-//    Tinterface = TInt[];
-//
-//  fprintf (fp, "%g %g\n", t, Tinterface);
-//  fflush (fp);
+    totS[] = 0.;
+    for (int ii=0; ii<NSS; ii++) {
+      scalar YS = YSList[ii];
+      totS[] += YS[];
+    }
+  }
 }
 
 event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y, ubf.x, ubf.y}, {f},
-      (double[]){1.e0,1.e-1,1.e-1,1.e-1,1.e-1}, maxlevel, minlevel, 1);
+  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
+     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
 }
 
-//event movie (t += 0.1) {
-//  clear();
-//  view (ty=-0.3, width=1400., fov=17);
-//  draw_vof ("f", lw=2);
-//  squares ("T", min=TS0, max=TG0, linear=true);
-//  mirror ({1.,0.}) {
-//    vectors ("ubf", scale=1);
-//    draw_vof ("f", lw=2);
-//    squares ("porosity", min=0., max=1., linear=true);
-//  }
-//  save ("movie.mp4");
-//}
-// event movie (t += 0.1) {
+// event movie(t+=1) {
 //   clear();
-//   view (ty=-0.5, width=1400.);
-//   cells ();
-//   draw_vof ("f", lw=2);
-//   mirror ({1.,0.}) {
-//     vectors ("u", scale=0.1);
-//     draw_vof ("f", lw=2);
-//   }
-//   save ("movie.mp4");
+//   box();
+//   view (ty=-0.5, tx=-0.5);
+//   squares("T", max=TG0,  min=TS0);
+//   draw_vof("f");
+//   //cells();
+//   save ("temperature.mp4");
+//
+//   clear();
+//   box();
+//   view (ty=-0.5, tx=-0.5);
+//   squares("C6H10O5", max=1,  min=0);
+//   draw_vof("f");
+//   save ("LVG.mp4");
 // }
 
-//int count = 1;
-//event profiles (t = {0.056606, 0.541909}) {
-//  char name[80];
-//  fprintf (stderr, "%d %g\n", count, t);
-//  sprintf (name, "T-Profile-%d", count);
-//
-//  FILE* fpp = fopen (name, "w");
-//  for (double x = 0.; x < L0; x+= 0.5*L0/(1<<maxlevel)) {
-//    fprintf (fpp, "%g %g\n", x, interpolate (T, x, 0.));
-//  }
-//
-//  fflush (fpp);
-//  count++;
-//}
-
-int count = 1;
-event profiles (t = {0.3, 0.6}) {
-  char name[80];
-  fprintf (stderr, "%d %g\n", count, t);
-  sprintf (name, "T-Profile-%d-T", count);
-
-  FILE* fpp = fopen (name, "w");
-  for (double x = 0.; x < L0; x+= 0.5*L0/(1<<maxlevel)) {
-    fprintf (fpp, "%g %g\n", x, interpolate (T, x, 0.));
+#if DUMP
+int count = 0;
+event snapshots (t += 1) {
+  // we keep overwriting the last two snapshots
+  if (count == 0) {
+    dump ("snapshot-0");
+    count++;
+  } else {
+    dump ("snapshot-1");
+    count = 0;
   }
-
-  fflush (fpp);
-  count++;
 }
+#endif
 
-
-event stop (t=1) {
-  return 1;
+#if TRACE > 1
+  event profiling (i += 20) {
+  static FILE * fp = fopen ("profiling", "w");
+  trace_print (fp, 1);
 }
+#endif
 
-/**
-## Results
-
-~~~gnuplot Interface temperature
-reset
-set terminal pngcairo enhanced size 960, 540
-set xlabel "t [s]"
-set ylabel "T [k]"
-set key bottom right
-set xrange [0:1]
-set yrange [250:600]
-set grid
-
-plot "data/Output-R1000K/Interface.out" u 1:12 w l lw 2 t "microgravity", \
-     "OutputData-6" u 1:2 w l lw 2 t "LEVEL 6", \
-     "OutputData-7" u 1:2 w l lw 2 t "LEVEL 7", \
-     "OutputData-8" u 1:2 w l lw 2 t "LEVEL 8", \
-     "../c7pathak/log" u 1:2 w l lw 2 t "Edo, LEVEL 6"
-~~~
-
-~~~gnuplot T profiles
-reset
-set terminal pngcairo enhanced size 960, 960
-set multiplot layout 2,1 title "Temperature snapshots"
-
-set xlabel "x [mm]"
-set ylabel "T [k]"
-set key bottom right
-set xrange [0:3]
-set yrange [250:1100]
-set grid
-set title "t = 0.056606"
-plot "T-Profile-1" u ($1*1000):2 w l lw 2 t "Basilisk", \
-     "data/Output-R1000K/Snapshot-0.056606.txt" every 5 u 3:5 w p ps 2 t "microgravity"
-
-set xlabel "x [mm]"
-set ylabel "T [k]"
-set key bottom right
-set xrange [0:3]
-set yrange [250:1100]
-set grid
-set title "t = 0.541909"
-plot "T-Profile-2" u ($1*1000):2 w l lw 2 t "Basilisk", \
-     "data/Output-R1000K/Snapshot-0.541909.txt" every 5 u 3:5 w p ps 2 t "microgravity"
-
-unset multiplot
-
-~~~
-
-
-
-
-*/
+event stop (t = 800);

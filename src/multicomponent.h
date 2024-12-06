@@ -10,46 +10,98 @@
 #include "memoryallocation.h"
 #include "reactions.h"
 
+#ifndef SOLVE_TEMPERATURE
+scalar fsS[], fsG[];
+#endif
+
 extern scalar T;
 
-extern face vector ufsave;
-event tracer_advection (i++) {
-  // reconstruct darcy velocity
-  face vector darcyv[];
-  foreach_face() {
-    darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
-  }
-
-  //advection of YGList
-  advection_div (YGList, ufsave, dt);
-
-  // ensure that sum(YG) = 1
-  foreach() {
-    double totmassgas = 0.;
-    for (scalar YG in YGList)
-      totmassgas += YG[];
-
-    for (scalar YG in YGList) {
-      YG[] = (totmassgas > 0.) ? YG[]/totmassgas : 0.;
-      YG[] = clamp(YG[], 0., 1.);
-      YG[] = (YG[] > 1e-10) ? YG[] : 0.;
-    }
-  }
-}
+// extern face vector ufsave;
+// event tracer_advection (i++) { //performed in temperature-vt.h
+//   // reconstruct darcy velocity
+//   face vector darcyv[];
+//   foreach_face() {
+//     darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
+//   }
+//
+//   //advection of YGList
+//   advection_div (YGList, ufsave, dt);
+//
+//   // ensure that sum(YG) = 1
+//   foreach() {
+//     double totmassgas = 0.;
+//     for (scalar YG in YGList)
+//       totmassgas += YG[];
+//
+//     for (scalar YG in YGList) {
+//       YG[] = (totmassgas > 0.) ? YG[]/totmassgas : 0.;
+//       YG[] = clamp(YG[], 0., 1.);
+//       YG[] = (YG[] > 1e-10) ? YG[] : 0.;
+//     }
+//   }
+// }
 
 event tracer_diffusion (i++) {
 
   foreach() {
     f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
+    fs[] = f[]; fG[] = 1. - f[];
+    if (fu[] > F_ERR)
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_S[jj];
+        YG[] /= fu[]
+      }
+
+    if (fu[] < 1-F_ERR)
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        YG[] /= (1. - fu[])
+      }
   }
 
-  scalar thetaG[];
+  face_fraction (fS, fsS);
+  face_fraction (fS, fsS);
+
+  foreach() {
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
+      for (int jj = 0; jj<NGS; jj++) {
+        scalar YG = YGList_S[jj];
+        scalar YGInt = YGList_Int[jj];
+        YGInt[] = avg_neighbor (point, YG, f);
+      }
+  }
+
+  //calculate interface concentration
+  int_Concentration();
+
+  foreach() {
+    if (f[]>F_ERR && f[]<1.-F_ERR){
+      coord n = facet_normal (point, fS, fsS), p;
+      double alpha = plane_alpha (fS[], n);
+      double area = plane_area_center (n, alpha, &p);
+      normalize (&n);
+
+      double
+    }
+  }
+
+
+  scalar theta1[], theta2[];
 #if TREE
-  thetaG.refine = thetaG.prolongation = fraction_refine;
-  thetaG.dirty = true;
+  theta1.refine = theta1.prolongation = fraction_refine;
+  theta2.refine = theta2.prolongation = fraction_refine;
+  theta1.dirty = true;
+  theta2.dirty = true;
 #endif
 
+  forech() {
+    YGInt[] = 0.;
+    for (int jj = 0; jj < NGS; jj++) {
+      scalar YG = YGList_S[jj];
+      scalar YGInt = YGList_Int[jj];
+    }
+  }
   // calculate diff coeffincet in each cell for each species
   foreach() {
     //set T and P

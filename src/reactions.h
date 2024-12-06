@@ -38,12 +38,15 @@ event chemistry (i++) {
   foreach ()
     if (f[] > F_ERR) {
 
-      // YS are the only one in tracer form
       for(int jj=0; jj<NSS; jj++) {
         scalar YS = YSList[jj];
         YS[] /= f[];
       }
 
+      for(int jj=0; jj<NGS; jj++) {
+        scalar YG = YGList_S[jj];
+        YG[] /= f[];
+      }
       porosity[] /= f[];
 
       double y0ode[NEQ];
@@ -52,7 +55,6 @@ event chemistry (i++) {
       data.T = TS[]/f[];
       data.rhos = rhoS;
       data.zeta = zeta[];
-      data.f = f[];
 #ifdef SOLVE_TEMPERATURE
       data.cps = cpS;
       data.cpg = cpG;
@@ -62,15 +64,15 @@ event chemistry (i++) {
 
       double gasmass[NGS];
       for (int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList[jj];
-        gasmass[jj] = YG[]*rhoG*(1-f[] +porosity[]*f[]);
+        scalar YG = YGList_S[jj];
+        gasmass[jj] = YG[]*rhoG*porosity[];
         y0ode[jj] = gasmass[jj];
       }
 
       double solidmass[NSS];
       for (int jj=0; jj<NSS; jj++) {
         scalar YS = YSList[jj];
-        solidmass[jj] = YS[]*rhoS*(1-porosity[])*f[];
+        solidmass[jj] = YS[]*rhoS*(1-porosity[]);
         y0ode[jj+NGS] = solidmass[jj];
       }
 
@@ -92,8 +94,8 @@ event chemistry (i++) {
       }
 
       for (int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList[jj];
-        YG[] = y0ode[jj]/totgasmass;
+        scalar YG = YGList_S[jj];
+        YG[] = y0ode[jj]/totgasmass*f[];
       }
 
       double totsolidmass = 0;
@@ -106,7 +108,6 @@ event chemistry (i++) {
         YS[] = (totsolidmass < 1e-5) ? 0. : y0ode[jj+NGS]/totsolidmass*f[];
       }
 
-      data.zeta = 0.;
       porosity[] = y0ode[NGS+NSS]*f[];
 
 #ifdef SOLVE_TEMPERATURE

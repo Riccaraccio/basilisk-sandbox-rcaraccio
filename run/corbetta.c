@@ -5,7 +5,7 @@
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
 
-#include "axi.h" 
+//#include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "prop.h"
 #include "two-phase.h"
@@ -29,7 +29,7 @@ psi[right]    = dirichlet (0.);
 ubf.t[right]  = neumann (0.);
 ubf.n[right]  = neumann (0.);
 
-int maxlevel = 8; int minlevel = 2;
+int maxlevel = 6; int minlevel = 2;
 double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 
@@ -52,7 +52,7 @@ int main() {
   DT = 1e-2;
 #else
   fprintf(stderr, "Using IMPLICIT_DIFFUSION\n");
-  DT = 1e-2;
+  DT = 1e-1;
 #endif
 
   kinfolder = "biomass/Solid-only-2003";
@@ -80,7 +80,7 @@ event init(i=0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-  zeta_policy = ZETA_SWELLING;
+  zeta_policy = 1;
 
   TG[top] = dirichlet (TG0);
   TG[right] = dirichlet (TG0);
@@ -133,22 +133,22 @@ event adapt (i++) {
      (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
 }
 
-event movie(t+=1) {
-  clear();
-  box();
-  view (ty=-0.5, tx=-0.5);
-  squares("T", max=TG0,  min=TS0);
-  draw_vof("f");
-  //cells();
-  save ("temperature.mp4");
-
-  clear();
-  box();
-  view (ty=-0.5, tx=-0.5);
-  squares("C6H10O5", max=1,  min=0);
-  draw_vof("f");
-  save ("LVG.mp4");
-}
+// event movie(t+=1) {
+//   clear();
+//   box();
+//   view (ty=-0.5, tx=-0.5);
+//   squares("T", max=TG0,  min=TS0);
+//   draw_vof("f");
+//   //cells();
+//   save ("temperature.mp4");
+//
+//   clear();
+//   box();
+//   view (ty=-0.5, tx=-0.5);
+//   squares("C6H10O5", max=1,  min=0);
+//   draw_vof("f");
+//   save ("LVG.mp4");
+// }
 
 #if DUMP
 int count = 0;

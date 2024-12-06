@@ -15,7 +15,6 @@ typedef struct {
   double cpg;
   double P;
   double T;
-  double f;
   double zeta;
   double* sources;
 } UserDataODE;
@@ -31,7 +30,6 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
   double Pressure = data.P;
   double z = data.zeta;
   double* sources = data.sources;
-  double f = data.f;
 
   double epsilon = y[NGS+NSS];
   double Temperature = data.T;
@@ -89,11 +87,11 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
   OpenSMOKE_SolProp_FormationRates (rgas, rsolid); //rates are given per m3 of solid
 
   for (int jj=0; jj<NGS; jj++) {
-    dy[jj] = gas_MWs[jj]*rgas[jj]*(1-epsilon)*f;
+    dy[jj] = gas_MWs[jj]*rgas[jj]*(1-epsilon);
   }
 
   for (int jj=0; jj<NSS; jj++) {
-    dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-epsilon)*f;
+    dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-epsilon);
   }
 
   double totsolidreaction = 0.;
@@ -126,7 +124,6 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   double cpg = data.cpg;
   double Pressure = data.P;
   double z = data.zeta;
-  double f = data.f;
   double* sources = data.sources;
 
   double epsilon = y[NGS+NSS];
@@ -183,11 +180,11 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   OpenSMOKE_SolProp_FormationRates (rgas, rsolid); //rates are given per m3 of solid
 
   for (int jj=0; jj<NGS; jj++) {
-    dy[jj] = gas_MWs[jj]*rgas[jj]*(1-epsilon)*f;
+    dy[jj] = gas_MWs[jj]*rgas[jj]*(1-epsilon);
   }
 
   for (int jj=0; jj<NSS; jj++) {
-    dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-epsilon)*f;
+    dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-epsilon);
   }
 
   double totsolidreaction = 0.;
@@ -209,9 +206,7 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   //double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas); //should be 0 for now
   double QRsol = OpenSMOKE_SolProp_HeatRelease (rgas, rsolid);
 
-  //fprintf (stderr, "QRgas = %g\tQRsol = %G\n", QRgas, QRsol);
-  //dy[OpenSMOKE_NumberOfSpecies()] = (QR + divq_rad (&otp))/rho/cp; //NO RADIATION FOR NOW
   //dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
-  dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f)/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
+  dy[NGS+NSS+1] = (QRsol*(1-epsilon))/((rhog*cpg*epsilon) + rhos*cps*(1-epsilon));
   //dy[NGS+NSS+1] = 0.;
 }

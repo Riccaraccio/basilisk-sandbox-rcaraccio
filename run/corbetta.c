@@ -1,16 +1,16 @@
 #define NO_ADVECTION_DIV    1
 #define FSOLVE_ABSTOL       1.e-3
 #define SOLVE_TEMPERATURE   1
+// #define CONST_DIFF          1
 //#define EXPLICIT_REACTIONS  1
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
 
-//#include "axi.h" 
+#include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "prop.h"
 #include "two-phase.h"
-#include "temperature-vt.h"
-#include "multicomponent.h"
+#include "multicomponent-t.h"
 #include "shrinking.h"
 //#include "darcy.h"
 #include "view.h"
@@ -19,15 +19,11 @@ u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
 p[top]        = dirichlet (0.);
 psi[top]      = dirichlet (0.);
-ubf.t[top]    = neumann (0.);
-ubf.n[top]    = neumann (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
-ubf.t[right]  = neumann (0.);
-ubf.n[right]  = neumann (0.);
 
 int maxlevel = 6; int minlevel = 2;
 double D0 = 2*1.27e-2;
@@ -49,7 +45,7 @@ int main() {
 
 #ifdef EXPLICIT_DIFFUSION
   fprintf(stderr, "Using EXPLICIT_DIFFUSION\n");
-  DT = 1e-2;
+  DT = 1e-1;
 #else
   fprintf(stderr, "Using IMPLICIT_DIFFUSION\n");
   DT = 1e-1;
@@ -80,11 +76,11 @@ event init(i=0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-  zeta_policy = 1;
+  zeta_policy = 0;
 
   TG[top] = dirichlet (TG0);
   TG[right] = dirichlet (TG0);
-  scalar inert = YGList[OpenSMOKE_IndexOfSpecies ("N2")];
+  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
 
   inert[top] = dirichlet (1.);
   inert[right] = dirichlet (1.);
@@ -111,23 +107,6 @@ event output (t+=1) {
   fflush(fp);
 }
 
-scalar totG[], totS[];
-event end_timestep (i++) {
-  foreach() {
-    totG[] = 0.;
-    for (int ii=0; ii<NGS; ii++) {
-      scalar YG = YGList[ii];
-      totG[] += YG[];
-    }
-
-    totS[] = 0.;
-    for (int ii=0; ii<NSS; ii++) {
-      scalar YS = YSList[ii];
-      totS[] += YS[];
-    }
-  }
-}
-
 event adapt (i++) {
   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
      (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
@@ -150,6 +129,20 @@ event adapt (i++) {
 //   save ("LVG.mp4");
 // }
 
+event movie(t+=1) {
+  clear();
+  box();
+  view (ty=-0.5, width = 1400.);
+  draw_vof("f", lw=2);
+  squares ("T", min=TS0, max=TG0, linear=true);
+  mirror ({1.,0.}) {
+    draw_vof ("f", lw=2);
+    squares ("C6H10O5_G+C6H10O5_S", min=0., max=1., linear=true);
+    vectors ("u", scale=1);
+ }
+ save ("movie.mp4");
+}
+
 #if DUMP
 int count = 0;
 event snapshots (t += 1) {
@@ -171,4 +164,4 @@ event snapshots (t += 1) {
 }
 #endif
 
-event stop (t = 800);
+event stop (t = 1000);

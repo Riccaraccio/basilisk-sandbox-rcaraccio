@@ -275,23 +275,17 @@ for (int jj=0; jj<NGS; jj++) {
 #endif
 }
 
-//TEMP for testing
-extern double* gas_ext;
-extern double* gas_int;
-
 event init (i = 0){
   //initialize gas fractions fields
   foreach() {
     for (int jj=0; jj<NGS; jj++) {
       scalar YG = YGList_G[jj];
-      // YG[] = gas_start[jj]*(1-f[]);
-      YG[] = gas_ext[jj]*(1-f[]);
+      YG[] = gas_start[jj]*(1-f[]);
     }
 
     for (int jj=0; jj<NGS; jj++) {
       scalar YG = YGList_S[jj];
-      // YG[] = gas_start[jj]*f[];
-      YG[] = gas_int[jj]*f[];
+      YG[] = gas_start[jj]*f[];
     }
   }
 

@@ -9,7 +9,7 @@
 
 #include "common-evaporation.h"
 #include "memoryallocation-t.h"
-//#include "reactions.h" //TEMP
+#include "reactions.h" //TEMP
 #include "int-temperature-v.h"
 #include "int-condition.h"
 
@@ -26,10 +26,6 @@ event reset_sources (i++) {
       sSexp[] = 0.;
       sGexp[] = 0.;
     }
-  }
-
-  foreach() {
-    omega[] = 1.;
   }
 }
 

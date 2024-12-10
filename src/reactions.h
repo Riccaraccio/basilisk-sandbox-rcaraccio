@@ -26,6 +26,10 @@ event cleanup (t = end) {
 
 event chemistry (i++) {
 
+  //reset omega
+  foreach()
+    omega[] = 0.;
+
 #ifdef SOLVE_TEMPERATURE
   odefunction batch = &batch_nonisothermal_constantpressure;
   unsigned int NEQ = NGS + NSS + 1 + 1; //NGS + NSS + porosity + T

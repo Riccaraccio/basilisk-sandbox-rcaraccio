@@ -1,6 +1,7 @@
 #define NO_ADVECTION_DIV    1
 #define FSOLVE_ABSTOL       1.e-3
 #define SOLVE_TEMPERATURE   1
+#define CONST_DIFF         1
 //#define EXPLICIT_REACTIONS  1
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
@@ -45,14 +46,14 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  L0 = 3.5*D0;
+  L0 = 1.5*D0;
 
 #ifdef EXPLICIT_DIFFUSION
   fprintf(stderr, "Using EXPLICIT_DIFFUSION\n");
   DT = 1e-2;
 #else
   fprintf(stderr, "Using IMPLICIT_DIFFUSION\n");
-  DT = 1e-1;
+  DT = 1e-2;
 #endif
 
   kinfolder = "biomass/Solid-only-2003";
@@ -61,6 +62,9 @@ int main() {
 }
 
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
+
+double* gas_ext = NULL;
+double* gas_int = NULL;
 
 event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
@@ -88,6 +92,19 @@ event init(i=0) {
 
   inert[top] = dirichlet (1.);
   inert[right] = dirichlet (1.);
+
+  //TEMP for testing
+  gas_ext = (double*) malloc (NGS*sizeof(double));
+  gas_int = (double*) malloc (NGS*sizeof(double));
+
+  for (int jj=0; jj<NGS; jj++) {
+    gas_ext[jj] = 0.;
+    gas_int[jj] = 0.;
+  }
+
+  gas_ext[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
+  gas_int[OpenSMOKE_IndexOfSpecies ("CO")] = 1.;
+
 }
 
 event output (t+=1) {
@@ -128,10 +145,10 @@ event end_timestep (i++) {
   }
 }
 
-event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
-}
+// event adapt (i++) {
+//   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
+//      (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+// }
 
 // event movie(t+=1) {
 //   clear();

@@ -9,7 +9,6 @@ extern scalar fS, fG;
 extern face vector fsS, fsG;
 extern scalar* Dmix2List_G;
 extern scalar* Dmix2List_S;
-extern double* gas_start;
 extern scalar* YGList_S;
 extern scalar* YGList_G;
 extern scalar* YGList_Int;
@@ -24,19 +23,19 @@ void EqSpecies (const double* xdata, double* fdata, void* params) {
   UserDataNls* data = (UserDataNls*)params;
 
   double YGInti[NGS];
-  double XGInti[NGS];
+  // double XGInti[NGS];
   double jG_S[NGS];
   double jG_G[NGS];
-  bool success;
+  bool success = false;
 
   foreach_point(data->c.x, data->c.y, data->c.z) {
-    OpenSMOKE_GasProp_SetTemperature (TInt[]);
-    OpenSMOKE_GasProp_SetPressure (p[]+Pref);
+    // OpenSMOKE_GasProp_SetTemperature (TInt[]);
+    // OpenSMOKE_GasProp_SetPressure (p[]+Pref);
 
     for (int jj=0; jj<NGS; jj++)
       YGInti[jj] = xdata[jj];
 
-    OpenSMOKE_MoleFractions_From_MassFractions(XGInti, gas_MWs, YGInti);
+    // OpenSMOKE_MoleFractions_From_MassFractions(XGInti, gas_MWs, YGInti);
 
     for (int jj=0; jj<NGS; jj++) {
       scalar YG = YGList_G[jj];

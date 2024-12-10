@@ -6,9 +6,11 @@ scalar omega[];
 scalar* YGList_G    = NULL;
 scalar* YGList_S    = NULL;
 scalar* YGList_Int  = NULL;
-scalar* XGList_G    = NULL;
-scalar* XGList_S    = NULL;
-scalar* XGList_Int  = NULL;
+// scalar* XGList_G    = NULL;
+// scalar* XGList_S    = NULL;
+// scalar* XGList_Int  = NULL;
+scalar* sSexpList   = NULL;
+scalar* sGexpList   = NULL;
 scalar* YSList      = NULL;
 scalar* Dmix2List_G = NULL;
 scalar* Dmix2List_S = NULL;
@@ -50,6 +52,18 @@ event defaults (i = 0) {
   NGS = OpenSMOKE_NumberOfSpecies();
   NSS = OpenSMOKE_NumberOfSolidSpecies(); 
 
+  YGList_G    = NULL;
+  YGList_S    = NULL;
+  YGList_Int  = NULL;
+  // XGList_G    = NULL;
+  // XGList_S    = NULL;
+  // XGList_Int  = NULL;
+  sSexpList     = NULL;
+  sGexpList     = NULL;
+  YSList      = NULL;
+  Dmix2List_G = NULL;
+  Dmix2List_S = NULL;
+
   //Allocate gas species fields
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
@@ -71,27 +85,6 @@ event defaults (i = 0) {
   }
   reset (YGList_G, 0.);
 
-  //molar fields, for diffusion
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar a = new scalar;
-    free (a.name);
-    char name[20];
-    sprintf (name, "X_%s_S",OpenSMOKE_NamesOfSpecies(jj));
-    a.name = strdup (name);
-    XGList_S = list_append (XGList_S, a);
-  }
-  reset (XGList_S, 0.);
-
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar a = new scalar;
-    free (a.name);
-    char name[20];
-    sprintf (name, "X_%s_G",OpenSMOKE_NamesOfSpecies(jj));
-    a.name = strdup (name);
-    XGList_G = list_append (XGList_G, a);
-  }
-  reset (XGList_G, 0.);
-
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
@@ -102,15 +95,35 @@ event defaults (i = 0) {
   }
   reset (YGList_Int, 0.);
 
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar a = new scalar;
-    free (a.name);
-    char name[20];
-    sprintf (name, "X_%s_Int",OpenSMOKE_NamesOfSpecies(jj));
-    a.name = strdup (name);
-    XGList_Int = list_append (XGList_Int, a);
-  }
-  reset (XGList_Int, 0.);
+  // for (int jj = 0; jj<NGS; jj++) {
+  //   scalar a = new scalar;
+  //   free (a.name);
+  //   char name[20];
+  //   sprintf (name, "X_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+  //   a.name = strdup (name);
+  //   XGList_S = list_append (XGList_S, a);
+  // }
+  // reset (XGList_S, 0.);
+
+  // for (int jj = 0; jj<NGS; jj++) {
+  //   scalar a = new scalar;
+  //   free (a.name);
+  //   char name[20];
+  //   sprintf (name, "X_%s_Int",OpenSMOKE_NamesOfSpecies(jj));
+  //   a.name = strdup (name);
+  //   XGList_Int = list_append (XGList_Int, a);
+  // }
+  // reset (XGList_Int, 0.);
+
+  // for (int jj = 0; jj<NGS; jj++) {
+  //   scalar a = new scalar;
+  //   free (a.name);
+  //   char name[20];
+  //   sprintf (name, "X_%s_G",OpenSMOKE_NamesOfSpecies(jj));
+  //   a.name = strdup (name);
+  //   XGList_G = list_append (XGList_G, a);
+  // }
+  // reset (XGList_G, 0.);
 
   //Allocate solid species fields
   for (int jj = 0; jj<NSS; jj++) {
@@ -144,6 +157,26 @@ event defaults (i = 0) {
   }
   reset (Dmix2List_G, 0.);
 
+// fields for the source therms
+for (int jj=0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    scalar b = new scalar;
+    free (a.name);
+    free (b.name);
+    char aname[20];
+    char bname[20];
+    sprintf (aname, "sSexp_%s", OpenSMOKE_NamesOfSpecies(jj));
+    sprintf (bname, "sGexp_%s", OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (aname);
+    b.name = strdup (bname);
+    a.nodump = true;
+    b.nodump = true;
+    sSexpList = list_append (sSexpList, a);
+    sGexpList = list_append (sGexpList, b);
+  }
+  reset (sSexpList, 0.);
+  reset (sGexpList, 0.);
+
   //initialize vector with initial values
   gas_start = (double *)malloc(NGS * sizeof(double));
   sol_start = (double *)malloc(NSS * sizeof(double));
@@ -166,11 +199,11 @@ event defaults (i = 0) {
   for (scalar s in YGList_G)
     s.inverse = true;
 
-  for (scalar s in XGList_S)
-    s.inverse = false;
+  // for (scalar s in XGList_S)
+  //   s.inverse = false;
 
-  for (scalar s in XGList_G)
-    s.inverse = true;
+  // for (scalar s in XGList_G)
+  //   s.inverse = true;
 
   for (scalar s in YSList)
     s.inverse = false;
@@ -242,17 +275,23 @@ event defaults (i = 0) {
 #endif
 }
 
+//TEMP for testing
+extern double* gas_ext;
+extern double* gas_int;
+
 event init (i = 0){
   //initialize gas fractions fields
   foreach() {
     for (int jj=0; jj<NGS; jj++) {
       scalar YG = YGList_G[jj];
-      YG[] = gas_start[jj]*(1-f[]);
+      // YG[] = gas_start[jj]*(1-f[]);
+      YG[] = gas_ext[jj]*(1-f[]);
     }
 
     for (int jj=0; jj<NGS; jj++) {
       scalar YG = YGList_S[jj];
-      YG[] = gas_start[jj]*f[];
+      // YG[] = gas_start[jj]*f[];
+      YG[] = gas_int[jj]*f[];
     }
   }
 
@@ -268,6 +307,15 @@ event init (i = 0){
     for (int jj=0; jj<NSS; jj++) {
       scalar YS = YSList[jj];
       YS[] = sol_start[jj]*f[];
+    }
+  }
+
+  foreach() {
+    for (int jj=0; jj<NGS; jj++) {
+      scalar sSexp = sSexpList[jj];
+      scalar sGexp = sGexpList[jj];
+      sSexp[] = 0.;
+      sGexp[] = 0.;
     }
   }
 
@@ -310,9 +358,11 @@ event cleanup (t = end) {
   delete (YGList_G), free (YGList_G), YGList_G = NULL;
   delete (Dmix2List_G), free (Dmix2List_G), Dmix2List_G = NULL;
   delete (YGList_Int), free (YGList_Int), YGList_Int = NULL;
-  delete (XGList_G), free (XGList_G), XGList_G = NULL;
-  delete (XGList_S), free (XGList_S), XGList_S = NULL;
-  delete (XGList_Int), free (XGList_Int), XGList_Int = NULL;
+  // delete (XGList_G), free (XGList_G), XGList_G = NULL;
+  // delete (XGList_S), free (XGList_S), XGList_S = NULL;
+  // delete (XGList_Int), free (XGList_Int), XGList_Int = NULL;
+  delete (sSexpList), free (sSexpList), sSexpList = NULL;
+  delete (sGexpList), free (sGexpList), sGexpList = NULL;
   free(gas_start), gas_start = NULL;
   free(sol_start), sol_start = NULL;
   free(gas_MWs), gas_MWs = NULL;

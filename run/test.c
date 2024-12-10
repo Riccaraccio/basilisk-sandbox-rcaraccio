@@ -1,7 +1,7 @@
 #define NO_ADVECTION_DIV    1
 #define FSOLVE_ABSTOL       1.e-3
 #define SOLVE_TEMPERATURE   1
-#define CONST_DIFF         1
+#define CONST_DIFF          1
 //#define EXPLICIT_REACTIONS  1
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
@@ -10,7 +10,6 @@
 #include "navier-stokes/centered-phasechange.h"
 #include "prop.h"
 #include "two-phase.h"
-//#include "temperature-vt.h"
 #include "multicomponent-t.h"
 #include "shrinking.h"
 //#include "darcy.h"
@@ -20,15 +19,11 @@ u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
 p[top]        = dirichlet (0.);
 psi[top]      = dirichlet (0.);
-ubf.t[top]    = neumann (0.);
-ubf.n[top]    = neumann (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
-ubf.t[right]  = neumann (0.);
-ubf.n[right]  = neumann (0.);
 
 int maxlevel = 6; int minlevel = 2;
 double D0 = 2*1.27e-2;
@@ -110,22 +105,22 @@ event init(i=0) {
 event output (t+=1) {
   fprintf (stderr, "%g\n", t);
 
-  char name[80];
-  sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
+  // char name[80];
+  // sprintf(name, "OutputData-%d", maxlevel);
+  // static FILE * fp = fopen (name, "w");
 
-  //log mass profile
-  double solid_mass = 0.;
-  foreach (reduction(+:solid_mass))
-    solid_mass += (f[]-porosity[])*rhoS*dv();
+  // //log mass profile
+  // double solid_mass = 0.;
+  // foreach (reduction(+:solid_mass))
+  //   solid_mass += (f[]-porosity[])*rhoS*dv();
 
-  //save temperature profile
-  double Tcore  = interpolate (T, 0., 0.);
-  double Tr2    = interpolate (T, D0/4, 0.);
-  double Tsurf  = interpolate (T, D0/2, 0.);
+  // //save temperature profile
+  // double Tcore  = interpolate (T, 0., 0.);
+  // double Tr2    = interpolate (T, D0/4, 0.);
+  // double Tsurf  = interpolate (T, D0/2, 0.);
 
-  fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
-  fflush(fp);
+  // fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
+  // fflush(fp);
 }
 
 scalar totG[], totS[];
@@ -145,26 +140,22 @@ event end_timestep (i++) {
   }
 }
 
-// event adapt (i++) {
-//   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-//      (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
-// }
+event adapt (i++) {
+  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
+     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+}
 
-// event movie(t+=1) {
+// event movie(t+=0.25) {
 //   clear();
 //   box();
-//   view (ty=-0.5, tx=-0.5);
-//   squares("T", max=TG0,  min=TS0);
-//   draw_vof("f");
-//   //cells();
-//   save ("temperature.mp4");
-//
-//   clear();
-//   box();
-//   view (ty=-0.5, tx=-0.5);
-//   squares("C6H10O5", max=1,  min=0);
-//   draw_vof("f");
-//   save ("LVG.mp4");
+//   view (ty=-0.5, width = 1400.);
+//   draw_vof("f", lw=2);
+//   squares ("N2_S+N2_G", min=0., max=1., linear=true);
+//   mirror ({1.,0.}) {
+//     draw_vof ("f", lw=2);
+//     squares ("CO_S+CO_G", min=0., max=1., linear=true);
+//  }
+//   save ("species.mp4");
 // }
 
 #if DUMP
@@ -188,4 +179,4 @@ event snapshots (t += 1) {
 }
 #endif
 
-event stop (t = 800);
+event stop (t = 20);

@@ -9,7 +9,7 @@
 
 #include "common-evaporation.h"
 #include "memoryallocation-t.h"
-#include "reactions.h"
+//#include "reactions.h" //TEMP
 #include "int-temperature-v.h"
 #include "int-condition.h"
 
@@ -27,32 +27,28 @@ event reset_sources (i++) {
       sGexp[] = 0.;
     }
   }
+
+  foreach() {
+    omega[] = 1.;
+  }
 }
 
-// extern face vector ufsave;
-// event tracer_advection (i++) { //performed in temperature-vt.h
-//   // reconstruct darcy velocity
-//   face vector darcyv[];
-//   foreach_face() {
-//     darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
-//   }
-//
-//   //advection of YGList
-//   advection_div (YGList, ufsave, dt);
-//
-//   // ensure that sum(YG) = 1
-//   foreach() {
-//     double totmassgas = 0.;
-//     for (scalar YG in YGList)
-//       totmassgas += YG[];
-//
-//     for (scalar YG in YGList) {
-//       YG[] = (totmassgas > 0.) ? YG[]/totmassgas : 0.;
-//       YG[] = clamp(YG[], 0., 1.);
-//       YG[] = (YG[] > 1e-10) ? YG[] : 0.;
-//     }
-//   }
-// }
+extern face vector ufsave;
+event tracer_advection (i++) {
+
+  foreach()
+    fu[] = f[];
+
+  // reconstruct darcy velocity
+  face vector darcyv[];
+  foreach_face() {
+    darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
+  }
+
+  //advection of YG_G, YG_S, TS, TG
+  //velocity is ufsave, set in shrinking.h
+  vof_advection ({fu}, i);
+}
 
 event tracer_diffusion (i++) {
 

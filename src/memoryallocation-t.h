@@ -369,6 +369,6 @@ event cleanup (t = end) {
   free(sol_MWs), sol_MWs = NULL;
 #ifdef SOLVE_TEMPERATURE
   delete ({TS,TG});
-  delete (fu.tracers), free(fu.tracers), fu.tracers = NULL;
 #endif
+  delete (fu.tracers), free(fu.tracers), fu.tracers = NULL;
 }

@@ -365,4 +365,8 @@ event cleanup (t = end) {
   delete ({TS,TG});
 #endif
   delete (fu.tracers), free(fu.tracers), fu.tracers = NULL;
+
+#ifdef TEMPERATURE_PROFILE
+  TemperatureProfile_Free();
+#endif
 }

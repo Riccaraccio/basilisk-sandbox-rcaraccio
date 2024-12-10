@@ -6,6 +6,7 @@
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
 
+#include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "prop.h"
@@ -32,7 +33,8 @@ double solid_mass0 = 0.;
 int main() {
   lambdaS = 0.1987; lambdaG = 0.076;
   cpS = 1600; cpG = 1167;
-  TS0 = 300.; TG0 = 743.;
+  // TS0 = 300.; TG0 = 743.;
+  TS0 = 300.; TG0 = 300.;
   rhoS = 850; rhoG = 0.674;
   muG = 3.53e-5;
   eps0 = 0.4;
@@ -84,6 +86,16 @@ event init(i=0) {
 
   inert[top] = dirichlet (1.);
   inert[right] = dirichlet (1.);
+
+  timeprofile = [0, 1, 2, 3, 4, 5, 13.8996139, 41.6988417, 88.03088803, 166.7953668, 
+    254.8262548, 342.8571429, 454.0540541, 574.5173745, 694.980695, 806.1776062, 
+    917.3745174, 1037.837838, 1200];
+  temperatureprofile = [300, 309.492891, 366.8388626, 424.1848341, 486.7440758, 559.7298578, 
+    611.8625592, 656.1753555, 697.8815166, 723.9478673, 736.9810427, 752.6208531, 
+    750.014218, 752.6208531, 752.6208531, 750.014218, 750.014218, 750.014218, 750.014218];
+  
+  TemperatureProfile_Set(timeprofile, temperatureprofile);
+  
 }
 
 event output (t+=1) {

@@ -9,7 +9,7 @@
 
 #include "common-evaporation.h"
 #include "memoryallocation-t.h"
-#include "reactions.h" //TEMP
+#include "reactions.h"
 #include "int-temperature-v.h"
 #include "int-condition.h"
 
@@ -85,7 +85,13 @@ event tracer_diffusion (i++) {
   foreach()
     if (f[] > F_ERR && f[] < 1.-F_ERR)
       TInt[] = TG0;
-  #else //default: solve interface balance
+
+  #elif TEMPERATURE_PROFILE
+  foreach()
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
+      TInt[] = TemperatureProfile_GetT(t);
+
+  #else //default: solve for interface temperature
   ijc_CoupledTemperature();
   #endif
 #endif

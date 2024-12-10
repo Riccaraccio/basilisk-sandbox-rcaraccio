@@ -2,9 +2,10 @@
     #define TEMPERATURE_PROFILE 1
 #endif
 
-double* TempVector;
-double* TimeVector;
+double* TempVector = NULL;
+double* TimeVector = NULL;
 int nPoints;
+extern double TG0;
 
 /**
  * @brief Reads temperature profile data from given arrays.
@@ -18,6 +19,11 @@ int nPoints;
  * @note The arrays x and y must have the same length.
  */
 void TemperatureProfile_Set(const double*x, const double* y) {
+
+    if (y[0] != TG0 && TG0 != NULL) {
+        printf("Error: The first temperature value must be equal to TG0.\n");
+        return;
+    }
 
     if (sizeof(x) != sizeof(y)) {
         printf("Error: The arrays Time and Temperature must have the same length.\n");
@@ -63,4 +69,17 @@ double TemperatureProfile_GetT(double time) {
         }
     }
     return -1;
+}
+
+/**
+ * @brief Frees the memory allocated for temperature and time vectors.
+ *
+ * This function releases the dynamically allocated memory for the 
+ * temperature vector (TempVector) and the time vector (TimeVector).
+ * It should be called to avoid memory leaks when these vectors are 
+ * no longer needed.
+ */
+void TemperatureProfile_Free() {
+    free(TempVector);
+    free(TimeVector);
 }

@@ -15,22 +15,23 @@ extern double TG0;
  *
  * @param x Pointer to an array of time data.
  * @param y Pointer to an array of temperature data.
+ * @param size The number of data points in the arrays.
  * @return void
  * @note The arrays x and y must have the same length.
  */
-void TemperatureProfile_Set(const double*x, const double* y) {
+void TemperatureProfile_Set(const double*x, const double* y, const int size) {
 
-    if (y[0] != TG0 && TG0 != NULL) {
-        printf("Error: The first temperature value must be equal to TG0.\n");
+    if (y[0] != TG0 || TG0 == 0) {
+        fprintf(stderr,"Error: The first temperature value must be equal to TG0.\n");
         return;
     }
 
     if (sizeof(x) != sizeof(y)) {
-        printf("Error: The arrays Time and Temperature must have the same length.\n");
+        fprintf(stderr,"Error: The arrays Time and Temperature must have the same length.\n");
         return;
     }
 
-    nPoints = sizeof(x)/sizeof(double);
+    nPoints = size; 
     TempVector = (double*)malloc(nPoints*sizeof(double));
     TimeVector = (double*)malloc(nPoints*sizeof(double));
     for (int i=0; i<nPoints; i++) {
@@ -48,13 +49,13 @@ void TemperatureProfile_Set(const double*x, const double* y) {
  * or the last known temperature value.
  *
  * @param time The time at which the temperature is to be retrieved.
- * @return The interpolated temperature at the given time. If the time is out of bounds,
- *         it returns -1 and prints an error message.
+ * @return The interpolated temperature at the given time. If the time greater than
+ * the last time, returns the last temperature.
  */
 double TemperatureProfile_GetT(double time) {
 
     if (time < TimeVector[0]) {
-        printf("Error: Time is out of bound.\n");
+        fprintf(stderr,"Error: Time is out of bound.\n");
         return -1;
     }
 
@@ -80,6 +81,18 @@ double TemperatureProfile_GetT(double time) {
  * no longer needed.
  */
 void TemperatureProfile_Free() {
-    free(TempVector);
-    free(TimeVector);
+    free(TempVector), TempVector = NULL;
+    free(TimeVector), TimeVector = NULL;
+}
+
+/**
+ * @brief Prints the temperature profile data to the standard error stream.
+ *
+ * This function prints the temperature profile data to the standard error stream.
+ * It is useful for debugging purposes to verify that the data has been read correctly.
+ */
+void TemperatureProfile_Print() {
+    for (int i=0; i<nPoints; i++) {
+        fprintf(stderr,"%g %g\n", TimeVector[i], TempVector[i]);
+    }
 }

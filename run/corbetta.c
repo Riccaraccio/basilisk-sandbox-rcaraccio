@@ -26,15 +26,18 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 
 int main() {
   lambdaS = 0.1987; lambdaG = 0.076;
   cpS = 1600; cpG = 1167;
-  // TS0 = 300.; TG0 = 743.;
+#ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
+#else
+  TS0 = 300.; TG0 = 743.;
+#endif
   rhoS = 850; rhoG = 0.674;
   muG = 3.53e-5;
   eps0 = 0.4;
@@ -78,24 +81,31 @@ event init(i=0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-  zeta_policy = 0;
+  //0: SHRINK, 1: SWELLING, 2: SMOOTH, 3: SHARP, 4: LEVELSET
+  zeta_policy = 1;
 
+#ifdef SOLVE_TEMPERATURE
+#ifndef TEMPERATURE_PROFILE
   TG[top] = dirichlet (TG0);
   TG[right] = dirichlet (TG0);
+#endif
+#endif
+
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
 
   inert[top] = dirichlet (1.);
   inert[right] = dirichlet (1.);
 
-  timeprofile = [0, 1, 2, 3, 4, 5, 13.8996139, 41.6988417, 88.03088803, 166.7953668, 
+#ifdef TEMPERATURE_PROFILE
+  double timeprofile[] = {0, 1, 2, 3, 4, 5, 13.8996139, 41.6988417, 88.03088803, 166.7953668, 
     254.8262548, 342.8571429, 454.0540541, 574.5173745, 694.980695, 806.1776062, 
-    917.3745174, 1037.837838, 1200];
-  temperatureprofile = [300, 309.492891, 366.8388626, 424.1848341, 486.7440758, 559.7298578, 
+    917.3745174, 1037.837838, 1200};
+  double temperatureprofile[] = {300, 309.492891, 366.8388626, 424.1848341, 486.7440758, 559.7298578, 
     611.8625592, 656.1753555, 697.8815166, 723.9478673, 736.9810427, 752.6208531, 
-    750.014218, 752.6208531, 752.6208531, 750.014218, 750.014218, 750.014218, 750.014218];
+    750.014218, 752.6208531, 752.6208531, 750.014218, 750.014218, 750.014218, 750.014218};
   
-  TemperatureProfile_Set(timeprofile, temperatureprofile);
-  
+  TemperatureProfile_Set(timeprofile, temperatureprofile, sizeof(timeprofile)/sizeof(double));
+#endif
 }
 
 event output (t+=1) {
@@ -141,19 +151,31 @@ event adapt (i++) {
 //   save ("LVG.mp4");
 // }
 
-event movie(t+=1) {
-  clear();
-  box();
-  view (ty=-0.5, width = 1400.);
-  draw_vof("f", lw=2);
-  squares ("T", min=TS0, max=TG0, linear=true);
-  mirror ({1.,0.}) {
-    draw_vof ("f", lw=2);
-    squares ("C6H10O5_G+C6H10O5_S", min=0., max=1., linear=true);
-    vectors ("u", scale=1);
- }
- save ("movie.mp4");
-}
+// event movie(t+=1) {
+//   clear();
+//   box();
+//   view (ty=-0.5, width = 1400.);
+//   draw_vof("f", lw=2);
+//   squares ("T", min=TS0, max=TG0, linear=true);
+//   mirror ({1.,0.}) {
+//     draw_vof ("f", lw=2);
+//     squares ("C6H10O5_G+C6H10O5_S", min=0., max=1., linear=true);
+//     // vectors ("u", scale=1);
+//  }
+//  save ("movie.mp4");
+
+//   clear ();
+//   box ();
+//   view (ty = -0.5, width = 1400.);
+//   draw_vof ("f", lw = 2);
+//   squares ("porosity", min = 0., max = eps0, linear = true);
+//   mirror ({1., 0.}) {
+//     draw_vof ("f", lw = 2);
+//     cells();
+//     vectors ("u", scale = 1);
+//   }
+//   save("movie2.mp4");
+// }
 
 #if DUMP
 int count = 0;

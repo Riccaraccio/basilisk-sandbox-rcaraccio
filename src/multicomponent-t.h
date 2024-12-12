@@ -32,18 +32,30 @@ event reset_sources (i++) {
 extern face vector ufsave;
 event tracer_advection (i++) {
 
-  foreach()
+  foreach() {
     fu[] = f[];
+    if (f[] > F_ERR)
+      porosity[] /= f[];
+  }
 
   // reconstruct darcy velocity
   face vector darcyv[];
   foreach_face() {
-    darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
+    // darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
+    darcyv.x[] = f[] > F_ERR ? ufsave.x[]*face_value(porosity, 0) : ufsave.x[];
+    // uf.x[] = darcyv.x[];  
   }
+
+  foreach()
+    porosity[] *= f[];
 
   //advection of YG_G, YG_S, TS, TG
   //velocity is ufsave, set in shrinking.h
-  vof_advection ({fu}, i);
+  // vof_advection ({fu}, i);
+
+  // foreach_face()
+  //   uf.x[] = ufsave.x[];
+
 }
 
 event tracer_diffusion (i++) {
@@ -87,9 +99,14 @@ event tracer_diffusion (i++) {
       TInt[] = TG0;
 
   #elif TEMPERATURE_PROFILE
-  foreach()
+  double tv = TemperatureProfile_GetT(t);
+  foreach() {
     if (f[] > F_ERR && f[] < 1.-F_ERR)
-      TInt[] = TemperatureProfile_GetT(t);
+      TInt[] = tv;
+    
+    if (f[] < 1.-F_ERR)
+      TG[] = tv;
+  }
 
   #else //default: solve for interface temperature
   ijc_CoupledTemperature();

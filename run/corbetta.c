@@ -199,3 +199,58 @@ event snapshots (t += 1) {
 #endif
 
 event stop (t = 1000);
+/** 
+~~~gnuplot temperature profiles
+reset
+set xlabel "t [s]"
+set ylabel "temperature [K]"
+set key bottom right
+set xrange [0:1000]
+set yrange [300:800]
+set grid
+
+plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
+      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
+      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
+      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
+      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
+      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface"
+~~~
+
+~~~gnuplot temperature profiles
+reset
+set xlabel "t [s]"
+set ylabel "temperature [K]"
+set key bottom right
+set xrange [0:1000]
+set yrange [300:800]
+set grid
+
+plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
+      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
+      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
+      "data/biosmoke-core.txt"  u 1:2 w l lw 2 dt 2 lc "red" t "BioSMOKE core", \
+      "data/biosmoke-r2.txt"    u 1:2 w l lw 2 dt 2 lc "web-green" t "BioSMOKE R/2", \
+      "data/biosmoke-surf.txt"  u 1:2 w l lw 2 dt 2 lc "web-blue" t "BioSMOKE surface"
+
+~~~
+~~~gnuplot temperature profiles
+reset
+set xlabel "t [s]"
+set ylabel "temperature [K]"
+set key bottom right
+set xrange [0:1000]
+set yrange [300:800]
+set grid
+
+plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
+      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
+      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
+      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
+      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
+      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface", \
+      "data/biosmoke-core.txt"  u 1:2 w l lw 2 dt 2 lc "red" t "BioSMOKE core", \
+      "data/biosmoke-r2.txt"    u 1:2 w l lw 2 dt 2 lc "web-green" t "BioSMOKE R/2", \
+      "data/biosmoke-surf.txt"  u 1:2 w l lw 2 dt 2 lc "web-blue" t "BioSMOKE surface"
+~~~
+**/

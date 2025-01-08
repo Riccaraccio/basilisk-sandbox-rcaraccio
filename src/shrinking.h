@@ -42,7 +42,9 @@ event phasechange (i++) {
 
   foreach() {
     f[] = clamp(f[], 0.,1.);
+    f[] = (f[] > F_ERR) ? f[] : 0.;
     porosity[] = clamp(porosity[], 0., 1.);
+    porosity[] = (porosity[] > F_ERR) ? porosity[] : 0.;
   }
 
   double radius = sqrt(statsf(f).sum/pi)*2; //*2 TEMP

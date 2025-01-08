@@ -90,6 +90,7 @@ void intConcentration () {
         for (int jj=0; jj<NGS; jj++) {
           scalar YGInt = YGList_Int[jj];
           YGInt[] = unk[jj];
+          YGInt[] = clamp(YGInt[], 0., 1.);
         }
       }
 

@@ -7,7 +7,7 @@
 #endif
 
 #ifndef AMR_ACTIVE
-# define AMR_ACTIVE 1
+# define AMR_ACTIVE 0
 #endif
 
 // #include "centered-vos.h"
@@ -51,6 +51,7 @@ int main() {
   Da = DARCY;
 
   init_grid (1 << maxlevel);
+  fprintf(stderr, "Da = %g\n", Da);
   run();
 }
 

@@ -12,6 +12,7 @@ We implement the acceleration term due to flow in porous media.
 
 extern scalar porosity;
 extern double rhoG, muG;
+double Da = 5e-3; //to be chaged to coord Da
 
 event defaults (i = 0) {
   if (is_constant(a.x)) {
@@ -23,21 +24,21 @@ event defaults (i = 0) {
   }
 }
 
-double Da = 5e-3; //to be chaged to coord Da
-
 event acceleration (i++){
   face vector av = a;
-  //face_fraction(f,fS);
+  face vector fS[];
+  face_fraction(f,fS);
   foreach_face() {
-    if (f[]>F_ERR) {
+    //if (fS.x[] > F_ERR) {
       double ef = face_value (porosity, 0);
+      ef = 0.7; // make sure we are using the correct value, temp
       double F  = 1.75/pow (150*pow (ef, 3), 0.5);
 
-      // Darcy contribution
-      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (muG*ef/Da) *uf.x[];
+      // Darcy contribution, weighted by the face fraction of the interface
+      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (muG*ef/Da) *uf.x[] *fS.x[]; 
 
       // Forcheimer contribution
-      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*pow(ef,2)*rhoG/pow(Da,0.5)) *fabs(uf.x[])*uf.x[];
-    }
+      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*pow(ef,2)*rhoG/pow(Da,0.5)) *fabs(uf.x[])*uf.x[] *fS.x[];
+    //}
   }
 }

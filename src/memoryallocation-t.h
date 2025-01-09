@@ -283,6 +283,15 @@ for (int jj=0; jj<NGS; jj++) {
 
 event init (i = 0){
   //initialize gas fractions fields
+  // check if the sum of the fractions is 1
+  double sum = 0.;
+  for (int jj=0; jj<NGS; jj++)
+    sum += gas_start[jj];
+  if (fabs(sum-1.) > 1e-10) {
+    fprintf(stderr, "Sum of gas fractions is not 1. Exiting...\n");
+    exit(1);
+  }
+
   foreach() {
     for (int jj=0; jj<NGS; jj++) {
       scalar YG = YGList_G[jj];
@@ -303,6 +312,15 @@ event init (i = 0){
   }
 
   //initialize solid fractions fields
+  // check if the sum of the fractions is 1
+  sum = 0.;
+  for (int jj=0; jj<NSS; jj++)
+    sum += sol_start[jj];
+  if (fabs(sum-1.) > 1e-10) {
+    fprintf(stderr, "Sum of solid fractions is not 1. Exiting...\n");
+    exit(1);
+  }
+
   foreach() {
     for (int jj=0; jj<NSS; jj++) {
       scalar YS = YSList[jj];

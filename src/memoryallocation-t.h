@@ -199,19 +199,21 @@ for (int jj=0; jj<NGS; jj++) {
   for (scalar s in YGList_G)
     s.inverse = true;
 
+  for (scalar s in YSList)
+    s.inverse = false;
+
   // for (scalar s in XGList_S)
   //   s.inverse = false;
 
   // for (scalar s in XGList_G)
   //   s.inverse = true;
 
-  for (scalar s in YSList)
-    s.inverse = false;
-
   fu.tracers = NULL;
-  fu.tracers = list_concat (fu.tracers, YGList_S);
-  fu.tracers = list_concat (fu.tracers, YGList_G);
-  f.tracers = list_concat (f.tracers, YSList);
+  // fu.tracers = list_concat (fu.tracers, YGList_S);
+  // fu.tracers = list_concat (fu.tracers, YGList_G);
+  f.tracers = list_concat (f.tracers, YGList_S);
+  f.tracers = list_concat (f.tracers, YGList_G);
+  f.tracers = list_concat (f.tracers, YSList); //TODO maybe put YSList as fu tracer
 
   fS.nodump = true;
   fG.nodump =true;
@@ -264,7 +266,10 @@ for (int jj=0; jj<NGS; jj++) {
 
   fu.tracers = list_append (fu.tracers, TS);
   fu.tracers = list_append (fu.tracers, TG);
+  //f.tracers = list_append (f.tracers, TS);
+  //f.tracers = list_append (f.tracers, TG);
 
+# if TREE
   TS.refine = refine_linear;
   TS.restriction  = restriction_volume_average;
   TS.dirty = true;
@@ -272,6 +277,7 @@ for (int jj=0; jj<NGS; jj++) {
   TG.refine = refine_linear;
   TG.restriction  = restriction_volume_average;
   TG.dirty = true;
+# endif
 #endif
 }
 

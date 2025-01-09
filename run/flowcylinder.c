@@ -1,5 +1,5 @@
 #ifndef DARCY
-# define DARCY 1.e-3
+# define DARCY 1.e-5
 #endif
 
 #ifndef TIMESTEP
@@ -10,9 +10,8 @@
 # define AMR_ACTIVE 0
 #endif
 
-//#define POROUS_MEDIA 1
+#define POROUS_MEDIA 1
 
-// #include "centered-vos.h"
 #ifndef POROUS_MEDIA 
   #include "embed.h"
 #endif

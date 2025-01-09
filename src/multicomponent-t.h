@@ -14,10 +14,12 @@
 #include "int-condition.h"
 
 event reset_sources (i++) {
+#ifdef SOLVE_TEMPERATURE
   foreach() {
     sST[] = 0.;
     sGT[] = 0.;
   }
+#endif
 
   foreach() {
     for (int jj=0; jj<NGS; jj++) {
@@ -29,33 +31,49 @@ event reset_sources (i++) {
   }
 }
 
+event phasechange (i++) {
+  foreach()
+    fu[] = f[];
+}
+
 extern face vector ufsave;
+face vector u_prime[];
 event tracer_advection (i++) {
 
   foreach() {
-    fu[] = f[];
     if (f[] > F_ERR)
       porosity[] /= f[];
   }
 
-  // reconstruct darcy velocity
-  face vector darcyv[];
+  #ifdef SOLVE_TEMPERATURE
+  //calculate the aritifical velocity
+  face_fraction(f, fsS);
   foreach_face() {
-    // darcyv.x[] = f[] > F_ERR ? ufsave.x[]*porosity[]/f[] : ufsave.x[];
-    darcyv.x[] = f[] > F_ERR ? ufsave.x[]*face_value(porosity, 0) : ufsave.x[];
-    // uf.x[] = darcyv.x[];  
+    double ef = face_value(porosity, 0);
+    u_prime.x[] = 0.;
+    if (fsS.x[] > F_ERR) {
+      u_prime.x[] = ufsave.x[] * (rhoG*cpG*ef)/(rhoG*cpG*ef + rhoS*cpS*(1.-ef)) *fsS.x[];
+    } else {
+      u_prime.x[] = ufsave.x[];
+    }
+  }
+  #endif 
+
+  // set u = u_prime, for temperature advection
+  foreach_face() {
+    //ufsave.x[] = uf.x[];
+    uf.x[] = u_prime.x[];
   }
 
+  //advection of TS, TG
+  vof_advection ({fu}, i);
+
+  // Reset the velocity field
+  foreach_face()
+    uf.x[] = ufsave.x[];
+  
   foreach()
     porosity[] *= f[];
-
-  //advection of YG_G, YG_S, TS, TG
-  //velocity is ufsave, set in shrinking.h
-  // vof_advection ({fu}, i);
-
-  // foreach_face()
-  //   uf.x[] = ufsave.x[];
-
 }
 
 event tracer_diffusion (i++) {
@@ -65,20 +83,40 @@ event tracer_diffusion (i++) {
     f[] = (f[] > F_ERR) ? f[] : 0.;
     fS[] = f[]; fG[] = 1. - f[];
 #ifdef SOLVE_TEMPERATURE
-    TS[] = fu[] > F_ERR ? TS[]/fu[] : 0.;
+    TS[] = (fu[] > F_ERR) ? TS[]/fu[] : 0.;
     TG[] = ((1. - fu[]) > F_ERR) ? TG[]/(1. - fu[]) : 0.;
 #endif
-    if (fu[] > F_ERR)
-      for (int jj = 0; jj < NGS; jj++) {
-        scalar YG = YGList_S[jj];
-        YG[] /= fu[];
-      }
+    // NOTE: these fields should follow fu
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YG = YGList_S[jj];
+      YG[] = (f[] > F_ERR) ? YG[]/f[] : 0.;
+    }
 
-    if (fu[] < 1-F_ERR)
-      for (int jj = 0; jj < NGS; jj++) {
-        scalar YG = YGList_G[jj];
-        YG[] /= (1. - fu[]);
-      }
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YG = YGList_G[jj];
+      YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
+    }
+
+    for (int jj=0; jj<NSS; jj++) {
+      scalar YS = YSList[jj];
+      YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
+    }
+    
+    // //
+    // for (int jj=0; jj<NGS; jj++) {
+    //   scalar YG = YGList_S[jj];
+    //   YG[] = (fu[] > F_ERR) ? YG[]/fu[] : 0.;
+    // }
+
+    // for (int jj=0; jj<NGS; jj++) {
+    //   scalar YG = YGList_G[jj];
+    //   YG[] = ((1. - fu[]) > F_ERR) ? YG[]/(1. - fu[]) : 0.;
+    // }
+
+    // for (int jj=0; jj<NSS; jj++) {
+    //   scalar YS = YSList[jj];
+    //   YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
+    // }
   }
 
   //Compute face gradients
@@ -115,12 +153,14 @@ event tracer_diffusion (i++) {
 
   // first guess for species interface concentration
   foreach() {
-    if (f[] > F_ERR && f[] < 1.-F_ERR)
-      for (int jj = 0; jj<NGS; jj++) {
-        scalar YG = YGList_S[jj];
-        scalar YGInt = YGList_Int[jj];
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YG = YGList_S[jj];
+      scalar YGInt = YGList_Int[jj];
+      YGInt[] = 0.;
+      if (f[] > F_ERR && f[] < 1.-F_ERR)
         YGInt[] = avg_neighbor (point, YG, f);
-      }
+        YGInt[] = clamp (YGInt[], 0., 1.);
+    }
   }
 
   //find the interface concentration foreach species
@@ -251,8 +291,8 @@ event tracer_diffusion (i++) {
     diffusion_explicit (TS, dt, D=lambda1f, r=sST, theta=theta1);
     diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);
   #else
-  diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
-  diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
+    diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
+    diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
   #endif
 #endif
 

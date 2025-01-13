@@ -37,43 +37,45 @@ event phasechange (i++) {
 }
 
 extern face vector ufsave;
-face vector u_prime[];
+face vector u_TS[];
+face vector u_TG[];
 event tracer_advection (i++) {
 
+  // lose tracer form
   foreach() {
-    if (f[] > F_ERR)
-      porosity[] /= f[];
+    porosity[] = (f[] > F_ERR) ? porosity[]/f[] : 0.;
+#ifdef SOLVE_TEMPERATURE
+    TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
+    TG[] = ((1.-f[]) > F_ERR) ? TG[]/(1.-f[]) : TS[]; //FIX is this a trick? does not work if : 0.
+#endif
   }
 
-  #ifdef SOLVE_TEMPERATURE
-  //calculate the aritifical velocity
-  face_fraction(f, fsS);
+#ifdef SOLVE_TEMPERATURE
   foreach_face() {
     double ef = face_value(porosity, 0);
-    u_prime.x[] = 0.;
-    if (fsS.x[] > F_ERR) {
-      u_prime.x[] = ufsave.x[] * (rhoG*cpG*ef)/(rhoG*cpG*ef + rhoS*cpS*(1.-ef)) *fsS.x[];
-    } else {
-      u_prime.x[] = ufsave.x[];
-    }
+    u_TS.x[] = (f[] > F_ERR) ? ufsave.x[]*(rhoG*cpG*ef)/(rhoG*cpG*ef + rhoS*cpS*(1.-ef)) : 0.;
   }
-  #endif 
+  advection_div({TS}, u_TS, dt);
 
-  // set u = u_prime, for temperature advection
-  foreach_face() {
-    //ufsave.x[] = uf.x[];
-    uf.x[] = u_prime.x[];
-  }
-
-  //advection of TS, TG
-  vof_advection ({fu}, i);
+# ifndef TEMPERATURE_PROFILE
+  foreach_face() 
+    u_TG.x[] = (f[] < F_ERR) ? ufsave.x[] : 0.;
+  advection_div({TG}, u_TG, dt);
+# endif
+#endif
 
   // Reset the velocity field
   foreach_face()
     uf.x[] = ufsave.x[];
   
-  foreach()
-    porosity[] *= f[];
+  // recover tracer form
+  foreach() {
+    porosity[] = (f[] > F_ERR) ? porosity[]*f[] : 0.;
+#ifdef SOLVE_TEMPERATURE
+    TS[] = (f[] > F_ERR) ? TS[]*f[] : 0.;
+    TG[] = ((1.-f[]) > F_ERR) ? TG[]*(1.-f[]) : 0.;
+#endif
+  }
 }
 
 event tracer_diffusion (i++) {
@@ -83,8 +85,10 @@ event tracer_diffusion (i++) {
     f[] = (f[] > F_ERR) ? f[] : 0.;
     fS[] = f[]; fG[] = 1. - f[];
 #ifdef SOLVE_TEMPERATURE
-    TS[] = (fu[] > F_ERR) ? TS[]/fu[] : 0.;
-    TG[] = ((1. - fu[]) > F_ERR) ? TG[]/(1. - fu[]) : 0.;
+    // TS[] = (fu[] > F_ERR) ? TS[]/fu[] : 0.;
+    // TG[] = ((1. - fu[]) > F_ERR) ? TG[]/(1. - fu[]) : 0.;
+    TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
+    TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
 #endif
     // NOTE: these fields should follow fu
     for (int jj=0; jj<NGS; jj++) {

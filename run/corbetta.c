@@ -1,6 +1,7 @@
 #define NO_ADVECTION_DIV    1
 #define FSOLVE_ABSTOL       1.e-3
 #define SOLVE_TEMPERATURE   1
+//#define NO_1D_COMPRESSION   1
 // #define CONST_DIFF          1
 //#define EXPLICIT_REACTIONS  1
 //#define EXPLICIT_DIFFUSION  1
@@ -26,7 +27,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 6; int minlevel = 2;
 double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 
@@ -36,7 +37,7 @@ int main() {
 #ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
 #else
-  TS0 = 300.; TG0 = 743.;
+  TS0 = 550.; TG0 = 550.;
 #endif
   rhoS = 850; rhoG = 0.674;
   muG = 3.53e-5;
@@ -221,9 +222,9 @@ set xrange [0:1000]
 set yrange [300:800]
 set grid
 
-plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
+plot  "OutputData-6" u 1:3 w l lw 2 lc "red" t "Core", \
+      "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "R/2", \
+      "OutputData-6" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
       "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
       "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
       "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface"

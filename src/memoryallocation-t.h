@@ -264,10 +264,10 @@ for (int jj=0; jj<NGS; jj++) {
   sST.nodump = true;
   sGT.nodump = true;
 
-  fu.tracers = list_append (fu.tracers, TS);
-  fu.tracers = list_append (fu.tracers, TG);
-  //f.tracers = list_append (f.tracers, TS);
-  //f.tracers = list_append (f.tracers, TG);
+  // fu.tracers = list_append (fu.tracers, TS);
+  // fu.tracers = list_append (fu.tracers, TG);
+  f.tracers = list_append (f.tracers, TS);
+  f.tracers = list_append (f.tracers, TG);
 
 # if TREE
   TS.refine = refine_linear;

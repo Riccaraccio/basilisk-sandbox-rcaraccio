@@ -43,6 +43,7 @@ event phasechange (i++) {
   foreach() {
     f[] = clamp(f[], 0.,1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
+    f[] = (f[] < 1.-F_ERR) ? f[] : 1.;
     porosity[] = clamp(porosity[], 0., 1.);
     porosity[] = (porosity[] > F_ERR) ? porosity[] : 0.;
   }
@@ -89,7 +90,7 @@ event vof(i++) {
     uf.x[] = ubf.x[];
 }
 
-event tracer_advection (i++) {
+event tracer_diffusion (i++) {
   foreach_face()
     uf.x[] = ufsave.x[];
 }

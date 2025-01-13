@@ -37,7 +37,7 @@ face vector lambda1f[], lambda2f[];
 
 scalar fG[], fS[];
 face vector fsS[], fsG[];
-scalar fu[]; //dummy tracer
+scalar fTmp[], fSpc[]; //dummy tracers
 
 event defaults (i = 0) {
 
@@ -208,12 +208,14 @@ for (int jj=0; jj<NGS; jj++) {
   // for (scalar s in XGList_G)
   //   s.inverse = true;
 
-  fu.tracers = NULL;
-  // fu.tracers = list_concat (fu.tracers, YGList_S);
-  // fu.tracers = list_concat (fu.tracers, YGList_G);
+  fTmp.tracers = NULL;
+  fSpc.tracers = NULL;
+
+  // fSpc.tracers = list_concat (fSpc.tracers, YGList_S);
+  // fSpc.tracers = list_concat (fSpc.tracers, YGList_G);
   f.tracers = list_concat (f.tracers, YGList_S);
   f.tracers = list_concat (f.tracers, YGList_G);
-  f.tracers = list_concat (f.tracers, YSList); //TODO maybe put YSList as fu tracer
+  f.tracers = list_concat (f.tracers, YSList);
 
   fS.nodump = true;
   fG.nodump =true;
@@ -264,10 +266,10 @@ for (int jj=0; jj<NGS; jj++) {
   sST.nodump = true;
   sGT.nodump = true;
 
-  fu.tracers = list_append (fu.tracers, TS);
-  fu.tracers = list_append (fu.tracers, TG);
-  //f.tracers = list_append (f.tracers, TS);
-  //f.tracers = list_append (f.tracers, TG);
+  // fTmp.tracers = list_append (fTmp.tracers, TS);
+  // fTmp.tracers = list_append (fTmp.tracers, TG);
+  f.tracers = list_append (f.tracers, TS);
+  f.tracers = list_append (f.tracers, TG);
 
 # if TREE
   TS.refine = refine_linear;
@@ -337,26 +339,29 @@ event init (i = 0){
     }
   }
 
-  foreach()
-    fu[] = f[];
+  foreach(){
+    fTmp[] = f[];
+    fSpc[] = f[];
+  }
 
+  scalar* interfaces2 = {fTmp, fSpc};
 #if TREE
-  {
-    fu.refine = fu.prolongation = fraction_refine;
-    fu.dirty = true;
-    scalar* tracers = fu.tracers;
+  for (scalar c in interfaces2) {
+    c.refine = c.prolongation = fraction_refine;
+    c.dirty = true;
+    scalar* tracers = c.tracers;
     for (scalar t in tracers) {
       t.restriction = restriction_volume_average;
       t.refine = t.prolongation = vof_concentration_refine;
       t.dirty = true;
-      t.c = fu;
+      t.c = c;
     }
   }
 #endif
-  {
-    scalar* tracers = fu.tracers;
+  for (scalar c in interfaces2) {
+    scalar* tracers = c.tracers;
     for (scalar t in tracers)
-      t.depends = list_add (t.depends, fu);
+      t.depends = list_add (t.depends, c);
   }
 
 #ifdef SOLVE_TEMPERATURE
@@ -388,7 +393,8 @@ event cleanup (t = end) {
 #ifdef SOLVE_TEMPERATURE
   delete ({TS,TG});
 #endif
-  delete (fu.tracers), free(fu.tracers), fu.tracers = NULL;
+  delete (fTmp.tracers), free(fTmp.tracers), fTmp.tracers = NULL;
+  delete (fSpc.tracers), free(fSpc.tracers), fSpc.tracers = NULL;
 
 #ifdef TEMPERATURE_PROFILE
   TemperatureProfile_Free();

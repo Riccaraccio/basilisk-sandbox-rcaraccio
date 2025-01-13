@@ -32,91 +32,28 @@ event reset_sources (i++) {
 }
 
 event phasechange (i++) {
-  foreach()
-    fu[] = f[];
-}
-
-extern face vector ufsave;
-face vector u_prime[];
-event tracer_advection (i++) {
-
   foreach() {
-    if (f[] > F_ERR)
-      porosity[] /= f[];
+    fTmp[] = f[];
+    fSpc[] = f[];
   }
-
-  #ifdef SOLVE_TEMPERATURE
-  //calculate the aritifical velocity
-  face_fraction(f, fsS);
-  foreach_face() {
-    double ef = face_value(porosity, 0);
-    u_prime.x[] = 0.;
-    if (fsS.x[] > F_ERR) {
-      u_prime.x[] = ufsave.x[] * (rhoG*cpG*ef)/(rhoG*cpG*ef + rhoS*cpS*(1.-ef)) *fsS.x[];
-    } else {
-      u_prime.x[] = ufsave.x[];
-    }
-  }
-  #endif 
-
-  // set u = u_prime, for temperature advection
-  foreach_face() {
-    //ufsave.x[] = uf.x[];
-    uf.x[] = u_prime.x[];
-  }
-
-  //advection of TS, TG
-  vof_advection ({fu}, i);
-
-  // Reset the velocity field
-  foreach_face()
-    uf.x[] = ufsave.x[];
   
-  foreach()
-    porosity[] *= f[];
-}
-
-event tracer_diffusion (i++) {
-
   foreach() {
     f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
     fS[] = f[]; fG[] = 1. - f[];
 #ifdef SOLVE_TEMPERATURE
-    TS[] = (fu[] > F_ERR) ? TS[]/fu[] : 0.;
-    TG[] = ((1. - fu[]) > F_ERR) ? TG[]/(1. - fu[]) : 0.;
+    TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
+    TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
 #endif
-    // NOTE: these fields should follow fu
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_S[jj];
+
+    for (scalar YG in YGList_S)
       YG[] = (f[] > F_ERR) ? YG[]/f[] : 0.;
-    }
-
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_G[jj];
-      YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
-    }
-
-    for (int jj=0; jj<NSS; jj++) {
-      scalar YS = YSList[jj];
-      YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
-    }
     
-    // //
-    // for (int jj=0; jj<NGS; jj++) {
-    //   scalar YG = YGList_S[jj];
-    //   YG[] = (fu[] > F_ERR) ? YG[]/fu[] : 0.;
-    // }
+    for (scalar YG in YGList_G)
+      YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
 
-    // for (int jj=0; jj<NGS; jj++) {
-    //   scalar YG = YGList_G[jj];
-    //   YG[] = ((1. - fu[]) > F_ERR) ? YG[]/(1. - fu[]) : 0.;
-    // }
-
-    // for (int jj=0; jj<NSS; jj++) {
-    //   scalar YS = YSList[jj];
-    //   YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
-    // }
+    for (scalar YS in YSList)
+      YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
   }
 
   //Compute face gradients
@@ -206,7 +143,7 @@ event tracer_diffusion (i++) {
 #ifdef AXI
         sGexp[] += jG*area*(y + p.y*Delta)/(Delta*y)*cm[];
 #else
-        sGexp[] += jG*area/Delta*cm[]; // ok!
+        sGexp[] += jG*area/Delta*cm[];
 #endif
       }
 
@@ -228,6 +165,86 @@ event tracer_diffusion (i++) {
 #endif
     }
   }
+
+  //Recover tracer form 
+  foreach() {
+#ifdef SOLVE_TEMPERATURE
+    TS[] *= f[];
+    TG[] *= (1. - f[]);
+    T[] = TS[] + TG[];
+#endif
+    for (scalar YG in YGList_S)
+      YG[] *= f[];
+    for (scalar YG in YGList_G)
+      YG[] *= (1. - f[]);
+    for (scalar YS in YSList)
+      YS[] *= f[];
+  }
+}
+
+extern face vector ufsave;
+face vector u_prime[];
+event tracer_advection (i++) {
+  foreach()
+    porosity[] = f[] > F_ERR ? porosity[]/f[] : 0.;
+
+  #ifdef SOLVE_TEMPERATURE
+  //calculate the aritifical velocity
+  face_fraction(f, fsS);
+  foreach_face() {
+    double ef = face_value(porosity, 0);
+    u_prime.x[] = 0.;
+    if (fsS.x[] > F_ERR) {
+      u_prime.x[] = ufsave.x[] * (rhoG*cpG*ef)/(rhoG*cpG*ef + rhoS*cpS*(1.-ef)) *fsS.x[];
+    } else {
+      u_prime.x[] = ufsave.x[];
+    }
+  }
+
+  // set u = u_prime, for temperature advection
+  foreach_face()
+    uf.x[] = u_prime.x[];
+
+  //advection of TS, TG
+  //vof_advection ({fTmp}, i);
+
+  // Reset the velocity field
+  foreach_face()
+    uf.x[] = ufsave.x[];
+  #endif 
+
+  //advection of species
+  //vof_advection ({fSpc}, i);
+  
+  foreach()
+    porosity[] *= f[];
+}
+
+event tracer_diffusion(i++) {
+  foreach() {
+    f[] = clamp (f[], 0., 1.);
+    f[] = (f[] > F_ERR) ? f[] : 0.;
+    fS[] = f[]; fG[] = 1. - f[];
+#ifdef SOLVE_TEMPERATURE
+    // TS[] = (fTmp[] > F_ERR) ? TS[]/fTmp[] : 0.;
+    // TG[] = ((1. - fTmp[]) > F_ERR) ? TG[]/(1. - fTmp[]) : 0.;
+    TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
+    TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
+#endif
+
+    for (scalar YG in YGList_S)
+      YG[] = (f[] > F_ERR) ? YG[]/f[] : 0.;
+    
+    for (scalar YG in YGList_G)
+      YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
+
+    for (scalar YS in YSList)
+      YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
+  }
+
+  //Compute face gradients
+  face_fraction (fS, fsS);
+  face_fraction (fG, fsG);
 
   scalar theta1[], theta2[];
 

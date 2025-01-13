@@ -6,7 +6,7 @@
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
 
-#include "temperature-profile.h"
+//#include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "prop.h"
@@ -26,7 +26,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 6; int minlevel = 2;
 double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 
@@ -36,7 +36,7 @@ int main() {
 #ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
 #else
-  TS0 = 300.; TG0 = 743.;
+  TS0 = 300.; TG0 = 300.;
 #endif
   rhoS = 850; rhoG = 0.674;
   muG = 3.53e-5;
@@ -140,10 +140,10 @@ event output (t+=1) {
   fflush(fp);
 }
 
-event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
-}
+// event adapt (i++) {
+//   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
+//     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+// }
 
 // event movie(t+=1) {
 //   clear();

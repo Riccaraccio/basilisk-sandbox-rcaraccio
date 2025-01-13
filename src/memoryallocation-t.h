@@ -215,7 +215,7 @@ for (int jj=0; jj<NGS; jj++) {
   // fSpc.tracers = list_concat (fSpc.tracers, YGList_G);
   f.tracers = list_concat (f.tracers, YGList_S);
   f.tracers = list_concat (f.tracers, YGList_G);
-  f.tracers = list_concat (f.tracers, YSList);
+  f.tracers = list_concat (f.tracers, YSList); //FIXME
 
   fS.nodump = true;
   fG.nodump =true;
@@ -269,7 +269,7 @@ for (int jj=0; jj<NGS; jj++) {
   // fTmp.tracers = list_append (fTmp.tracers, TS);
   // fTmp.tracers = list_append (fTmp.tracers, TG);
   f.tracers = list_append (f.tracers, TS);
-  f.tracers = list_append (f.tracers, TG);
+  f.tracers = list_append (f.tracers, TG); //FIXME
 
 # if TREE
   TS.refine = refine_linear;

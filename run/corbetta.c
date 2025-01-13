@@ -6,7 +6,7 @@
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
 
-//#include "temperature-profile.h"
+#include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "prop.h"
@@ -26,7 +26,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 
@@ -140,10 +140,10 @@ event output (t+=1) {
   fflush(fp);
 }
 
-// event adapt (i++) {
-//   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-//     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
-// }
+event adapt (i++) {
+  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
+    (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+}
 
 // event movie(t+=1) {
 //   clear();
@@ -221,9 +221,9 @@ set xrange [0:1000]
 set yrange [300:800]
 set grid
 
-plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
+plot  "OutputData-6" u 1:3 w l lw 2 lc "red" t "Core", \
+      "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "R/2", \
+      "OutputData-6" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
       "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
       "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
       "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface"

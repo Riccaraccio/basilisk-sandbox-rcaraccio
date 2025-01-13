@@ -206,7 +206,7 @@ event tracer_advection (i++) {
     uf.x[] = u_prime.x[];
 
   //advection of TS, TG
-  //vof_advection ({fTmp}, i);
+  vof_advection ({fTmp}, i);
 
   // Reset the velocity field
   foreach_face()
@@ -226,10 +226,10 @@ event tracer_diffusion(i++) {
     f[] = (f[] > F_ERR) ? f[] : 0.;
     fS[] = f[]; fG[] = 1. - f[];
 #ifdef SOLVE_TEMPERATURE
-    // TS[] = (fTmp[] > F_ERR) ? TS[]/fTmp[] : 0.;
-    // TG[] = ((1. - fTmp[]) > F_ERR) ? TG[]/(1. - fTmp[]) : 0.;
-    TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
-    TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
+    TS[] = (fTmp[] > F_ERR) ? TS[]/fTmp[] : 0.;
+    TG[] = ((1. - fTmp[]) > F_ERR) ? TG[]/(1. - fTmp[]) : 0.;
+    // TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
+    // TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
 #endif
 
     for (scalar YG in YGList_S)

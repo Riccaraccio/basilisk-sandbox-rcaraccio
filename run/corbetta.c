@@ -27,7 +27,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 

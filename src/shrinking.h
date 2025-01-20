@@ -74,7 +74,7 @@ event phasechange (i++) {
       break;
   }
 
-  mgpsf = project_sv (ubf, psi, dt, mgpsf.nrelax);
+  mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
 
   foreach()
     gasSource[] = -omega[]*(f[]-porosity[])/rhoG*cm[]; // gas production, *(f-ef)

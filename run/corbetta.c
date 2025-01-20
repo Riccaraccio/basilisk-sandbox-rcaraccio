@@ -163,7 +163,7 @@ event adapt (i++) {
 //   save ("LVG.mp4");
 // }
 
-// event movie(t+=1) {
+event movie(t+=5) {
 //   clear();
 //   box();
 //   view (ty=-0.5, width = 1400.);
@@ -176,18 +176,21 @@ event adapt (i++) {
 //  }
 //  save ("movie.mp4");
 
-//   clear ();
-//   box ();
-//   view (ty = -0.5, width = 1400.);
-//   draw_vof ("f", lw = 2);
-//   squares ("porosity", min = 0., max = eps0, linear = true);
-//   mirror ({1., 0.}) {
-//     draw_vof ("f", lw = 2);
-//     cells();
-//     vectors ("u", scale = 1);
-//   }
-//   save("movie2.mp4");
-// }
+  clear ();
+  box ();
+  view (ty = -0.5, width = 1400.);
+  draw_vof ("f", lw = 2);
+  scalar epsi[];
+  foreach()
+    epsi[] = f[]>F_ERR ? porosity[]/f[] : 1.;
+  squares ("epsi", min = 0., max = 1., linear = true);
+  mirror ({1., 0.}) {
+    draw_vof ("f", lw = 2);
+    cells();
+    vectors ("u", scale = 1e-2);
+  }
+  save("movie2.mp4");
+}
 
 #if DUMP
 int count = 0;

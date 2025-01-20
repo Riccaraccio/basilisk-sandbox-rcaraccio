@@ -33,13 +33,16 @@ event properties (i++) {
 
   //Update other fields properties
   foreach() {
-    lambda1v[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
-    lambda2v[] = lambdaG;
 
     rho1v[] = f[] > F_ERR ? pavg (porosity[]/f[], rhoG, rhoS) : rhoG;
     rho2v[] = rhoG;
 
+#ifdef SOLVE_TEMPERATURE
+    lambda1v[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
+    lambda2v[] = lambdaG;
+
     rhocp1v[] =  f[] > F_ERR ? pavg (porosity[]/f[], rhoG*cpG, rhoS*cpS) : rhoG*cpG;
     rhocp2v[] =  rhoG*cpG;
+#endif
   }
 }

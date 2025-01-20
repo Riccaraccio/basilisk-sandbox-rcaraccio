@@ -173,63 +173,64 @@ set multiplot layout 1,3 title "Mass errors at different grid refinments AXI"
 
 
 # Calculate differences in total mass at level 5
-stats "balances-5-0-0" using 1:4 nooutput
-diff_500 = STATS_max_y - STATS_min_y
+stats "balances-5-0-0" u (last_y=$4) nooutput
+diff_500 = last_y -1
 
-stats "balances-5-0-1" using 1:4 nooutput
-diff_501 = STATS_max_y - STATS_min_y
+# Calculate differences in total mass at level 5
+stats "balances-5-0-1" u (last_y=$4) nooutput
+diff_501 = last_y - 1
 
-stats "balances-5-1-0" using 1:4 nooutput
-diff_510 = STATS_max_y - STATS_min_y
+stats "balances-5-1-0" u (last_y=$4) nooutput
+diff_510 = last_y - 1
 
-stats "balances-5-1-1" using 1:4 nooutput
-diff_511 = STATS_max_y - STATS_min_y
+stats "balances-5-1-1" u (last_y=$4) nooutput
+diff_511 = last_y - 1
 
-stats "balances-5-2-0" using 1:4 nooutput
-diff_520 = STATS_max_y - STATS_min_y
+stats "balances-5-2-0" u (last_y=$4) nooutput
+diff_520 = last_y - 1
 
-stats "balances-5-2-1" using 1:4 nooutput
-diff_521 = STATS_max_y - STATS_min_y
+stats "balances-5-2-1" u (last_y=$4) nooutput
+diff_521 = last_y - 1
 
 
 # Calculate differences in total mass at level 6
-stats "balances-6-0-0" using 1:4 nooutput
-diff_600 = STATS_max_y - STATS_min_y
+stats "balances-6-0-0" u (last_y=$4) nooutput
+diff_600 = last_y - 1
 
-stats "balances-6-0-1" using 1:4 nooutput
-diff_601 = STATS_max_y - STATS_min_y
+stats "balances-6-0-1" u (last_y=$4) nooutput
+diff_601 = last_y - 1
 
-stats "balances-6-1-0" using 1:4 nooutput
-diff_610 = STATS_max_y - STATS_min_y
+stats "balances-6-1-0" u (last_y=$4) nooutput
+diff_610 = last_y - 1
 
-stats "balances-6-1-1" using 1:4 nooutput
-diff_611 = STATS_max_y - STATS_min_y
+stats "balances-6-1-1" u (last_y=$4) nooutput
+diff_611 = last_y - 1
 
-stats "balances-6-2-0" using 1:4 nooutput
-diff_620 = STATS_max_y - STATS_min_y
+stats "balances-6-2-0" u (last_y=$4) nooutput
+diff_620 = last_y - 1
 
-stats "balances-6-2-1" using 1:4 nooutput
-diff_621 = STATS_max_y - STATS_min_y
+stats "balances-6-2-1" u (last_y=$4) nooutput
+diff_621 = last_y - 1
 
 
 # Calculate differences in total mass at level 7
-stats "balances-7-0-0" using 1:4 nooutput
-diff_700 = STATS_max_y - STATS_min_y
+stats "balances-7-0-0" u (last_y=$4) nooutput
+diff_700 = last_y - 1
 
-stats "balances-7-0-1" using 1:4 nooutput
-diff_701 = STATS_max_y - STATS_min_y
+stats "balances-7-0-1" u (last_y=$4) nooutput
+diff_701 = last_y - 1
 
-stats "balances-7-1-0" using 1:4 nooutput
-diff_710 = STATS_max_y - STATS_min_y
+stats "balances-7-1-0" u (last_y=$4) nooutput
+diff_710 = last_y - 1
 
-stats "balances-7-1-1" using 1:4 nooutput
-diff_711 = STATS_max_y - STATS_min_y
+stats "balances-7-1-1" u (last_y=$4) nooutput
+diff_711 = last_y - 1
 
-stats "balances-7-2-0" using 1:4 nooutput
-diff_720 = STATS_max_y - STATS_min_y
+stats "balances-7-2-0" u (last_y=$4) nooutput
+diff_720 = last_y - 1
 
-stats "balances-7-2-1" using 1:4 nooutput
-diff_721 = STATS_max_y - STATS_min_y
+stats "balances-7-2-1" u (last_y=$4) nooutput
+diff_721 = last_y - 1
 
 array x_levels[3] = [2**5, 2**6, 2**7]
 

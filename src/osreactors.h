@@ -208,5 +208,7 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
 
   //dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
   dy[NGS+NSS+1] = (QRsol*(1-epsilon))/((rhog*cpg*epsilon) + rhos*cps*(1-epsilon));
-  //dy[NGS+NSS+1] = 0.;
+#ifdef TURN_OFF_HEAT_OF_REACTION
+  dy[NGS+NSS+1] *= 0.;
+#endif
 }

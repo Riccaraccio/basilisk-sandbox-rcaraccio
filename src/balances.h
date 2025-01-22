@@ -1,4 +1,6 @@
-#define BALANCES
+#ifndef BALANCES
+# define BALANCES
+#endif
 
 extern int maxlevel;
 extern scalar f, porosity;
@@ -16,9 +18,14 @@ struct MassBalances
   double tot_gas_mass_bd;
 
   //gas mass variables
-  double* gas_massbdnow;
-  double* gas_massbd;
+  double* gas_mass_bdnow;
+  double* gas_mass;
+  double* gas_mass_bd;
   double* gas_mass_start;
+
+  //solid mass variables
+  double* sol_mass;
+  double* sol_mass_start;
 
   //file variables
   FILE* fb;
@@ -63,27 +70,29 @@ static double face_flux_bid (Point point, scalar Y, int bid, bool unity=false) {
 }
 
 static void diffusion_boundary (Point point, int bid) {
+  double ff = face_value_bid (point, f, bid);
   foreach_elem (YGList_G, jj) {
-    scalar YG = YGList_G[jj];
-    double gradYG = face_gradient_bid (point, YG, bid);
-    scalar Dmix2  = Dmix2List_G[jj];
-    double Dmix2v = Dmix2[];
-#if AXI
-    mb.gas_massbdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt*y;
-#else
-    mb.gas_massbdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt;
-#endif
-  }
-  foreach_elem (YGList_S, jj) {
-    scalar YG = YGList_S[jj];
-    double gradYG = face_gradient_bid (point, YG, bid);
-    scalar Dmix2  = Dmix2List_S[jj];
-    double Dmix2v = Dmix2[];
-#if AXI
-    mb.gas_massbdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt*y;
-#else
-    mb.gas_massbdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt;
-#endif
+    if (ff < F_ERR) {
+      scalar YG = YGList_G[jj];
+      double gradYG = face_gradient_bid (point, YG, bid);
+      scalar Dmix2  = Dmix2List_G[jj];
+      double Dmix2v = Dmix2[];
+  #if AXI
+      mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt*y*;
+  #else
+      mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt;
+  #endif
+    } else if (ff > 1.-F_ERR) {
+      scalar YG = YGList_S[jj];
+      double gradYG = face_gradient_bid (point, YG, bid);
+      scalar Dmix2  = Dmix2List_S[jj];
+      double Dmix2v = Dmix2[];
+  #if AXI
+      mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt*y*ff;
+  #else
+      mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt*ff;
+  #endif
+    }
   }
 }
 
@@ -93,17 +102,13 @@ static void advection_boundary (Point point, int bid) {
   foreach_elem (YGList_G, jj) {
     scalar YG = YGList_G[jj];
     double fluxYG = face_flux_bid (point, YG, bid);
-    mb.gas_massbdnow[jj] += rhoG*fluxYG*dt;
+    mb.gas_mass_bdnow[jj] += rhoG*fluxYG*dt;
   }
   foreach_elem (YGList_S, jj) {
     scalar YG = YGList_S[jj];
     double fluxYG = face_flux_bid (point, YG, bid);
-    mb.gas_massbdnow[jj] += rhoG*fluxYG*dt;
+    mb.gas_mass_bdnow[jj] += rhoG*fluxYG*dt;
   }
-
-  /**
-  Linear interpolation approximation for the calculation of the face
-  volume fraction. */
 
   //double ff = face_value_bid (point, f, bid);
   //mb.totmass2bdnow += rhoG*face_flux_bid (point, U, bid, unity=true)*(1. - ff)*dt;
@@ -112,20 +117,34 @@ static void advection_boundary (Point point, int bid) {
 
 static void write_balances(void) {
   //print total mass
-  fprintf(mb.fb, "%-12.6f %-12.6f %-12.6f %-12.6f ", t,
-                                        mb.tot_sol_mass / mb.tot_sol_mass_start,
-                                        (mb.tot_gas_mass - mb.tot_gas_mass_start) / mb.tot_sol_mass_start,
-                                        mb.tot_mass / mb.tot_mass_start);
+  fprintf(mb.fb, "%-16.6f %-16.6f %-16.6f %-16.6f ", t,
+                                        mb.tot_sol_mass,
+                                        mb.tot_gas_mass,
+                                        mb.tot_mass);
 
   //print individual gas species mass
   foreach_elem (YGList_G, jj)
-    fprintf(mb.fb, "%-12.6f", (mb.gas_mass[jj] - mb.gas_mass_start[jj]) / mb.tot_sol_mass_start);
+    fprintf(mb.fb, "%-16.6f", mb.gas_mass[jj]);
   
   //print individual solid species mass
   foreach_elem (YSList, jj)
-    fprintf(mb.fb, "%-12.6f", (mb.sol_mass[jj]) / mb.tot_sol_mass_start);
+    fprintf(mb.fb, "%-16.6f", mb.sol_mass[jj]);
   fprintf(mb.fb, "\n");
   fflush(mb.fb);
+}
+
+static void compute_initial_state (void) {
+  foreach (serial) {
+      mb.tot_sol_mass_start += (f[] - porosity[])*rhoS*dv();
+      mb.tot_gas_mass_start += (1-f[] + porosity[])*rhoG*dv();
+  }
+
+  foreach_elem (YGList_G, jj)
+    mb.gas_mass_start[jj] = mb.tot_gas_mass_start*gas_start[jj];
+  foreach_elem (YSList, jj)
+    mb.sol_mass_start[jj] = mb.tot_sol_mass_start*sol_start[jj];
+
+  mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
 }
 
 static void compute_balances(void) {
@@ -133,10 +152,35 @@ static void compute_balances(void) {
   mb.tot_gas_mass = 0.;
   mb.tot_mass = 0.;
   mb.tot_gas_mass_bdnow = 0.;
+  
+  foreach_elem (YGList_G, jj) {
+    mb.gas_mass[jj] = 0.;
+    mb.gas_mass_bdnow[jj] = 0.;
+  }
+
+  foreach_elem (YSList, jj)
+    mb.sol_mass[jj] = 0.;
 
   foreach (serial) {
+    //compute total mass
     mb.tot_sol_mass += (f[] - porosity[])*rhoS*dv(); //(f-ef)
-    mb.tot_gas_mass += (1-f[] + porosity[])*rhoG*dv(); //(1-f + ef) 
+    mb.tot_gas_mass += (1-f[] + porosity[])*rhoG*dv(); //(1-f + ef)
+
+    foreach_elem (YGList_S, jj) {
+      scalar YG_G = YGList_G[jj];
+      scalar YG_S = YGList_S[jj];
+
+      if (f[] > F_ERR)
+        mb.gas_mass[jj] += (porosity[]/f[])*rhoG*YG_S[]*dv(); //ef/f*(YG*f) = ef*YG
+      
+      mb.gas_mass[jj] += YG_G[]*rhoG*dv();
+    }
+
+    //compute individual solid species mass
+    foreach_elem (YSList, jj) {
+      scalar YS = YSList[jj];
+      mb.sol_mass[jj] += (f[] - porosity[])*rhoS*YS[]*dv(); // (1-ef/f)*(YS*f) = f*(1-e)*YS
+    }
   }
 
   if (mb.boundaries) {
@@ -146,20 +190,38 @@ static void compute_balances(void) {
         advection_boundary (point, b);
       }
     }
+
+    foreach_elem (YGList_G, jj)
+      mb.gas_mass_bd[jj] += mb.gas_mass_bdnow[jj];
+
+    mb.tot_gas_mass_bd += mb.tot_gas_mass_bdnow;
   }
-  mb.tot_gas_mass_bd += mb.tot_gas_mass_bdnow;
-  mb.tot_gas_mass += mb.tot_gas_mass_bd;
-  mb.tot_mass = mb.tot_sol_mass + mb.tot_gas_mass;
+
+  foreach_elem (YGList_G, jj)
+    mb.gas_mass[jj] = ((mb.gas_mass[jj] + mb.gas_mass_bd[jj]) - mb.gas_mass_start[jj])/mb.tot_sol_mass_start;
+
+  foreach_elem (YSList, jj)
+    mb.sol_mass[jj] = mb.sol_mass[jj] / mb.tot_sol_mass_start;
+
+  mb.tot_mass = (mb.tot_sol_mass + mb.tot_gas_mass - mb.tot_gas_mass_start) / mb.tot_sol_mass_start;
+  mb.tot_gas_mass = ((mb.tot_gas_mass + mb.tot_gas_mass_bd) -  mb.tot_gas_mass_start) / mb.tot_sol_mass_start;
+  mb.tot_sol_mass = mb.tot_sol_mass/mb.tot_sol_mass_start;
 }
 
-event defualts (i = 0) {
+event defaults (i = 0) {
   mb.tot_gas_mass_bdnow = 0.;
+  mb.tot_gas_mass = 0.;
   mb.tot_gas_mass_bd = 0.;
+
   mb.boundaries = true;
 
   mb.gas_mass_start = (double*) malloc(NGS*sizeof(double));
-  mb.gas_massbd =     (double*) malloc(NGS*sizeof(double));
-  mb.gas_massbdnow =  (double*) malloc(NGS*sizeof(double));
+  mb.gas_mass_bd =    (double*) malloc(NGS*sizeof(double));
+  mb.gas_mass_bdnow = (double*) malloc(NGS*sizeof(double));
+  mb.gas_mass =       (double*) malloc(NGS*sizeof(double));
+
+  mb.sol_mass_start = (double*) malloc(NSS*sizeof(double));
+  mb.sol_mass =       (double*) malloc(NSS*sizeof(double));
 
   foreach()
     U[] = 1.;
@@ -169,20 +231,20 @@ event init(i = 0) {
   sprintf(mb.name, "balances-%d", maxlevel);
   mb.fb = fopen(mb.name, "w");
   //total mass header
-  fprintf(mb.fb, "%-12s %-12s %-12s %-12s ", "t(1)", "tot_sol_mass(2)", "tot_gas_mass(3)", "tot_mass(4)");
+  fprintf(mb.fb, "%-16s %-16s %-16s %-16s ", "t(1)", "tot_sol_mass(2)", "tot_gas_mass(3)", "tot_mass(4)");
   int counter = 5;
   //individual gas species mass header
   foreach_elem (YGList_G, jj) {
-    char buffer[20];
-    sprintf(buffer, "mG_%d(%d)", jj, counter++);
-    fprintf(mb.fb, "%-12s ","mG", jj);
+    char buffer[80];
+    sprintf(buffer, "mG_%s(%d)", OpenSMOKE_NamesOfSpecies(jj), counter++);
+    fprintf(mb.fb, "%-16s", buffer);
   }
 
   //solid species mass header
   foreach_elem (YSList, jj) {
-    char buffer[20];
-    sprintf(buffer, "mS_%d(%d)", jj, counter++);
-    fprintf(mb.fb, "%-12s ","mS", jj);
+    char buffer[80];
+    sprintf(buffer, "mS_%s(%d)",  OpenSMOKE_NamesOfSolidSpecies(jj), counter++);
+    fprintf(mb.fb, "%-16s", buffer);
   }
   
   fprintf(mb.fb, "\n");
@@ -191,21 +253,24 @@ event init(i = 0) {
   mb.tot_gas_mass_start = 0.;
   mb.tot_mass_start = 0.;
   mb.print_iter = 10;
-
-  foreach (serial) {
-    mb.tot_sol_mass_start += (f[] - porosity[])*rhoS*dv();
-    mb.tot_gas_mass_start += (1-f[] + porosity[])*rhoG*dv();
-  }
-  mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
-  compute_balances();
 }
 
 event cleanup(t = end) {
   fclose(mb.fb);
+  free(mb.gas_mass_start);
+  free(mb.gas_mass_bd);
+  free(mb.gas_mass_bdnow);
+  free(mb.gas_mass);
+  free(mb.sol_mass_start);
+  free(mb.sol_mass);
 }
 
 event balances(i++, last) {
+  if (!mb.tot_gas_mass_start && !mb.tot_sol_mass_start)
+    compute_initial_state();
+
   compute_balances();
+
   if (i % mb.print_iter == 0)
     write_balances();
 }

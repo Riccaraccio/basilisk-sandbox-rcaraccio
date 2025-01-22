@@ -6,7 +6,7 @@
 //#define CONST_DIFF          1         //constant diffusion coefficient
 //#define EXPLICIT_REACTIONS  1         //explicit reactions
 //#define EXPLICIT_DIFFUSION  1         //explicit diffusion
-//#define FIXED_INT_TEMP    1           //fixed interface temperature
+#define FIXED_INT_TEMP    1           //fixed interface temperature
 
 //#include "temperature-profile.h"
 //#include "axi.h" 
@@ -17,7 +17,7 @@
 #include "shrinking.h"
 //#include "darcy.h"
 #include "view.h"
-//#include "balances.h"
+#include "balances.h"
 
 u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
@@ -39,9 +39,9 @@ int main() {
 #ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
 #else
-  TS0 = 600.; TG0 = 600.;
+  TS0 = 300.; TG0 = 300.;
 #endif
-  rhoS = 850; rhoG = 0.8;
+  rhoS = 1000; rhoG = 1;
   muG = 3.5e-5;
   eps0 = 0.4;
 
@@ -84,7 +84,7 @@ event init(i=0) {
   //2: SMOOTH, 
   //3: SHARP, 
   //4: LEVELSET
-  zeta_policy = 0;
+  zeta_policy = 1;
 
 #ifdef SOLVE_TEMPERATURE
 #ifndef TEMPERATURE_PROFILE
@@ -142,10 +142,10 @@ event output (t+=1) {
   fflush(fp);
 }
 
-event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-     (double[]){1.e-1, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
-}
+// event adapt (i++) {
+//   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
+//      (double[]){1.e-1, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+// }
 
 // event movie(t+=5) {
 //   clear();

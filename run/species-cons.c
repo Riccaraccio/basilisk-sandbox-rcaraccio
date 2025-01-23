@@ -2,7 +2,8 @@
 #define FSOLVE_ABSTOL       1.e-3       //tolerance of fsolve, used in the interface condition
 #define SOLVE_TEMPERATURE   1           //wheter to solve the temperature field
 #define TURN_OFF_HEAT_OF_REACTION 1     //turn off the heat of reaction
-//#define NO_1D_COMPRESSION   1
+//#define STOP_TRACER_ADVECTION 1         //stop the advection of tracers
+//#define NO_2D_COMPRESSION   1
 //#define CONST_DIFF          1         //constant diffusion coefficient
 //#define EXPLICIT_REACTIONS  1         //explicit reactions
 //#define EXPLICIT_DIFFUSION  1         //explicit diffusion
@@ -39,7 +40,7 @@ int main() {
 #ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
 #else
-  TS0 = 300.; TG0 = 300.;
+  TS0 = 600; TG0 = 600.;
 #endif
   rhoS = 1000; rhoG = 1;
   muG = 3.5e-5;
@@ -84,7 +85,7 @@ event init(i=0) {
   //2: SMOOTH, 
   //3: SHARP, 
   //4: LEVELSET
-  zeta_policy = 1;
+  zeta_policy = 0;
 
 #ifdef SOLVE_TEMPERATURE
 #ifndef TEMPERATURE_PROFILE
@@ -94,9 +95,16 @@ event init(i=0) {
 #endif
 
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
+  scalar tar = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+  scalar water = YGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
   inert[top] = dirichlet (1.);
+  tar[top]  = dirichlet (0.);
+  water[top] = dirichlet (0.);
+  
   inert[right] = dirichlet (1.);
+  tar[right]  = dirichlet (0.);
+  water[right] = dirichlet (0.);
 
 #ifdef TEMPERATURE_PROFILE
   double timeprofile[] = {0, 1, 2, 3, 4, 5, 13.8996139, 41.6988417, 88.03088803, 166.7953668, 
@@ -200,7 +208,45 @@ event snapshots (t += 1) {
 event stop (t = 1000);
 
 /** 
-~~~gnuplot plot
+~~~gnuplot Total Mass Balance
+reset
+set terminal pdfcairo enhanced color font ',10'
+set title "Total Mass Balance"
+set output 'plot0.pdf'
+set xlabel 't'
+set ylabel "M_{s}/M_{s0}"
+set grid
+plot "balances-7" u 1:2 w l t "Total solid mass", \
+      "balances-7" u 1:3 w l t "Total gas mass", \
+      "balances-7" u 1:4 w l t "Total mass"
+~~~
 
+~~~gnuplot Solid Mass Balance
+reset
+set terminal pdfcairo enhanced color font ',10'
+set title "Solid Mass Balance"
+set output 'plot1.pdf'
+set xlabel 't'
+set ylabel "M_{s}/M_{s0}"
+set grid
+plot "balances-7" u 1:2 w l t "Total solid mass", \
+      "balances-7" u 1:8 w l t "Biomass", \
+      "balances-7" u 1:9 w l t "Char", \
+      "balances-7" u 1:($8+$9) w l t "Bio+Char"
+~~~
+
+~~~gnuplot Gas Mass Balance
+reset
+set terminal pdfcairo enhanced color font ',10'
+set title "Gas Mass Balance"
+set output 'plot2.pdf'
+set xlabel 't'
+set ylabel "M_{s}/M_{s0}"
+set grid
+set key top left
+plot "balances-7" u 1:3 w l t "Total gas exited", \
+      "balances-7" u 1:6 w l t "TAR", \
+      "balances-7" u 1:7 w l t "H2O", \
+      "balances-7" u 1:($6+$7+$5) w l t "TAR+H2O+N2"
 ~~~
 **/

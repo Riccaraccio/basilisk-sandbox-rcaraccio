@@ -72,9 +72,11 @@ static double face_flux_bid (Point point, scalar Y, int bid, bool unity=false) {
 static void diffusion_boundary (Point point, int bid) {
   double ff = face_value_bid (point, f, bid);
   foreach_elem (YGList_G, jj) {
-    if (ff < F_ERR) {
+    if (ff < 1.-F_ERR) {
       scalar YG = YGList_G[jj];
       double gradYG = face_gradient_bid (point, YG, bid);
+      // if (jj == OpenSMOKE_IndexOfSpecies("TAR"))
+      //   fprintf(stderr,"YG=%g, gradYG = %f\n", YG[], gradYG);
       scalar Dmix2  = Dmix2List_G[jj];
       double Dmix2v = Dmix2[];
   #if AXI
@@ -82,7 +84,9 @@ static void diffusion_boundary (Point point, int bid) {
   #else
       mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt;
   #endif
-    } else if (ff > 1.-F_ERR) {
+    }
+    
+    if (ff > F_ERR) {
       scalar YG = YGList_S[jj];
       double gradYG = face_gradient_bid (point, YG, bid);
       scalar Dmix2  = Dmix2List_S[jj];
@@ -184,6 +188,8 @@ static void compute_balances(void) {
   }
 
   if (mb.boundaries) {
+    boundary(YGList_G); //do not remove
+    boundary(YGList_S); //do not remove
     for (int b=0; b<nboundary; b++) {
       foreach_boundary (b) {
         diffusion_boundary (point, b);
@@ -197,15 +203,47 @@ static void compute_balances(void) {
     mb.tot_gas_mass_bd += mb.tot_gas_mass_bdnow;
   }
 
+  // int counter = 0;
+  // if (counter % mb.print_iter == 0) {
+  //   double computed_gas_mass = 0.;
+  //   foreach_elem (YGList_G, jj)
+  //     computed_gas_mass += mb.gas_mass[jj];
+  //   fprintf(stderr, "Computed gas mass: %g, Tot gas mass: %g\n", computed_gas_mass, mb.tot_gas_mass);
+
+  //   double computed_gas_mass_bdnow = 0.;
+  //   foreach_elem (YGList_G, jj)
+  //     computed_gas_mass_bdnow += mb.gas_mass_bdnow[jj];
+  //   fprintf(stderr, "BDnow computed gas mass: %g, BDnow Tot gas mass: %g\n", computed_gas_mass_bdnow, mb.tot_gas_mass_bdnow);
+
+  //   double computed_gas_mass_bd = 0.;
+  //   foreach_elem (YGList_G, jj)
+  //     computed_gas_mass_bd += mb.gas_mass_bd[jj];
+  //   fprintf(stderr, "BD computed gas mass: %g, BD Tot gas mass: %g\n", computed_gas_mass_bd, mb.tot_gas_mass_bd);
+  
+    //check that the diffusive fluxes close to 0
+    // fprintf(stderr, "/////////////////////////////////////\n");
+    // double sum_diff = 0.;
+    // foreach_elem (YGList_G, jj) {
+    //   sum_diff += mb.gas_mass_bdnow[jj];
+    //   fprintf(stderr, "Diffusive flux %s: %g\n", OpenSMOKE_NamesOfSpecies(jj), mb.gas_mass_bdnow[jj]);
+    // }
+
+    // fprintf(stderr, "Sum of diffusive fluxes: %g\n", sum_diff);
+    // fprintf(stderr, "Total gas mass bdnow: %g\n", mb.tot_gas_mass_bdnow);
+  
+  // } else {
+  //   counter++;
+  // }
+
   foreach_elem (YGList_G, jj)
     mb.gas_mass[jj] = ((mb.gas_mass[jj] + mb.gas_mass_bd[jj]) - mb.gas_mass_start[jj])/mb.tot_sol_mass_start;
 
   foreach_elem (YSList, jj)
     mb.sol_mass[jj] = mb.sol_mass[jj] / mb.tot_sol_mass_start;
 
-  mb.tot_mass = (mb.tot_sol_mass + mb.tot_gas_mass - mb.tot_gas_mass_start) / mb.tot_sol_mass_start;
-  mb.tot_gas_mass = ((mb.tot_gas_mass + mb.tot_gas_mass_bd) -  mb.tot_gas_mass_start) / mb.tot_sol_mass_start;
+  mb.tot_gas_mass = ((mb.tot_gas_mass + mb.tot_gas_mass_bd) -  mb.tot_gas_mass_start)/mb.tot_sol_mass_start;
   mb.tot_sol_mass = mb.tot_sol_mass/mb.tot_sol_mass_start;
+  mb.tot_mass = mb.tot_gas_mass + mb.tot_sol_mass;
 }
 
 event defaults (i = 0) {

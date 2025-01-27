@@ -1,3 +1,7 @@
+#ifndef MULTICOMPONENT
+  #define MULTICOMPONENT 1
+#endif
+
 #include "intgrad.h"
 #include "fracface.h"
 
@@ -109,8 +113,6 @@ event tracer_diffusion (i++) {
     f[] = (f[] > F_ERR) ? f[] : 0.;
     fS[] = f[]; fG[] = 1. - f[];
 #ifdef SOLVE_TEMPERATURE
-    // TS[] = (fu[] > F_ERR) ? TS[]/fu[] : 0.;
-    // TG[] = ((1. - fu[]) > F_ERR) ? TG[]/(1. - fu[]) : 0.;
     TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
     TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
 #endif

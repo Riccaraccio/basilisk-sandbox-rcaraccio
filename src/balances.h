@@ -70,6 +70,7 @@ static double face_flux_bid (Point point, scalar Y, int bid, bool unity=false) {
 }
 
 static void diffusion_boundary (Point point, int bid) {
+#ifdef MULTICOMPONENT
   double ff = face_value_bid (point, f, bid);
   foreach_elem (YGList_G, jj) {
     if (ff < 1.-F_ERR) {
@@ -98,11 +99,13 @@ static void diffusion_boundary (Point point, int bid) {
   #endif
     }
   }
+#endif
 }
 
 scalar U[];
 
 static void advection_boundary (Point point, int bid) {
+#ifdef MULTICOMPONENT
   foreach_elem (YGList_G, jj) {
     scalar YG = YGList_G[jj];
     double fluxYG = face_flux_bid (point, YG, bid);
@@ -113,7 +116,7 @@ static void advection_boundary (Point point, int bid) {
     double fluxYG = face_flux_bid (point, YG, bid);
     mb.gas_mass_bdnow[jj] += rhoG*fluxYG*dt;
   }
-
+#endif
   //double ff = face_value_bid (point, f, bid);
   //mb.totmass2bdnow += rhoG*face_flux_bid (point, U, bid, unity=true)*(1. - ff)*dt;
   mb.tot_gas_mass_bdnow += rhoG*face_flux_bid (point, U, bid, unity=true)*dt;
@@ -126,6 +129,7 @@ static void write_balances(void) {
                                         mb.tot_gas_mass,
                                         mb.tot_mass);
 
+#ifdef MULTICOMPONENT
   //print individual gas species mass
   foreach_elem (YGList_G, jj)
     fprintf(mb.fb, "%-16.6f", mb.gas_mass[jj]);
@@ -133,22 +137,30 @@ static void write_balances(void) {
   //print individual solid species mass
   foreach_elem (YSList, jj)
     fprintf(mb.fb, "%-16.6f", mb.sol_mass[jj]);
+#endif
+
   fprintf(mb.fb, "\n");
   fflush(mb.fb);
 }
 
 static void compute_initial_state (void) {
-  foreach (serial) {
-      mb.tot_sol_mass_start += (f[] - porosity[])*rhoS*dv();
-      mb.tot_gas_mass_start += (1-f[] + porosity[])*rhoG*dv();
+  if (!mb.tot_gas_mass_start && !mb.tot_sol_mass_start) {
+    foreach (serial) {
+        mb.tot_sol_mass_start += (f[] - porosity[])*rhoS*dv();
+        mb.tot_gas_mass_start += (1-f[] + porosity[])*rhoG*dv();
+    }
+
+    mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
+
+  #ifdef MULTICOMPONENT
+    foreach_elem (YGList_G, jj)
+      mb.gas_mass_start[jj] = mb.tot_gas_mass_start*gas_start[jj];
+    foreach_elem (YSList, jj)
+      mb.sol_mass_start[jj] = mb.tot_sol_mass_start*sol_start[jj];
+  #endif
+  } else {
+    fprintf(stderr,"WARNING: Initial state already computed\n");
   }
-
-  foreach_elem (YGList_G, jj)
-    mb.gas_mass_start[jj] = mb.tot_gas_mass_start*gas_start[jj];
-  foreach_elem (YSList, jj)
-    mb.sol_mass_start[jj] = mb.tot_sol_mass_start*sol_start[jj];
-
-  mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
 }
 
 static void compute_balances(void) {
@@ -157,6 +169,7 @@ static void compute_balances(void) {
   mb.tot_mass = 0.;
   mb.tot_gas_mass_bdnow = 0.;
   
+#ifdef MULTICOMPONENT
   foreach_elem (YGList_G, jj) {
     mb.gas_mass[jj] = 0.;
     mb.gas_mass_bdnow[jj] = 0.;
@@ -164,12 +177,14 @@ static void compute_balances(void) {
 
   foreach_elem (YSList, jj)
     mb.sol_mass[jj] = 0.;
+#endif
 
   foreach (serial) {
     //compute total mass
     mb.tot_sol_mass += (f[] - porosity[])*rhoS*dv(); //(f-ef)
     mb.tot_gas_mass += (1-f[] + porosity[])*rhoG*dv(); //(1-f + ef)
 
+#ifdef MULTICOMPONENT
     foreach_elem (YGList_S, jj) {
       scalar YG_G = YGList_G[jj];
       scalar YG_S = YGList_S[jj];
@@ -185,11 +200,15 @@ static void compute_balances(void) {
       scalar YS = YSList[jj];
       mb.sol_mass[jj] += (f[] - porosity[])*rhoS*YS[]*dv(); // (1-ef/f)*(YS*f) = f*(1-e)*YS
     }
+#endif
   }
 
   if (mb.boundaries) {
+#ifdef MULTICOMPONENT
     boundary(YGList_G); //do not remove
     boundary(YGList_S); //do not remove
+#endif
+    boundary({U});
     for (int b=0; b<nboundary; b++) {
       foreach_boundary (b) {
         diffusion_boundary (point, b);
@@ -197,49 +216,21 @@ static void compute_balances(void) {
       }
     }
 
+#ifdef MULTICOMPONENT
     foreach_elem (YGList_G, jj)
       mb.gas_mass_bd[jj] += mb.gas_mass_bdnow[jj];
+#endif
 
     mb.tot_gas_mass_bd += mb.tot_gas_mass_bdnow;
   }
 
-  // int counter = 0;
-  // if (counter % mb.print_iter == 0) {
-  //   double computed_gas_mass = 0.;
-  //   foreach_elem (YGList_G, jj)
-  //     computed_gas_mass += mb.gas_mass[jj];
-  //   fprintf(stderr, "Computed gas mass: %g, Tot gas mass: %g\n", computed_gas_mass, mb.tot_gas_mass);
-
-  //   double computed_gas_mass_bdnow = 0.;
-  //   foreach_elem (YGList_G, jj)
-  //     computed_gas_mass_bdnow += mb.gas_mass_bdnow[jj];
-  //   fprintf(stderr, "BDnow computed gas mass: %g, BDnow Tot gas mass: %g\n", computed_gas_mass_bdnow, mb.tot_gas_mass_bdnow);
-
-  //   double computed_gas_mass_bd = 0.;
-  //   foreach_elem (YGList_G, jj)
-  //     computed_gas_mass_bd += mb.gas_mass_bd[jj];
-  //   fprintf(stderr, "BD computed gas mass: %g, BD Tot gas mass: %g\n", computed_gas_mass_bd, mb.tot_gas_mass_bd);
-  
-    //check that the diffusive fluxes close to 0
-    // fprintf(stderr, "/////////////////////////////////////\n");
-    // double sum_diff = 0.;
-    // foreach_elem (YGList_G, jj) {
-    //   sum_diff += mb.gas_mass_bdnow[jj];
-    //   fprintf(stderr, "Diffusive flux %s: %g\n", OpenSMOKE_NamesOfSpecies(jj), mb.gas_mass_bdnow[jj]);
-    // }
-
-    // fprintf(stderr, "Sum of diffusive fluxes: %g\n", sum_diff);
-    // fprintf(stderr, "Total gas mass bdnow: %g\n", mb.tot_gas_mass_bdnow);
-  
-  // } else {
-  //   counter++;
-  // }
-
+#ifdef MULTICOMPONENT
   foreach_elem (YGList_G, jj)
     mb.gas_mass[jj] = ((mb.gas_mass[jj] + mb.gas_mass_bd[jj]) - mb.gas_mass_start[jj])/mb.tot_sol_mass_start;
 
   foreach_elem (YSList, jj)
     mb.sol_mass[jj] = mb.sol_mass[jj] / mb.tot_sol_mass_start;
+#endif
 
   mb.tot_gas_mass = ((mb.tot_gas_mass + mb.tot_gas_mass_bd) -  mb.tot_gas_mass_start)/mb.tot_sol_mass_start;
   mb.tot_sol_mass = mb.tot_sol_mass/mb.tot_sol_mass_start;
@@ -250,9 +241,19 @@ event defaults (i = 0) {
   mb.tot_gas_mass_bdnow = 0.;
   mb.tot_gas_mass = 0.;
   mb.tot_gas_mass_bd = 0.;
-
+  mb.tot_mass = 0.;
+  mb.tot_sol_mass = 0.;
+  mb.tot_sol_mass_start = 0.;
+  mb.tot_gas_mass_start = 0.;
+  mb.tot_mass_start = 0.;
+  mb.tot_sol_mass_start = 0.;
+  mb.tot_gas_mass_start = 0.;
+  mb.tot_mass_start = 0.;
+  
+  mb.print_iter = 1;
   mb.boundaries = true;
 
+#ifdef MULTICOMPONENT
   mb.gas_mass_start = (double*) malloc(NGS*sizeof(double));
   mb.gas_mass_bd =    (double*) malloc(NGS*sizeof(double));
   mb.gas_mass_bdnow = (double*) malloc(NGS*sizeof(double));
@@ -260,16 +261,22 @@ event defaults (i = 0) {
 
   mb.sol_mass_start = (double*) malloc(NSS*sizeof(double));
   mb.sol_mass =       (double*) malloc(NSS*sizeof(double));
+#endif
 
   foreach()
     U[] = 1.;
 }
 
 event init(i = 0) {
-  sprintf(mb.name, "balances-%d", maxlevel);
+  // if (mb.fb == NULL)
+  //   sprintf(mb.name, "balances-%d", maxlevel);
+  
   mb.fb = fopen(mb.name, "w");
   //total mass header
   fprintf(mb.fb, "%-16s %-16s %-16s %-16s ", "t(1)", "tot_sol_mass(2)", "tot_gas_mass(3)", "tot_mass(4)");
+  
+#ifdef MULTICOMPONENT
+  fprintf(stderr, "test\n");
   int counter = 5;
   //individual gas species mass header
   foreach_elem (YGList_G, jj) {
@@ -284,28 +291,34 @@ event init(i = 0) {
     sprintf(buffer, "mS_%s(%d)",  OpenSMOKE_NamesOfSolidSpecies(jj), counter++);
     fprintf(mb.fb, "%-16s", buffer);
   }
-  
+#endif
+
   fprintf(mb.fb, "\n");
   fflush(mb.fb);
-  mb.tot_sol_mass_start = 0.;
-  mb.tot_gas_mass_start = 0.;
-  mb.tot_mass_start = 0.;
-  mb.print_iter = 10;
+
+  U[right] = dirichlet(1.);
+  U[top] = dirichlet(1.);
+  U[left] = dirichlet(1.);
+  U[bottom] = dirichlet(1.);
+
+  compute_initial_state();
 }
 
 event cleanup(t = end) {
   fclose(mb.fb);
+#ifdef MULTICOMPONENT
   free(mb.gas_mass_start);
   free(mb.gas_mass_bd);
   free(mb.gas_mass_bdnow);
   free(mb.gas_mass);
   free(mb.sol_mass_start);
   free(mb.sol_mass);
+#endif
 }
 
 event balances(i++, last) {
-  if (!mb.tot_gas_mass_start && !mb.tot_sol_mass_start)
-    compute_initial_state();
+  // if (!mb.tot_gas_mass_start && !mb.tot_sol_mass_start)
+  //   compute_initial_state();
 
   compute_balances();
 

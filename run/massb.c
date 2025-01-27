@@ -29,15 +29,27 @@ int main() {
   eps0 = 0.4;
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
+  muG = 1.e-3;
   L0 = 1.5*D0;
   DT = 1e-1;
 
   rhoS = 100.;
   rhoG = 1.;
 
-// for (maxlevel=5; maxlevel<=7; maxlevel++) {
-//   for (zetamodel=0; zetamodel <= 2; zetamodel++) {
-//     for (amr=0; amr <=1; amr++) {
+for (maxlevel=5; maxlevel<=10; maxlevel++) {
+  for (zetamodel=0; zetamodel <= 2; zetamodel++) {
+    for (amr=0; amr <=1; amr++) {
+        fprintf(stderr, "Running maxlevel %d zetamodel %d, amr %d\n",
+          maxlevel, zetamodel, amr);
+        init_grid(1 << maxlevel);
+        run();
+    }
+  }
+}
+
+// amr = 0;
+// for (maxlevel=5; maxlevel<=8; maxlevel++) {
+//   for (zetamodel=0; zetamodel <= 1; zetamodel++) {
 //         fprintf(stderr, "Running maxlevel %d zetamodel %d, amr %d\n",
 //           maxlevel, zetamodel, amr);
 //         init_grid(1 << maxlevel);
@@ -45,24 +57,11 @@ int main() {
 //     }
 //   }
 
-amr = 0;
-for (maxlevel=5; maxlevel<=8; maxlevel++) {
-  for (zetamodel=0; zetamodel <= 1; zetamodel++) {
-        fprintf(stderr, "Running maxlevel %d zetamodel %d, amr %d\n",
-          maxlevel, zetamodel, amr);
-        init_grid(1 << maxlevel);
-        run();
-    }
-  }
-
   // maxlevel = 7;
-  // amr = 0;
-  // for (zetamodel=0; zetamodel <= 1; zetamodel++) {
-  //   fprintf(stderr, "Running maxlevel %d zetamodel %d, amr %d\n",
-  //     maxlevel, zetamodel, amr);
-  //   init_grid(1 << maxlevel); 
-  //   run();
-  // }
+  // amr = 1;
+  // zetamodel = 0;
+  // init_grid(1 << maxlevel); 
+  // run();
 }
 
 #define circle(x, y, R) (sq(R) - sq(x) - sq(y))
@@ -89,7 +88,7 @@ event init(i = 0) {
 #endif
 }
 
-// update the porosity field
+//update the porosity field
 event chemistry(i++) {
   foreach() {
     if (f[] > F_ERR) {
@@ -107,7 +106,7 @@ event logfile (t +=1 ) {
 event adapt (i++) {
   if (amr > 0) {
   adapt_wavelet_leave_interface({porosity, u.x, u.y}, {f}, 
-    (double[]){1e-2, 1e-2, 1e-2}, maxlevel, minlevel);
+    (double[]){1e-2, 1e-3, 1e-3}, maxlevel, minlevel);
   }
 }
 

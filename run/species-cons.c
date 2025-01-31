@@ -10,7 +10,7 @@
 #define FIXED_INT_TEMP    1           //fixed interface temperature
 
 //#include "temperature-profile.h"
-#include "axi.h" 
+//#include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "prop.h"
 #include "two-phase.h"
@@ -72,9 +72,17 @@ int main() {
 //     }
 //   }
 
-  maxlevel = 5;
-  zetamodel = 0;
+  maxlevel = 7;
+  zetamodel = 1;
   amr = 0;
+  
+  //0: SHRINK, 
+  //1: SWELLING, 
+  //2: SMOOTH, 
+  //3: SHARP, 
+  //4: LEVELSET
+  zeta_policy = zetamodel;
+
   init_grid(1 << maxlevel);
   run();
 }
@@ -89,13 +97,6 @@ event init(i = 0) {
 
   foreach()
     porosity[] = eps0*f[];
-
-  //0: SHRINK, 
-  //1: SWELLING, 
-  //2: SMOOTH, 
-  //3: SHARP, 
-  //4: LEVELSET
-  zeta_policy = zetamodel;
 
 #ifdef SOLVE_TEMPERATURE
 #ifndef TEMPERATURE_PROFILE

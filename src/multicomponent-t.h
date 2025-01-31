@@ -35,11 +35,6 @@ event reset_sources (i++) {
   }
 }
 
-event phasechange (i++) {
-  foreach()
-    fu[] = f[];
-}
-
 extern face vector ufsave;
 face vector u_prime[];
 #ifndef STOP_TRACER_ADVECTION
@@ -122,9 +117,6 @@ event tracer_diffusion (i++) {
     
     for (scalar YG in YGList_G)
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
-
-    for (scalar YS in YSList)
-      YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
   }
 
   //Compute face gradients
@@ -348,8 +340,8 @@ event properties (i++) {
   // double Dmixv = OpenSMOKE_GasProp_Dmix(fixedcomp, OpenSMOKE_IndexOfSpecies ("N2"));
   // fprintf(stderr, "Dmixv = %g\n", Dmixv);
 
-  //double Dmixv =  2.05e-5; //Diff of CO in N2 at 500K, 1 atm
-  double Dmixv = 0.;
+  double Dmixv =  2.05e-5; //Diff of CO in N2 at 500K, 1 atm
+  //double Dmixv = 0.;
 
   foreach() {
     //set the same for all species

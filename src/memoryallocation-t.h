@@ -6,9 +6,6 @@ scalar omega[];
 scalar* YGList_G    = NULL;
 scalar* YGList_S    = NULL;
 scalar* YGList_Int  = NULL;
-// scalar* XGList_G    = NULL;
-// scalar* XGList_S    = NULL;
-// scalar* XGList_Int  = NULL;
 scalar* sSexpList   = NULL;
 scalar* sGexpList   = NULL;
 scalar* YSList      = NULL;
@@ -37,7 +34,6 @@ face vector lambda1f[], lambda2f[];
 
 scalar fG[], fS[];
 face vector fsS[], fsG[];
-scalar fu[]; //dummy tracer
 
 event defaults (i = 0) {
 
@@ -55,11 +51,8 @@ event defaults (i = 0) {
   YGList_G    = NULL;
   YGList_S    = NULL;
   YGList_Int  = NULL;
-  // XGList_G    = NULL;
-  // XGList_S    = NULL;
-  // XGList_Int  = NULL;
-  sSexpList     = NULL;
-  sGexpList     = NULL;
+  sSexpList   = NULL;
+  sGexpList   = NULL;
   YSList      = NULL;
   Dmix2List_G = NULL;
   Dmix2List_S = NULL;
@@ -94,36 +87,6 @@ event defaults (i = 0) {
     YGList_Int = list_append (YGList_Int, a);
   }
   reset (YGList_Int, 0.);
-
-  // for (int jj = 0; jj<NGS; jj++) {
-  //   scalar a = new scalar;
-  //   free (a.name);
-  //   char name[20];
-  //   sprintf (name, "X_%s_S",OpenSMOKE_NamesOfSpecies(jj));
-  //   a.name = strdup (name);
-  //   XGList_S = list_append (XGList_S, a);
-  // }
-  // reset (XGList_S, 0.);
-
-  // for (int jj = 0; jj<NGS; jj++) {
-  //   scalar a = new scalar;
-  //   free (a.name);
-  //   char name[20];
-  //   sprintf (name, "X_%s_Int",OpenSMOKE_NamesOfSpecies(jj));
-  //   a.name = strdup (name);
-  //   XGList_Int = list_append (XGList_Int, a);
-  // }
-  // reset (XGList_Int, 0.);
-
-  // for (int jj = 0; jj<NGS; jj++) {
-  //   scalar a = new scalar;
-  //   free (a.name);
-  //   char name[20];
-  //   sprintf (name, "X_%s_G",OpenSMOKE_NamesOfSpecies(jj));
-  //   a.name = strdup (name);
-  //   XGList_G = list_append (XGList_G, a);
-  // }
-  // reset (XGList_G, 0.);
 
   //Allocate solid species fields
   for (int jj = 0; jj<NSS; jj++) {
@@ -202,18 +165,9 @@ for (int jj=0; jj<NGS; jj++) {
   for (scalar s in YSList)
     s.inverse = false;
 
-  // for (scalar s in XGList_S)
-  //   s.inverse = false;
-
-  // for (scalar s in XGList_G)
-  //   s.inverse = true;
-
-  fu.tracers = NULL;
-  // fu.tracers = list_concat (fu.tracers, YGList_S);
-  // fu.tracers = list_concat (fu.tracers, YGList_G);
   f.tracers = list_concat (f.tracers, YGList_S);
   f.tracers = list_concat (f.tracers, YGList_G);
-  f.tracers = list_concat (f.tracers, YSList); //TODO maybe put YSList as fu tracer
+  f.tracers = list_concat (f.tracers, YSList);
 
   fS.nodump = true;
   fG.nodump =true;
@@ -264,8 +218,6 @@ for (int jj=0; jj<NGS; jj++) {
   sST.nodump = true;
   sGT.nodump = true;
 
-  // fu.tracers = list_append (fu.tracers, TS);
-  // fu.tracers = list_append (fu.tracers, TG);
   f.tracers = list_append (f.tracers, TS);
   f.tracers = list_append (f.tracers, TG);
 
@@ -337,28 +289,6 @@ event init (i = 0){
     }
   }
 
-  foreach()
-    fu[] = f[];
-
-#if TREE
-  {
-    fu.refine = fu.prolongation = fraction_refine;
-    fu.dirty = true;
-    scalar* tracers = fu.tracers;
-    for (scalar t in tracers) {
-      t.restriction = restriction_volume_average;
-      t.refine = t.prolongation = vof_concentration_refine;
-      t.dirty = true;
-      t.c = fu;
-    }
-  }
-#endif
-  {
-    scalar* tracers = fu.tracers;
-    for (scalar t in tracers)
-      t.depends = list_add (t.depends, fu);
-  }
-
 #ifdef SOLVE_TEMPERATURE
   foreach() {
     TS[] = TS0*f[];
@@ -370,25 +300,22 @@ event init (i = 0){
 }
 
 event cleanup (t = end) {
-  delete (YSList), free (YSList), YSList = NULL;
-  delete (YGList_S), free (YGList_S), YGList_S = NULL;
+  //delete(f.tracers),  free(f.tracers),   f.tracers = NULL;
+  delete (YSList),      free (YSList),      YSList = NULL;
+  delete (YGList_S),    free (YGList_S),    YGList_S = NULL;
   delete (Dmix2List_S), free (Dmix2List_S), Dmix2List_S = NULL;
-  delete (YGList_G), free (YGList_G), YGList_G = NULL;
+  delete (YGList_G),    free (YGList_G),    YGList_G = NULL;
   delete (Dmix2List_G), free (Dmix2List_G), Dmix2List_G = NULL;
-  delete (YGList_Int), free (YGList_Int), YGList_Int = NULL;
-  // delete (XGList_G), free (XGList_G), XGList_G = NULL;
-  // delete (XGList_S), free (XGList_S), XGList_S = NULL;
-  // delete (XGList_Int), free (XGList_Int), XGList_Int = NULL;
-  delete (sSexpList), free (sSexpList), sSexpList = NULL;
-  delete (sGexpList), free (sGexpList), sGexpList = NULL;
-  free(gas_start), gas_start = NULL;
-  free(sol_start), sol_start = NULL;
-  free(gas_MWs), gas_MWs = NULL;
-  free(sol_MWs), sol_MWs = NULL;
+  delete (YGList_Int),  free (YGList_Int),  YGList_Int = NULL;
+  delete (sSexpList),   free (sSexpList),   sSexpList = NULL;
+  delete (sGexpList),   free (sGexpList),   sGexpList = NULL;
+  free(gas_start),  gas_start = NULL;
+  free(sol_start),  sol_start = NULL;
+  free(gas_MWs),    gas_MWs = NULL;
+  free(sol_MWs),    sol_MWs = NULL;
 #ifdef SOLVE_TEMPERATURE
-  delete ({TS,TG});
+  //delete ({TS,TG});
 #endif
-  delete (fu.tracers), free(fu.tracers), fu.tracers = NULL;
 
 #ifdef TEMPERATURE_PROFILE
   TemperatureProfile_Free();

@@ -93,7 +93,7 @@ event vof(i++) {
     uf.x[] = ubf.x[];
 }
 
-event tracer_advection (i++) {
+event tracer_diffusion (i++) {
   foreach_face()
     uf.x[] = ufsave.x[];
 }

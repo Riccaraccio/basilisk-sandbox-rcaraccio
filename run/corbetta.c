@@ -37,7 +37,7 @@ int main() {
 #ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
 #else
-  TS0 = 550.; TG0 = 550.;
+  TS0 = 300.; TG0 = 300.;
 #endif
   rhoS = 850; rhoG = 0.674;
   muG = 3.53e-5;
@@ -143,7 +143,7 @@ event output (t+=1) {
 
 event adapt (i++) {
   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+    (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
 }
 
 // event movie(t+=1) {

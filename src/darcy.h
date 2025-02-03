@@ -29,9 +29,8 @@ event acceleration (i++){
   face vector fS[];
   face_fraction(f,fS);
   foreach_face() {
-    //if (fS.x[] > F_ERR) {
+    if (fS.x[] > F_ERR) {
       double ef = face_value (porosity, 0);
-      ef = 0.7; // make sure we are using the correct value, temp
       double F  = 1.75/pow (150*pow (ef, 3), 0.5);
 
       // Darcy contribution, weighted by the face fraction of the interface
@@ -39,6 +38,6 @@ event acceleration (i++){
 
       // Forcheimer contribution
       av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*pow(ef,2)*rhoG/pow(Da,0.5)) *fabs(uf.x[])*uf.x[] *fS.x[];
-    //}
+    }
   }
 }

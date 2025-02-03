@@ -8,7 +8,7 @@ double rhoG = 1.;
 double muG = 1e-5;
 
 extern scalar omega;
-scalar porosity[], * f_tracers = NULL;
+scalar porosity[];
 scalar zeta[];
 scalar levelset[];
 
@@ -20,35 +20,14 @@ typedef enum {
   ZETA_LEVELSET
 } zeta_types;
 
-zeta_types zeta_policy;
+zeta_types zeta_policy = ZETA_SHRINK;
 
-event defaults (i=0) {
-  zeta_policy = ZETA_SHRINK;
-
-  foreach ()
-    zeta[] = 1.;
-}
-
-event init (i=0) {
-  f_tracers = f.tracers;
-  f.tracers = list_append (f.tracers, porosity);
-}
-
-event reset_sources (i++);
-
-event chemistry (i++);
-
-event phasechange (i++) {
-
-  foreach() {
-    f[] = clamp(f[], 0.,1.);
-    f[] = (f[] > F_ERR) ? f[] : 0.;
-    f[] = (f[] < 1.-F_ERR) ? f[] : 1.;
-    porosity[] = clamp(porosity[], 0., 1.);
-    porosity[] = (porosity[] > F_ERR) ? porosity[] : 0.;
-  }
-
-  double radius = sqrt(statsf(f).sum/pi)*2; //*2 TEMP
+void set_zeta (zeta_types zeta_policy) {
+  #if AXI
+    double radius = pow (3.*statsf(f).sum, 1./3.);
+  #else
+    double radius = sqrt (statsf(f).sum/pi)*2;
+  #endif
 
   switch (zeta_policy) {
     case 0: // ZETA_SHRINK
@@ -74,11 +53,35 @@ event phasechange (i++) {
         zeta[] = levelset[] > 0.8*statsf(levelset).min ? 1. : 0.;
       break;
   }
+}
 
-  mgpsf = project_sv (ubf, psi, dt, mgpsf.nrelax);
+event defaults (i=0) {
+  set_zeta (zeta_policy);
+}
+
+event init (i=0) {
+  f.tracers = list_append (f.tracers, porosity);
+}
+
+event reset_sources (i++);
+
+event chemistry (i++);
+
+event phasechange (i++) {
+
+  foreach() {
+    f[] = clamp(f[], 0.,1.);
+    f[] = (f[] > F_ERR) ? f[] : 0.;
+    porosity[] = clamp(porosity[], 0., 1.);
+    porosity[] = (porosity[] > F_ERR) ? porosity[] : 0.;
+  }
+
+  set_zeta (zeta_policy);
+
+  mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
 
   foreach()
-    gasSource[] = -omega[]*(f[]-porosity[])/rhoG*cm[]; // gas production, *(f-ef)
+    gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoG - 1/rhoS)*cm[]; // gas production, *(f-ef)
 }
 
 face vector ufsave[];
@@ -103,5 +106,5 @@ event stability (i++, last) {
 }
 
 event cleanup (t = end) {
-  free (f.tracers), f.tracers = f_tracers;
+  free(f.tracers), f.tracers = NULL;
 }

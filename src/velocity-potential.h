@@ -8,18 +8,19 @@ mgstats mgpsf;
 
 trace
 mgstats project_sv (face vector ubf, scalar psi,
+    (const) face vector alpha = unityf,
     double dt = 1.,
     int nrelax = 4)
 {
   scalar prod[];
   foreach()
-    prod[] = (omega[]*f[]*zeta[]/rhoS)/dt;
+    prod[] = (omega[]*zeta[]/rhoS*cm[])/dt;
 
-  mgstats mgp = poisson (psi, prod, tolerance = TOLERANCE/sq(dt),
-      nrelax = nrelax);
+  mgstats mgp = poisson (psi, prod, alpha, 
+      tolerance = TOLERANCE/sq(dt), nrelax = nrelax);
 
   foreach_face()
-    ubf.x[] = -dt*face_gradient_x (psi, 0)*fm.x[];
+    ubf.x[] = -dt*alpha.x[]*face_gradient_x (psi, 0);
 
   return mgp;
 }

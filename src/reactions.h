@@ -7,6 +7,7 @@ extern scalar rho1v, cp1v;
 
 //TOBEDONE ADD cpsv, cpgv, rhosv, rhogv
 
+#ifndef TURN_OFF_REACTIONS
 void OpenSMOKE_ODESolverEXP (odefunction ode, unsigned int neq, double dt, double* y, void* args) {
 
   double dy[neq];
@@ -120,3 +121,4 @@ event chemistry (i++) {
       omega[] = sources[NGS+NSS];
     }
 }
+#endif

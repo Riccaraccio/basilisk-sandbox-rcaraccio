@@ -1,3 +1,7 @@
+#ifndef MULTICOMPONENT
+  #define MULTICOMPONENT 1
+#endif
+
 #include "intgrad.h"
 #include "fracface.h"
 
@@ -31,12 +35,73 @@ event reset_sources (i++) {
   }
 }
 
-event phasechange (i++) {
+extern face vector ufsave;
+face vector u_prime[];
+#ifndef STOP_TRACER_ADVECTION
+event tracer_advection (i++) {
+  // lose tracer form and extrapolate fields
   foreach() {
-    fTmp[] = f[];
-    fSpc[] = f[];
+    porosity[] = (f[] > F_ERR) ? porosity[]/f[] : 0.;
+#ifdef SOLVE_TEMPERATURE
+    TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
+    TG[] = ((1.-f[]) > F_ERR) ? TG[]/(1.-f[]) : 0.;
+
+    TS[] = (f[] > F_ERR) ? TS[] : TG[];
+    TG[] = (f[] < 1.-F_ERR) ? TG[] : TS[];
+#endif
+
+    for (int jj=0; jj<NGS; jj++) { 
+      scalar YG_S = YGList_S[jj];
+      scalar YG_G = YGList_G[jj];
+
+      YG_S[] = (f[] > F_ERR) ? YG_S[]/f[] : 0.;
+      YG_G[] = (f[] < 1.-F_ERR) ? YG_G[]/(1.-f[]) : 0.;
+
+      YG_S[] = (f[] > F_ERR) ? YG_S[] : YG_G[];
+      YG_G[] = (f[] < 1.-F_ERR) ? YG_G[] : YG_S[];
+    }
   }
+
+  advection_div(YGList_S, ufsave, dt);
+  advection_div(YGList_G, ufsave, dt);
+
+#ifdef SOLVE_TEMPERATURE
+  foreach_face() {
+    double ef = face_value(porosity, 0);
+    double ff = face_value(f, 0);
+    u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoG*cpG*ef)/(rhoG*cpG*ef + rhoS*cpS*(1.-ef)) : ufsave.x[];
+  }
+
+  advection_div({TS}, u_prime, dt);
+# ifndef TEMPERATURE_PROFILE
+  advection_div({TG}, u_prime, dt);
+# endif
+#endif
+
+  // Reset the velocity field, just to be sure
+  foreach_face()
+    uf.x[] = ufsave.x[];
   
+  // recover tracer form
+  foreach() {
+    porosity[] = (f[] > F_ERR) ? porosity[]*f[] : 0.;
+#ifdef SOLVE_TEMPERATURE
+    TS[] = (f[] > F_ERR) ? TS[]*f[] : 0.;
+    TG[] = ((1.-f[]) > F_ERR) ? TG[]*(1.-f[]) : 0.;
+#endif
+
+    for (int jj=0; jj<NGS; jj++) { 
+      scalar YG_S = YGList_S[jj];
+      scalar YG_G = YGList_G[jj];
+
+      YG_S[] = (f[] > F_ERR) ? YG_S[]*f[] : 0.;
+      YG_G[] = (f[] < 1.-F_ERR) ? YG_G[]*(1.-f[]) : 0.;
+    }
+  }
+}
+#endif
+
+event tracer_diffusion (i++) {
   foreach() {
     f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
@@ -51,9 +116,6 @@ event phasechange (i++) {
     
     for (scalar YG in YGList_G)
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
-
-    for (scalar YS in YSList)
-      YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
   }
 
   //Compute face gradients
@@ -358,6 +420,7 @@ event properties (i++) {
   // fprintf(stderr, "Dmixv = %g\n", Dmixv);
 
   double Dmixv =  2.05e-5; //Diff of CO in N2 at 500K, 1 atm
+  //double Dmixv = 0.;
 
   foreach() {
     //set the same for all species
@@ -427,5 +490,8 @@ event properties (i++) {
       }
     }
   }
+
+  boundary (Dmix2List_G);
+  boundary (Dmix2List_S);
 #endif
 }

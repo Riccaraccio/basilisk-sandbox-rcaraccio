@@ -12,10 +12,10 @@
 #endif
 
 #include "common-evaporation.h"
-#include "memoryallocation-t.h"
+#include "memoryallocation.h"
 #include "reactions.h"
-#include "int-temperature-v.h"
-#include "int-condition.h"
+#include "int-temperature.h"
+#include "int-concentration.h"
 
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE

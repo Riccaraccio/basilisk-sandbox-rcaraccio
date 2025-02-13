@@ -80,8 +80,13 @@ event phasechange (i++) {
 
   mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
 
-  foreach()
-    gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoG - 1/rhoS)*cm[]; // gas production, *(f-ef)
+  foreach() {
+#ifdef VARPROP //*(f-ef)
+    gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoGv_G[] - 1/rhoSv[])*cm[];
+#else
+    gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoG - 1/rhoS)*cm[];
+#endif
+  }
 }
 
 face vector ufsave[];

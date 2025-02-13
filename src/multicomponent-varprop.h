@@ -15,9 +15,8 @@
 #include "memoryallocation-varprop.h"
 #include "reactions.h"
 
-//TEMPORARY
-// #include "int-temperature.h" 
-// #include "int-concentration.h"
+#include "int-temperature.h"
+#include "int-concentration.h"
 
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
@@ -85,7 +84,7 @@ event tracer_advection (i++) {
     cpGvh_S = cpG; cpSvh = cpS;
     #endif
 
-    u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoGvh_S*cpGvh_S*ef)/(rhoGvh_S*cpGvh_S*ef + rhoSvh*cpS*(1.-ef)) : ufsave.x[];
+    u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoGvh_S*cpGvh_S*ef)/(rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1.-ef)) : ufsave.x[];
   }
 
   advection_div({TS}, u_prime, dt);
@@ -225,11 +224,11 @@ event tracer_diffusion (i++) {
         double Gtrgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, true, bc, &success);
 
         double rhoGvh_G;
-        #ifdef VARPROP
+#ifdef VARPROP
         rhoGvh_G = rhoGv_G[];
-        #else
+#else
         rhoGvh_G = rhoG;
-        #endif
+#endif
 
         double jG = rhoGvh_G*DmixG[]*Gtrgrad;
 #ifdef AXI
@@ -245,100 +244,27 @@ event tracer_diffusion (i++) {
       double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true, bc, &success);
 
       double lambda1vh, lambda2vh;
+# ifdef VARPROP
+      lambda1vh = porosity[]*lambdaGv_S[] + (1. - porosity[])*lambdaSv[];
+      lambda2vh = lambdaGv_G[];
+# else
+      lambda1vh = porosity[]*lambdaG + (1. - porosity[])*lambdaS;
+      lambda2vh = lambdaG;
+# endif
 
-      double Sheatflux = lambda1v[]*Strgrad;
-      double Gheatflux = lambda2v[]*Gtrgrad;
+      double Sheatflux = lambda1vh*Strgrad;
+      double Gheatflux = lambda2vh*Gtrgrad;
 
-  #ifdef AXI
+# ifdef AXI
       sST[] += Sheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
       sGT[] += Gheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
-  #else
+# else
       sST[] += Sheatflux*area/Delta*cm[];
       sGT[] += Gheatflux*area/Delta*cm[];
-  #endif
+# endif
 #endif
     }
   }
-
-  //Recover tracer form 
-  foreach() {
-#ifdef SOLVE_TEMPERATURE
-    TS[] *= f[];
-    TG[] *= (1. - f[]);
-    T[] = TS[] + TG[];
-#endif
-    for (scalar YG in YGList_S)
-      YG[] *= f[];
-    for (scalar YG in YGList_G)
-      YG[] *= (1. - f[]);
-    for (scalar YS in YSList)
-      YS[] *= f[];
-  }
-}
-
-extern face vector ufsave;
-face vector u_prime[];
-event tracer_advection (i++) {
-  foreach()
-    porosity[] = f[] > F_ERR ? porosity[]/f[] : 0.;
-
-  #ifdef SOLVE_TEMPERATURE
-  //calculate the aritifical velocity
-  face_fraction(f, fsS);
-  foreach_face() {
-    double ef = face_value(porosity, 0);
-    u_prime.x[] = 0.;
-    if (fsS.x[] > F_ERR) {
-      u_prime.x[] = ufsave.x[] * (rhoG*cpG*ef)/(rhoG*cpG*ef + rhoS*cpS*(1.-ef)) *fsS.x[];
-    } else {
-      u_prime.x[] = ufsave.x[];
-    }
-  }
-
-  // set u = u_prime, for temperature advection
-  foreach_face()
-    uf.x[] = u_prime.x[];
-
-  //advection of TS, TG
-  vof_advection ({fTmp}, i);
-
-  // Reset the velocity field
-  foreach_face()
-    uf.x[] = ufsave.x[];
-  #endif 
-
-  //advection of species
-  //vof_advection ({fSpc}, i);
-  
-  foreach()
-    porosity[] *= f[];
-}
-
-event tracer_diffusion(i++) {
-  foreach() {
-    f[] = clamp (f[], 0., 1.);
-    f[] = (f[] > F_ERR) ? f[] : 0.;
-    fS[] = f[]; fG[] = 1. - f[];
-#ifdef SOLVE_TEMPERATURE
-    TS[] = (fTmp[] > F_ERR) ? TS[]/fTmp[] : 0.;
-    TG[] = ((1. - fTmp[]) > F_ERR) ? TG[]/(1. - fTmp[]) : 0.;
-    // TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
-    // TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
-#endif
-
-    for (scalar YG in YGList_S)
-      YG[] = (f[] > F_ERR) ? YG[]/f[] : 0.;
-    
-    for (scalar YG in YGList_G)
-      YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
-
-    for (scalar YS in YSList)
-      YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
-  }
-
-  //Compute face gradients
-  face_fraction (fS, fsS);
-  face_fraction (fG, fsG);
 
   scalar theta1[], theta2[];
 
@@ -349,62 +275,104 @@ event tracer_diffusion(i++) {
   theta2.dirty = true;
 #endif
 
-  //internal diffusion
+  // Internal gas diffusion
   for (int jj=0; jj<NGS; jj++) {
-    face vector Dmixf[];
-    scalar Dmix2 = Dmix2List_S[jj];
-    foreach_face()
-      Dmixf.x[] = face_value(Dmix2, 0)*rhoG*fsS.x[]*fm.x[];
+    face vector DmixGf[];
+    scalar DmixG = DmixGList_S[jj];
+    foreach_face() {
+      double rhoGvh_S;
+#ifdef VARPROP
+      rhoGvh_S = face_value(rhoGv_S, 0);
+#else
+      rhoGvh_S = rhoG;
+#endif
+      DmixGf.x[] = face_value(DmixG, 0)*rhoGvh_S*fsS.x[]*fm.x[];
+    }
 
-    foreach()
+    foreach() {
+#ifdef VARPROP
+      theta1[] = cm[]*max(fS[]*rhoGv_S[], F_ERR);
+#else
       theta1[] = cm[]*max(fS[]*rhoG, F_ERR);
+#endif
+    }
 
     scalar YG = YGList_S[jj];
     scalar sSexp = sSexpList[jj];
 
 #ifdef EXPLICIT_DIFFUSION
-    diffusion_explicit (YG, dt, D=Dmixf, theta=theta1);
+    diffusion_explicit (YG, dt, D=DmixGf, theta=theta1);
 #else
-    diffusion (YG, dt, D=Dmixf, r=sSexp, theta=theta1);
+    diffusion (YG, dt, D=DmixGf, r=sSexp, theta=theta1);
 #endif
   }
 
   //external diffusion
   for (int jj=0; jj<NGS; jj++) {
-    face vector Dmixf[];
-    scalar Dmix2 = Dmix2List_G[jj];
-    foreach_face()
-      Dmixf.x[] = face_value(Dmix2, 0)*rhoG*fsG.x[]*fm.x[];
-
-    foreach()
+    face vector DmixGf[];
+    scalar DmixG = DmixGList_G[jj];
+    foreach_face() {
+      double rhoGvh_G;
+#ifdef VARPROP
+      rhoGvh_G = face_value(rhoGv_G, 0);
+#else
+      rhoGvh_G = rhoG;
+#endif
+      DmixGf.x[] = face_value(DmixG, 0)*rhoGvh_G*fsG.x[]*fm.x[];
+    }
+    foreach() {
+#ifdef VARPROP
+      theta2[] = cm[]*max(fG[]*rhoGv_G[], F_ERR);
+#else
       theta2[] = cm[]*max(fG[]*rhoG, F_ERR);
+#endif
+    }
 
     scalar YG = YGList_G[jj];
     scalar sGexp = sGexpList[jj];
 #ifdef EXPLICIT_DIFFUSION
-    diffusion_explicit (YG, dt, D=Dmixf, theta=theta2);
+    diffusion_explicit (YG, dt, D=DmixGf, theta=theta2);
 #else
-    diffusion (YG, dt, D=Dmixf, r=sGexp, theta=theta2);
+    diffusion (YG, dt, D=DmixGf, r=sGexp, theta=theta2);
 #endif
   }
 
 #ifdef SOLVE_TEMPERATURE
   foreach_face() {
-    lambda1f.x[] = face_value(lambda1v, 0)*fsS.x[]*fm.x[];
-    lambda2f.x[] = face_value(lambda2v, 0)*fsG.x[]*fm.x[];
+    double lambda1vh, lambda2vh;
+    double ef = face_value(porosity, 0);
+    #ifdef VARPROP
+    lambda1vh = ef*face_value(lambdaGv_S, 0) + (1. - ef)*face_value(lambdaSv, 0);
+    lambda2vh = face_value(lambdaGv_G, 0);
+    #else
+    lambda1vh = ef*lambdaG + (1. - ef)*lambdaS;
+    lambda2vh = lambdaG;
+    #endif
+
+    lambda1f.x[] = lambda1vh*fsS.x[]*fm.x[];
+    lambda2f.x[] = lambda2vh*fsG.x[]*fm.x[];
   }
 
   foreach() {
-    theta1[] = cm[]*max(fS[]*rhocp1v[], F_ERR);
-    theta2[] = cm[]*max(fG[]*rhocp2v[], F_ERR);
+    double theta1vh, theta2vh;
+# ifdef VARPROP
+    theta1vh = porosity[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[])*rhoSv[]*cpSv[];
+    theta2vh = rhoGv_G[]*cpGv_G[];
+# else
+    theta1vh = porosity[]*rhoG*cpG + (1. - porosity[])*rhoS*cpS;
+    theta2vh = rhoG*cpG;
+# endif
+
+    theta1[] = cm[]*max(fS[]*theta1vh, F_ERR);
+    theta2[] = cm[]*max(fG[]*theta2vh, F_ERR);
   }
-  #ifdef EXPLICIT_DIFFUSION
+# ifdef EXPLICIT_DIFFUSION
     diffusion_explicit (TS, dt, D=lambda1f, r=sST, theta=theta1);
     diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);
-  #else
+# else
     diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
     diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
-  #endif
+# endif
 #endif
 
   //check mass and recover tracer form
@@ -440,93 +408,3 @@ event tracer_diffusion(i++) {
 #endif
   }
 }
-
-/*
-// calculate diff coefficents, to be moved to properties (eventually)
-event properties (i++) {
-#ifdef CONST_DIFF
-  // OpenSMOKE_GasProp_SetTemperature (500.);
-  // OpenSMOKE_GasProp_SetPressure (101325.);
-  // double fixedcomp[NGS];
-  // fixedcomp[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
-  // double Dmixv = OpenSMOKE_GasProp_Dmix(fixedcomp, OpenSMOKE_IndexOfSpecies ("N2"));
-  // fprintf(stderr, "Dmixv = %g\n", Dmixv);
-
-  double Dmixv =  2.05e-5; //Diff of CO in N2 at 500K, 1 atm
-  //double Dmixv = 0.;
-
-  foreach() {
-    //set the same for all species
-    for (int jj=0; jj<NGS; jj++) {
-      scalar Dmix2 = Dmix2List_G[jj];
-      Dmix2[] = Dmixv;
-    }
-    for (int jj=0; jj<NGS; jj++) {
-      scalar Dmix2 = Dmix2List_S[jj];
-      Dmix2[] = Dmixv*pow(porosity[], 3./2.); //effect of solid, to be revised
-    }
-  }
-#else
-  foreach() {
-    if (f[]>F_ERR) { //for the solid phase
-      //set T and P
-  #ifdef SOLVE_TEMPERATURE
-      OpenSMOKE_GasProp_SetTemperature (TS[]);
-  #else
-      OpenSMOKE_GasProp_SetTemperature (T[]);
-  #endif
-      OpenSMOKE_GasProp_SetPressure (p[]+Pref);
-
-      // reconstruct the mass fracs
-      double gasmassfracs [NGS];
-      for (int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList_S[jj];
-        gasmassfracs[jj] = YG[];
-      }
-
-      //convert to mole fracs
-      double gasmolefracs [NGS];
-      OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
-
-      //calculate diff coeff
-      for (int jj=0; jj<NGS; jj++) {
-        scalar Dmix = Dmix2List_S[jj];
-        Dmix[] = OpenSMOKE_GasProp_Dmix(gasmolefracs, jj);
-        Dmix[] *= pow(porosity[], 3./2.); //effect of solid, to be revised
-      }
-    }
-
-    if (f[] < 1-F_ERR) { //for the gas phase
-      //set T and P
-  #ifdef SOLVE_TEMPERATURE
-      OpenSMOKE_GasProp_SetTemperature (TG[]);
-  #else
-      OpenSMOKE_GasProp_SetTemperature (T[]);
-  #endif
-      OpenSMOKE_GasProp_SetPressure (p[]+Pref);
-
-      // reconstruct the mass fracs
-      double gasmassfracs [NGS];
-      for (int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList_G[jj];
-        gasmassfracs[jj] = YG[];
-      }
-
-      //convert to mole fracs
-      double gasmolefracs [NGS];
-      OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
-
-      //calculate diff coeff
-      for (int jj=0; jj<NGS; jj++) {
-        scalar Dmix = Dmix2List_G[jj];
-        Dmix[] = OpenSMOKE_GasProp_Dmix(gasmolefracs, jj);
-      }
-    }
-  }
-
-  boundary (Dmix2List_G);
-  boundary (Dmix2List_S);
-#endif
-}
-
-*/

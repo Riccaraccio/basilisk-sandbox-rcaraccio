@@ -11,10 +11,8 @@
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
-// #include "multicomponent-varprop.h"
-#include "shrinking.h"
+#include "shrinking-varprop.h"
 
-//to be put in multicomponent-varprop.h
 #include "multicomponent-varprop.h"
 
 u.n[top]      = neumann (0.);
@@ -33,9 +31,10 @@ double D0 = 2.e-2;
 int main() {
   lambdaS = 0.2; lambdaG = 0.08;
   cpS = 1600; cpG = 1200;
-  TS0 = 600; TG0 = 600.;
   rhoS = 1000; rhoG = 1;
   muG = 3.e-5;
+
+  TS0 = 600; TG0 = 600.;
   eps0 = 0.4;
 
   //dummy properties

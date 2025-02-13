@@ -3,9 +3,6 @@
 extern scalar zeta;
 extern scalar T;
 extern scalar porosity;
-extern scalar rho1v, cp1v;
-
-//TOBEDONE ADD cpsv, cpgv, rhosv, rhogv
 
 #ifndef TURN_OFF_REACTIONS
 void OpenSMOKE_ODESolverEXP (odefunction ode, unsigned int neq, double dt, double* y, void* args) {
@@ -58,11 +55,20 @@ event chemistry (i++) {
       UserDataODE data;
       data.P = Pref + p[];
       data.T = TS[]/f[];
+#ifdef VARPROP
+      data.rhos = rhoSv[];
+#else
       data.rhos = rhoS;
+#endif
       data.zeta = zeta[];
 #ifdef SOLVE_TEMPERATURE
+# ifdef VARPROP
+      data.cps = cpSv[];
+      data.cpg = cpGv_G[];
+# else
       data.cps = cpS;
       data.cpg = cpG;
+# endif
 #endif
       double sources[NEQ];
       data.sources = sources;

@@ -54,15 +54,12 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
   }
 
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
-  double MWMix = OpenSMOKE_MolecularWeight_From_MassFractions (gasmassfracs);
 
   double ctot = Pressure/R_GAS/Temperature; //ideal gases, mol/m3
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
   }
-  //double rhog = ctot*MWMix;
-  double rhog = rhoG;
 
   //////////////////////////////////////////////////////////////////////////
 
@@ -156,7 +153,12 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
   }
+#ifdef VARPROP
   double rhog = ctot*MWMix;
+  cpg = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
+#else
+  double rhog = rhoG;
+#endif
 
   //////////////////////////////////////////////////////////////////////////
 
@@ -195,6 +197,10 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   //epsilon equation
   dy[NGS+NSS] = -totsolidreaction*(1-epsilon)*(1-z)/rhos;
   sources[NGS+NSS] = -totsolidreaction;
+
+#ifdef VARPROP
+  cps = OpenSMOKE_SolProp_HeatCapacity (solmassfracs);
+#endif
 
   /**
   Get the heat of reaction and compute the equation for the

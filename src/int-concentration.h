@@ -7,8 +7,8 @@
 //Extern variables
 extern scalar fS, fG;
 extern face vector fsS, fsG;
-extern scalar* Dmix2List_G;
-extern scalar* Dmix2List_S;
+extern scalar* DmixGList_G;
+extern scalar* DmixGList_S;
 extern scalar* YGList_S;
 extern scalar* YGList_G;
 extern scalar* YGList_Int;
@@ -29,27 +29,38 @@ void EqSpecies (const double* xdata, double* fdata, void* params) {
   bool success = false;
 
   foreach_point(data->c.x, data->c.y, data->c.z) {
-    // OpenSMOKE_GasProp_SetTemperature (TInt[]);
-    // OpenSMOKE_GasProp_SetPressure (p[]+Pref);
 
     for (int jj=0; jj<NGS; jj++)
       YGInti[jj] = xdata[jj];
 
-    // OpenSMOKE_MoleFractions_From_MassFractions(XGInti, gas_MWs, YGInti);
-
     for (int jj=0; jj<NGS; jj++) {
       scalar YG = YGList_G[jj];
-      scalar Dmix2 = Dmix2List_G[jj];
+      scalar DmixG = DmixGList_G[jj];
       double gtrgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, true, YGInti[jj], &success);
-      jG_G[jj] = rhoG*Dmix2[]*gtrgrad; // to be changed to molar diffusion
-      //jG_G = rhoG*Dmix2[]*gas_MWs[jj]/MWmixGInt*gtrgrad;
+      
+      double rhoGvh_G;
+#ifdef VARPROP
+      rhoGvh_G = rhoGv_G[];
+#else
+      rhoGvh_G = rhoG;
+#endif
+
+      jG_G[jj] = rhoGvh_G*DmixG[]*gtrgrad;
     }
 
     for (int jj=0; jj<NGS; jj++) {
       scalar YG = YGList_S[jj];
-      scalar Dmix2 = Dmix2List_S[jj];
+      scalar DmixG = DmixGList_S[jj];
       double gtrgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, false, YGInti[jj], &success);
-      jG_S[jj] = rhoG*Dmix2[]*gtrgrad;
+
+      double rhoGvh_S;
+#ifdef VARPROP
+      rhoGvh_S = rhoGv_S[];
+#else
+      rhoGvh_S = rhoG;
+#endif
+
+      jG_S[jj] = rhoGvh_S*DmixG[]*gtrgrad;
     }
 
     for (int jj=0; jj<NGS; jj++)

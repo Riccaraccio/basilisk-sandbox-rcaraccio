@@ -7,8 +7,12 @@
 //Extern variables
 extern scalar fS, fG;
 extern face vector fsS, fsG;
-extern (const) scalar lambda1v;
-extern scalar lambda2v;
+extern scalar porosity;
+#ifdef VARPROP
+extern scalar lambdaGv_S, lambdaGv_G, rhoSv;
+#else
+extern double lambdaG, lambdaS;
+#endif
 extern double TG0;
 extern scalar TInt, TS, TG, T;
 
@@ -34,10 +38,19 @@ void EqTemperature (const double* xdata, double* fdata, void* params) {
     double gradTGn = ebmgrad (point, TG, fS, fG, fsS, fsG, true, TInti, &success);
     double gradTSn = ebmgrad (point, TS, fS, fG, fsS, fsG, false, TInti, &success);
 
+    double lambda1vh, lambda2vh;
+#ifdef VARPROP
+    lambda1vh = porosity[]*lambdaGv_S[] + (1. - porosity[])*lambdaSv[];
+    lambda2vh = lambdaGv_G[];
+#else
+    lambda1vh = porosity[]*lambdaG + (1. - porosity[])*lambdaS;
+    lambda2vh = lambdaG;
+#endif
+
     //Interface energy balance
     fdata[0] = - divq_rad_int (TInti, TG0, RADIATION_INTERFACE)
-                     + lambda1v[]*gradTSn
-                     + lambda2v[]*gradTGn;
+                     + lambda1vh*gradTSn
+                     + lambda2vh*gradTGn;
   }
 }
 

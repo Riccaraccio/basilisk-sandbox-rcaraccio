@@ -25,6 +25,9 @@ event defaults (i = 0) {
 }
 
 event acceleration (i++){
+  foreach()
+    porosity[] = f[] > F_ERR ? porosity[]/f[] : 0.;
+
   face vector av = a;
   face vector fS[];
   face_fraction(f,fS);
@@ -40,4 +43,7 @@ event acceleration (i++){
       av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*pow(ef,2)*rhoG/pow(Da,0.5)) *fabs(uf.x[])*uf.x[] *fS.x[];
     }
   }
+
+  foreach()
+    porosity[] = porosity[]*f[];
 }

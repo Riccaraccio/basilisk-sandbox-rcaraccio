@@ -12,10 +12,10 @@
 #endif
 
 #include "common-evaporation.h"
-#include "memoryallocation-t.h"
+#include "memoryallocation.h"
 #include "reactions.h"
-#include "int-temperature-v.h"
-#include "int-condition.h"
+#include "int-temperature.h"
+#include "int-concentration.h"
 
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
@@ -242,71 +242,6 @@ event tracer_diffusion (i++) {
     for (scalar YS in YSList)
       YS[] *= f[];
   }
-}
-
-extern face vector ufsave;
-face vector u_prime[];
-event tracer_advection (i++) {
-  foreach()
-    porosity[] = f[] > F_ERR ? porosity[]/f[] : 0.;
-
-  #ifdef SOLVE_TEMPERATURE
-  //calculate the aritifical velocity
-  face_fraction(f, fsS);
-  foreach_face() {
-    double ef = face_value(porosity, 0);
-    u_prime.x[] = 0.;
-    if (fsS.x[] > F_ERR) {
-      u_prime.x[] = ufsave.x[] * (rhoG*cpG*ef)/(rhoG*cpG*ef + rhoS*cpS*(1.-ef)) *fsS.x[];
-    } else {
-      u_prime.x[] = ufsave.x[];
-    }
-  }
-
-  // set u = u_prime, for temperature advection
-  foreach_face()
-    uf.x[] = u_prime.x[];
-
-  //advection of TS, TG
-  vof_advection ({fTmp}, i);
-
-  // Reset the velocity field
-  foreach_face()
-    uf.x[] = ufsave.x[];
-  #endif 
-
-  //advection of species
-  //vof_advection ({fSpc}, i);
-  
-  foreach()
-    porosity[] *= f[];
-}
-
-event tracer_diffusion(i++) {
-  foreach() {
-    f[] = clamp (f[], 0., 1.);
-    f[] = (f[] > F_ERR) ? f[] : 0.;
-    fS[] = f[]; fG[] = 1. - f[];
-#ifdef SOLVE_TEMPERATURE
-    TS[] = (fTmp[] > F_ERR) ? TS[]/fTmp[] : 0.;
-    TG[] = ((1. - fTmp[]) > F_ERR) ? TG[]/(1. - fTmp[]) : 0.;
-    // TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
-    // TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
-#endif
-
-    for (scalar YG in YGList_S)
-      YG[] = (f[] > F_ERR) ? YG[]/f[] : 0.;
-    
-    for (scalar YG in YGList_G)
-      YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
-
-    for (scalar YS in YSList)
-      YS[] = (f[] > F_ERR) ? YS[]/f[] : 0.;
-  }
-
-  //Compute face gradients
-  face_fraction (fS, fsS);
-  face_fraction (fG, fsG);
 
   scalar theta1[], theta2[];
 

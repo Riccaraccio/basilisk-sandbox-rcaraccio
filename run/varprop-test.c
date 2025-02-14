@@ -34,7 +34,7 @@ int main() {
   rhoS = 1000; rhoG = 1;
   muG = 3.e-5;
 
-  TS0 = 300; TG0 = 600.;
+  TS0 = 600; TG0 = 600.;
   eps0 = 0.4;
 
   //dummy properties
@@ -52,7 +52,7 @@ int main() {
   //2: SMOOTH, 
   //3: SHARP, 
   //4: LEVELSET
-  zeta_policy = 1;
+  zeta_policy = ZETA_SHRINK;
 
   init_grid(1 << maxlevel);
   run();
@@ -93,7 +93,7 @@ event output (t+=1) {
   fprintf (stderr, "%g\n", t);
 }
 
-event stop (t = 5);
+event stop (t = 1000);
 
 /** 
 ~~~gnuplot Total Mass Balance

@@ -157,10 +157,7 @@ event defaults (i = 0)
 
 event init (i = 0)
 {
-  update_properties_initial();
-
-  MWmix_G.dirty = true;
-  MWmix_S.dirty = true;
+  // update_properties_initial(); //TODO: it seems that this is not needed, update_properties works fine
 
 #if TREE
   //for (scalar s in {drhodt, drhodtext}) { //TODO: check if this is correct
@@ -208,20 +205,12 @@ void update_properties (void) {
   }
 
   foreach() {
-    //MW1mix[] = 0.;
-    //MW2mix[] = 0.;
-
     if (f[] > T_PROP) {
       // Update internal solid properties
       double xS[NSS], yS[NSS];
       foreach_elem (YSList, jj) {
         scalar YS = YSList[jj];
         yS[jj] = (NSS == 1) ?  1. : YS[]/f[];
-      }
-
-      for (int jj=0; jj<NSS; jj++) {
-        fprintf(stderr, "yS[%d] = %g\n", jj, yS[jj]);
-        fprintf(stderr, "sol_MWs[%d] = %g\n", jj, sol_MWs[jj]);
       }
       double MWmixS;
       OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, yS);
@@ -230,11 +219,6 @@ void update_properties (void) {
       tsSh.T = TS[]/f[];
       tsSh.P = Pref;
       tsSh.x = xS;
-
-      for (int jj=0; jj<NSS; jj++) {
-        fprintf(stderr, "xS[%d] = %g\n", jj, xS[jj]);
-      }
-      fprintf (stderr, "cpSv = %g\n", tpS.cpv (&tsSh));
 
       rhoSv[] = tpS.rhov (&tsSh);
       cpSv[] = tpS.cpv (&tsSh);

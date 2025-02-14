@@ -201,6 +201,7 @@ for (int jj=0; jj<NGS; jj++) {
   for (int jj=0; jj<NSS; jj++) {
     sol_start[jj] = 0.;
     sol_MWs[jj] = OpenSMOKE_MW_Solid(jj);
+    fprintf(stderr, "sol_MWs[%d] = %g\n", jj, sol_MWs[jj]);
   }
 
   for (scalar s in YGList_S)

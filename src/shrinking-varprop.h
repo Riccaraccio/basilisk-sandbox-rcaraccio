@@ -81,11 +81,13 @@ event phasechange (i++) {
   mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
 
   foreach() {
+    if (f[] > F_ERR) {
 #ifdef VARPROP //*(f-ef)
-    gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoGv_G[] - 1/rhoSv[])*cm[];
+      gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoGv_S[] - 1/rhoSv[])*cm[];
 #else
-    gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoG - 1/rhoS)*cm[];
+      gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoG - 1/rhoS)*cm[];
 #endif
+    }
   }
 }
 

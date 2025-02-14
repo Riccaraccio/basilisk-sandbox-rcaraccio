@@ -52,8 +52,8 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
   for (int jj=0; jj<NGS; jj++) {
     gasmassfracs[jj] =  gasmass[jj]/totgasmass;
   }
-
-  OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
+  double MWmix;
+  OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWmix, gasmassfracs);
 
   double ctot = Pressure/R_GAS/Temperature; //ideal gases, mol/m3
   double cgas[NGS], rgas[NGS];
@@ -145,8 +145,8 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
     gasmassfracs[jj] = gasmass[jj]/totgasmass;
   }
 
-  OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
-  double MWMix = OpenSMOKE_MolecularWeight_From_MassFractions (gasmassfracs);
+  double MWMix; 
+  OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWMix, gasmassfracs);
 
   double ctot = Pressure/R_GAS/Temperature; //ideal gases
   double cgas[NGS], rgas[NGS];

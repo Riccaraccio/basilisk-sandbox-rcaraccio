@@ -65,61 +65,64 @@ void update_properties_constant (void) {
 void update_properties_initial (void) {
   foreach() {
     ThermoState tsGh, tsSh;
-    // ThermoState tsGh;
+    if (f[] < 1. - T_PROP) {
 
-    // Update the properties of the external gas phase
-    tsGh.T = TG0;
-    tsGh.P = Pref;
-    tsGh.x = gas_start;
+      // Update the properties of the external gas phase
+      tsGh.T = TG0;
+      tsGh.P = Pref;
+      tsGh.x = gas_start;
 
-    rhoGv_G[] = tpG.rhov (&tsGh);
-    //rhoGvInt_G[] = rhoGv_G[];
-    rhoGv0_G[] = rhoGv_G[];
-    muGv_G[] = tpG.muv (&tsGh);
-    cpGv_G[] = tpG.cpv (&tsGh);
-    lambdaGv_G[] = tpG.lambdav (&tsGh);
+      rhoGv_G[] = tpG.rhov (&tsGh);
+      //rhoGvInt_G[] = rhoGv_G[];
+      rhoGv0_G[] = rhoGv_G[];
+      muGv_G[] = tpG.muv (&tsGh);
+      cpGv_G[] = tpG.cpv (&tsGh);
+      lambdaGv_G[] = tpG.lambdav (&tsGh);
 
-    for(int jj=0; jj<NGS; jj++) {
-      scalar DmixGv = DmixGList_G[jj];
-      #ifdef CONST_DIFF
-      DmixGv[] = CONST_DIFF;
-      #else
-      DmixGv[] = tpG.diff (&tsGh, jj);
-      #endif
+      for(int jj=0; jj<NGS; jj++) {
+        scalar DmixGv = DmixGList_G[jj];
+        #ifdef CONST_DIFF
+        DmixGv[] = CONST_DIFF;
+        #else
+        DmixGv[] = tpG.diff (&tsGh, jj);
+        #endif
+      }
     }
 
-    // Update the properties of the internal gas phase
-    tsGh.T = TS0;
-    tsGh.P = Pref;
-    tsGh.x = gas_start;
+    if (f[] > T_ERR) {
+      // Update the properties of the internal gas phase
+      tsGh.T = TS0;
+      tsGh.P = Pref;
+      tsGh.x = gas_start;
 
-    rhoGv_S[] = tpG.rhov (&tsGh);
-    //rhoGvInt_S[] = rhoGv_S[];
-    rhoGv0_S[] = rhoGv_S[];
-    muGv_S[] = tpG.muv (&tsGh);
-    cpGv_S[] = tpG.cpv (&tsGh);
-    lambdaGv_S[] = tpG.lambdav (&tsGh);
+      rhoGv_S[] = tpG.rhov (&tsGh);
+      //rhoGvInt_S[] = rhoGv_S[];
+      rhoGv0_S[] = rhoGv_S[];
+      muGv_S[] = tpG.muv (&tsGh);
+      cpGv_S[] = tpG.cpv (&tsGh);
+      lambdaGv_S[] = tpG.lambdav (&tsGh);
 
-    for(int jj=0; jj<NGS; jj++) {
-      scalar DmixGv = DmixGList_S[jj];
-      #ifdef CONST_DIFF
-      DmixGv[] = CONST_DIFF;
-      #else
-      DmixGv[] = tpG.diff (&tsGh, jj);
-      DmixGv[] *= pow(porosity[], 3./2.); //effect of solid, to be revised
-      #endif
+      for(int jj=0; jj<NGS; jj++) {
+        scalar DmixGv = DmixGList_S[jj];
+        #ifdef CONST_DIFF
+        DmixGv[] = CONST_DIFF;
+        #else
+        DmixGv[] = tpG.diff (&tsGh, jj);
+        DmixGv[] *= pow(porosity[]/f[], 3./2.); //effect of solid, to be revised
+        #endif
+      }
+
+      //Update the properties of the solid phase
+      tsSh.T = TS0;
+      tsSh.P = Pref;
+      tsSh.x = sol_start;
+
+      rhoSv[] = tpS.rhov (&tsSh);
+      //rhoSvInt[] = rhoSv[];
+      rhoSv0[] = rhoSv[];
+      cpSv[] = tpS.cpv (&tsSh);
+      lambdaSv[] = tpS.lambdav (&tsSh);
     }
-
-    //Update the properties of the solid phase
-    tsSh.T = TS0;
-    tsSh.P = Pref;
-    tsSh.x = sol_start;
-
-    rhoSv[] = tpS.rhov (&tsSh);
-    //rhoSvInt[] = rhoSv[];
-    rhoSv0[] = rhoSv[];
-    cpSv[] = tpS.cpv (&tsSh);
-    lambdaSv[] = tpS.lambdav (&tsSh);
   }
 
   boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
@@ -215,12 +218,23 @@ void update_properties (void) {
         scalar YS = YSList[jj];
         yS[jj] = (NSS == 1) ?  1. : YS[]/f[];
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xS, sol_MWs, yS);
+
+      for (int jj=0; jj<NSS; jj++) {
+        fprintf(stderr, "yS[%d] = %g\n", jj, yS[jj]);
+        fprintf(stderr, "sol_MWs[%d] = %g\n", jj, sol_MWs[jj]);
+      }
+      double MWmixS;
+      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, yS);
 
       ThermoState tsSh;
       tsSh.T = TS[]/f[];
       tsSh.P = Pref;
       tsSh.x = xS;
+
+      for (int jj=0; jj<NSS; jj++) {
+        fprintf(stderr, "xS[%d] = %g\n", jj, xS[jj]);
+      }
+      fprintf (stderr, "cpSv = %g\n", tpS.cpv (&tsSh));
 
       rhoSv[] = tpS.rhov (&tsSh);
       cpSv[] = tpS.cpv (&tsSh);
@@ -232,7 +246,8 @@ void update_properties (void) {
         scalar YG = YGList_S[jj];
         yG[jj] = YG[]/f[];
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, gas_MWs, yG);
+      double MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
 
       ThermoState tsGh;
       tsGh.T = TS[]/f[];
@@ -248,7 +263,7 @@ void update_properties (void) {
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
         DmixGv[] = tpG.diff (&tsGh, jj);
-        DmixGv[] *= pow(porosity[], 3./2.);
+        DmixGv[] *= pow(porosity[]/f[], 3./2.);
       }
     }
 
@@ -259,7 +274,8 @@ void update_properties (void) {
         scalar YG = YGList_G[jj];
         yG[jj] = YG[]/(1. - f[]);
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, gas_MWs, yG);
+      double MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
 
       ThermoState tsGh;
       tsGh.T = TG[]/(1. - f[]);
@@ -278,82 +294,6 @@ void update_properties (void) {
       }
     }
   }
-
-  //TODO: check if this is needed
-  // foreach() {
-  //   if (f[] <= T_PROP) {
-  //     double rho1vgh = 0.;
-  //     double mu1vgh = 0.;
-  //     double cp1vgh = 0.;
-  //     double lambda1vgh = 0.;
-  //     double dhevgh[NLS];
-  //     double beta1vgh = 0.;
-  //     for (int jj=0; jj<NLS; jj++)
-  //       dhevgh[jj] = 0.;
-
-  //     int counter = 0;
-  //     foreach_neighbor(1) {
-  //       if (f[] > T_PROP) {
-  //         counter++;
-  //         rho1vgh += rho1v[];
-  //         mu1vgh += mu1v[];
-  //         cp1vgh += cp1v[];
-  //         lambda1vgh += lambda1v[];
-  //         beta1vgh += betaexp1[];
-
-  //         for (int jj=0; jj<NLS; jj++) {
-  //           scalar dhevjj = dhevList[jj];
-  //           dhevgh[jj] += dhevjj[];
-  //         }
-  //       }
-  //     }
-  //     rho1v[] = (counter != 0) ? rho1vgh/counter : 0.;
-  //     mu1v[] = (counter != 0) ? mu1vgh/counter : 0.;
-  //     cp1v[] = (counter != 0) ? cp1vgh/counter : 0.;
-  //     lambda1v[] = (counter != 0) ? lambda1vgh/counter : 0.;
-  //     betaexp1[] = (counter != 0) ? beta1vgh/counter : 0.;
-
-  //     for (int jj=0; jj<NLS; jj++) {
-  //       scalar dhevjj = dhevList[jj];
-  //       dhevjj[] = (counter != 0) ? dhevgh[jj]/counter : 0.;
-  //     }
-  //   }
-
-  //   if ((1. - f[]) <= T_PROP) {
-  //     double rho2vgh = 0.;
-  //     double mu2vgh = 0.;
-  //     double cp2vgh = 0.;
-  //     double lambda2vgh = 0.;
-  //     double Dmix2vgh[NGS];
-  //     for (int jj=0; jj<NGS; jj++)
-  //       Dmix2vgh[jj] = 0.;
-
-  //     int counter = 0;
-  //     foreach_neighbor(1) {
-  //       if ((1. - f[]) > T_PROP) {
-  //         counter++;
-  //         rho2vgh += rho2v[];
-  //         mu2vgh += mu2v[];
-  //         cp2vgh += cp2v[];
-  //         lambda2vgh += lambda2v[];
-
-  //         for (int jj=0; jj<NGS; jj++) {
-  //           scalar Dmix2jj = Dmix2List[jj];
-  //           Dmix2vgh[jj] += Dmix2jj[];
-  //         }
-  //       }
-  //     }
-  //     rho2v[] = (counter != 0) ? rho2vgh/counter : 0.;
-  //     mu2v[] = (counter != 0) ? mu2vgh/counter : 0.;
-  //     cp2v[] = (counter != 0) ? cp2vgh/counter : 0.;
-  //     lambda2v[] = (counter != 0) ? lambda2vgh/counter : 0.;
-
-  //     for (int jj=0; jj<NGS; jj++) {
-  //       scalar Dmix2jj = Dmix2List[jj];
-  //       Dmix2jj[] = (counter != 0) ? Dmix2vgh[jj]/counter : 0.;
-  //     }
-  //   }
-  // }
 
   boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
             rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,

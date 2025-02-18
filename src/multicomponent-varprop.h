@@ -13,6 +13,7 @@
 
 #include "common-evaporation.h"
 #include "memoryallocation-varprop.h"
+#include "multicomponent-properties.h"
 #include "reactions.h"
 
 #include "int-temperature.h"
@@ -35,8 +36,6 @@ event reset_sources (i++) {
     }
   }
 }
-
-#include "multicomponent-properties.h"
 
 extern face vector ufsave;
 face vector u_prime[];
@@ -265,6 +264,10 @@ event tracer_diffusion (i++) {
 #endif
     }
   }
+
+#ifdef VARPROP
+  update_divergence();
+#endif
 
   scalar theta1[], theta2[];
 

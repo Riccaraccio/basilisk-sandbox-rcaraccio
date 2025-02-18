@@ -183,6 +183,7 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]*rgas[jj]*(1-epsilon);
+    sources[jj] = dy[jj]*epsilon; //make sure it is correct to multiply by porosity to get dwdt = source
   }
 
   for (int jj=0; jj<NSS; jj++) {
@@ -214,7 +215,9 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
 
   //dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
   dy[NGS+NSS+1] = (QRsol*(1-epsilon))/((rhog*cpg*epsilon) + rhos*cps*(1-epsilon));
+  sources[NGS+NSS+1] = dy[NGS+NSS+1]*(rhog*cpg*epsilon + rhos*cps*(1-epsilon));
 #ifdef TURN_OFF_HEAT_OF_REACTION
   dy[NGS+NSS+1] *= 0.;
+  sources[NGS+NSS+1] *= 0.;
 #endif
 }

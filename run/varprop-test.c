@@ -6,12 +6,13 @@
 //#define EXPLICIT_REACTIONS  1         //explicit reactions
 //#define EXPLICIT_DIFFUSION  1         //explicit diffusion
 #define FIXED_INT_TEMP    1           //fixed interface temperature
+#define CONST_DIFF 2e-5
 
 //#include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
-#include "shrinking-varprop.h"
+#include "shrinking.h"
 
 #include "multicomponent-varprop.h"
 

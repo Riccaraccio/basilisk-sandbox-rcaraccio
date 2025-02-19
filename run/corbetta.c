@@ -6,15 +6,16 @@
 //#define EXPLICIT_REACTIONS  1
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
+// #define CONST_DIFF 2e-5
 
 #include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
-#include "prop.h"
+#include "opensmoke-properties.h"
 #include "two-phase.h"
-#include "multicomponent-t.h"
 #include "shrinking.h"
-//#include "darcy.h"
+#include "multicomponent-varprop.h"
+#include "darcy.h"
 #include "view.h"
 
 u.n[top]      = neumann (0.);
@@ -47,6 +48,8 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
+  Da = 1e-4;
+  
   L0 = 3.5*D0;
 
 #ifdef EXPLICIT_DIFFUSION
@@ -57,7 +60,8 @@ int main() {
   DT = 1e-1;
 #endif
 
-  kinfolder = "biomass/Solid-only-2003";
+  // kinfolder = "biomass/Solid-only-2003";
+  kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
 }
@@ -164,32 +168,32 @@ event adapt (i++) {
 // }
 
 event movie(t+=5) {
-//   clear();
-//   box();
-//   view (ty=-0.5, width = 1400.);
-//   draw_vof("f", lw=2);
-//   squares ("T", min=TS0, max=TG0, linear=true);
-//   mirror ({1.,0.}) {
-//     draw_vof ("f", lw=2);
-//     squares ("C6H10O5_G+C6H10O5_S", min=0., max=1., linear=true);
-//     // vectors ("u", scale=1);
-//  }
-//  save ("movie.mp4");
+  clear();
+  box();
+  view (ty=-0.5, width = 1400.);
+  draw_vof("f", lw=2);
+  squares ("T", min=300, max=800, linear=true);
+  mirror ({1.,0.}) {
+    draw_vof ("f", lw=2);
+    squares ("C6H10O5_G+C6H10O5_S", min=0., max=1., linear=true);
+    // vectors ("u", scale=1);
+ }
+ save ("movie.mp4");
 
-  clear ();
-  box ();
-  view (ty = -0.5, width = 1400.);
-  draw_vof ("f", lw = 2);
-  scalar epsi[];
-  foreach()
-    epsi[] = f[]>F_ERR ? porosity[]/f[] : 1.;
-  squares ("epsi", min = 0., max = 1., linear = true);
-  mirror ({1., 0.}) {
-    draw_vof ("f", lw = 2);
-    cells();
-    vectors ("u", scale = 1e-2);
-  }
-  save("movie2.mp4");
+  // clear ();
+  // box ();
+  // view (ty = -0.5, width = 1400.);
+  // draw_vof ("f", lw = 2);
+  // scalar epsi[];
+  // foreach()
+  //   epsi[] = f[]>F_ERR ? porosity[]/f[] : 1.;
+  // squares ("epsi", min = 0., max = 1., linear = true);
+  // mirror ({1., 0.}) {
+  //   draw_vof ("f", lw = 2);
+  //   cells();
+  //   vectors ("u", scale = 1e-2);
+  // }
+  // save("movie2.mp4");
 }
 
 #if DUMP

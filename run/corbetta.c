@@ -100,10 +100,16 @@ event init(i=0) {
 #endif
 #endif
 
-  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
-
-  inert[top] = dirichlet (1.);
-  inert[right] = dirichlet (1.);
+  for (int jj=0; jj<NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
+      YG[top] = dirichlet (1.);
+      YG[right] = dirichlet (1.);
+    } else {
+      YG[top] = dirichlet (0.);
+      YG[right] = dirichlet (0.);
+    }
+  }
 
 #ifdef TEMPERATURE_PROFILE
   double timeprofile[] = {0, 1, 2, 3, 4, 5, 13.8996139, 41.6988417, 88.03088803, 166.7953668, 
@@ -175,7 +181,7 @@ event movie(t+=5) {
   squares ("T", min=300, max=800, linear=true);
   mirror ({1.,0.}) {
     draw_vof ("f", lw=2);
-    squares ("C6H10O5_G+C6H10O5_S", min=0., max=1., linear=true);
+    squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
     // vectors ("u", scale=1);
  }
  save ("movie.mp4");

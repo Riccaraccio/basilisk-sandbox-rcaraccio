@@ -6,12 +6,13 @@
 //#define EXPLICIT_REACTIONS  1
 //#define EXPLICIT_DIFFUSION  1
 //#define FIXED_INT_TEMP    1
-#define CONST_DIFF 2.05e-5
+#define TURN_OFF_HEAT_OF_REACTION 1
+#define CONST_DIFF 1
 
 #include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
-#include "opensmoke-properties.h"
+#include "prop.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
@@ -60,8 +61,8 @@ int main() {
   DT = 1e-1;
 #endif
 
-  // kinfolder = "biomass/Solid-only-2003";
-  kinfolder = "biomass/Solid-only-2407";
+  kinfolder = "biomass/Solid-only-2003";
+  //kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
 }

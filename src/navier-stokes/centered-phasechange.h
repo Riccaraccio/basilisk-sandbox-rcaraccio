@@ -21,7 +21,9 @@ mgstats project_sf (face vector uf, scalar p,
 
   foreach() {
     div[] += gasSource[]/dt;
+#ifndef NO_EXPANSION
     div[] += drhodt[]/dt;
+#endif
   }
 
   mgstats mgp = poisson (p, div, alpha,

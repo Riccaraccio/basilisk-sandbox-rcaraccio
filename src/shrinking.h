@@ -20,7 +20,7 @@ typedef enum {
   ZETA_LEVELSET
 } zeta_types;
 
-zeta_types zeta_policy = ZETA_SHRINK;
+zeta_types zeta_policy;
 
 void set_zeta (zeta_types zeta_policy) {
   #if AXI
@@ -55,12 +55,9 @@ void set_zeta (zeta_types zeta_policy) {
   }
 }
 
-event defaults (i=0) {
-  set_zeta (zeta_policy);
-}
-
 event init (i=0) {
   f.tracers = list_append (f.tracers, porosity);
+  set_zeta (zeta_policy);
 }
 
 event reset_sources (i++);

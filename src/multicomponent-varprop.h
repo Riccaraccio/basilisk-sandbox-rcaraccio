@@ -14,7 +14,7 @@
 #include "common-evaporation.h"
 #include "memoryallocation-varprop.h"
 #include "multicomponent-properties.h"
-#include "reactions.h"
+#include "chemistry.h"
 
 #include "int-temperature.h"
 #include "int-concentration.h"

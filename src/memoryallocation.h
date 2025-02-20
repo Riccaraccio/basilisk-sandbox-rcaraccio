@@ -9,8 +9,8 @@ scalar* YGList_Int  = NULL;
 scalar* sSexpList   = NULL;
 scalar* sGexpList   = NULL;
 scalar* YSList      = NULL;
-scalar* Dmix2List_G = NULL;
-scalar* Dmix2List_S = NULL;
+scalar* DmixGList_G = NULL;
+scalar* DmixGList_S = NULL;
 
 double* gas_start;
 double* sol_start;
@@ -54,8 +54,8 @@ event defaults (i = 0) {
   sSexpList   = NULL;
   sGexpList   = NULL;
   YSList      = NULL;
-  Dmix2List_G = NULL;
-  Dmix2List_S = NULL;
+  DmixGList_G = NULL;
+  DmixGList_S = NULL;
 
   //Allocate gas species fields
   for (int jj = 0; jj<NGS; jj++) {
@@ -106,9 +106,9 @@ event defaults (i = 0) {
     char name[20];
     sprintf (name, "D_%s_S",OpenSMOKE_NamesOfSpecies(jj));
     s.name = strdup (name);
-    Dmix2List_S = list_append (Dmix2List_S, s);
+    DmixGList_S = list_append (DmixGList_S, s);
   }
-  reset (Dmix2List_S, 0.);
+  reset (DmixGList_S, 0.);
 
   for (int jj = 0; jj<NGS; jj++) {
     scalar s = new scalar;
@@ -116,9 +116,9 @@ event defaults (i = 0) {
     char name[20];
     sprintf (name, "D_%s_G",OpenSMOKE_NamesOfSpecies(jj));
     s.name = strdup (name);
-    Dmix2List_G = list_append (Dmix2List_G, s);
+    DmixGList_G = list_append (DmixGList_G, s);
   }
-  reset (Dmix2List_G, 0.);
+  reset (DmixGList_G, 0.);
 
 // fields for the source therms
 for (int jj=0; jj<NGS; jj++) {
@@ -303,9 +303,9 @@ event cleanup (t = end) {
   //delete(f.tracers),  free(f.tracers),   f.tracers = NULL;
   delete (YSList),      free (YSList),      YSList = NULL;
   delete (YGList_S),    free (YGList_S),    YGList_S = NULL;
-  delete (Dmix2List_S), free (Dmix2List_S), Dmix2List_S = NULL;
+  delete (DmixGList_S), free (DmixGList_S), DmixGList_S = NULL;
   delete (YGList_G),    free (YGList_G),    YGList_G = NULL;
-  delete (Dmix2List_G), free (Dmix2List_G), Dmix2List_G = NULL;
+  delete (DmixGList_G), free (DmixGList_G), DmixGList_G = NULL;
   delete (YGList_Int),  free (YGList_Int),  YGList_Int = NULL;
   delete (sSexpList),   free (sSexpList),   sSexpList = NULL;
   delete (sGexpList),   free (sGexpList),   sGexpList = NULL;

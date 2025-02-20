@@ -1,4 +1,4 @@
-#include "osreactors.h"
+#include "reactors.h"
 
 extern scalar zeta;
 extern scalar T;

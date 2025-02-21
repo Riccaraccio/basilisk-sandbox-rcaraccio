@@ -263,7 +263,7 @@ event defaults (i = 0) {
   mb.sol_mass_start = NULL;
   mb.sol_mass = NULL;
 
-//#ifdef MULTICOMPONENT
+#ifdef MULTICOMPONENT
   mb.gas_mass_start = (double*) malloc(NGS*sizeof(double));
   mb.gas_mass_bd =    (double*) malloc(NGS*sizeof(double));
   mb.gas_mass_bdnow = (double*) malloc(NGS*sizeof(double));
@@ -271,7 +271,7 @@ event defaults (i = 0) {
 
   mb.sol_mass_start = (double*) malloc(NSS*sizeof(double));
   mb.sol_mass =       (double*) malloc(NSS*sizeof(double));
-//#endif
+#endif
 
   foreach()
     U[] = 1.;

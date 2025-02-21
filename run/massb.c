@@ -17,7 +17,7 @@ u.t[right] = neumann(0.);
 p[right] = dirichlet(0.);
 psi[right] = dirichlet(0.);
 
-int maxlevel = 7, minlevel = 2;
+int maxlevel = 7, minlevel = 4;
 double D0 = 1;
 scalar omega[];
 
@@ -31,31 +31,31 @@ int main() {
   mu1 = 1., mu2 = 1.;
   muG = 1.e-3;
   L0 = 1.5*D0;
-  DT = 1e-2;
+  DT = 1e-3;
 
   rhoS = 100.;
   rhoG = 1.;
 
-for (maxlevel=5; maxlevel<=7; maxlevel++) {
-  for (zetamodel=0; zetamodel <= 1; zetamodel++) {
-    for (amr=0; amr <=1; amr++) {
-        fprintf(stderr, "Running maxlevel %d zetamodel %d, amr %d\n",
-          maxlevel, zetamodel, amr);
-        init_grid(1 << maxlevel);
-        run();
-    }
-  }
-}
-
-// amr = 0;
 // for (maxlevel=5; maxlevel<=7; maxlevel++) {
 //   for (zetamodel=0; zetamodel <= 1; zetamodel++) {
+//     for (amr=0; amr <=1; amr++) {
 //         fprintf(stderr, "Running maxlevel %d zetamodel %d, amr %d\n",
 //           maxlevel, zetamodel, amr);
 //         init_grid(1 << maxlevel);
 //         run();
 //     }
 //   }
+// }
+
+amr = 0;
+for (maxlevel=5; maxlevel<=8; maxlevel++) {
+  for (zetamodel=0; zetamodel <= 1; zetamodel++) {
+        fprintf(stderr, "Running maxlevel %d zetamodel %d, amr %d\n",
+          maxlevel, zetamodel, amr);
+        init_grid(1 << maxlevel);
+        run();
+    }
+  }
 
   // maxlevel = 6;
   // amr = 0;
@@ -151,7 +151,7 @@ unset multiplot
 
 ~~~gnuplot Error vs maxlevel
 reset
-set terminal svg size 1600, 800
+set terminal svg size 1600, 801
 set multiplot layout 1,2 title "Mass errors at different grid refinments AXI"
 
 # Initialize arrays to store differences
@@ -167,19 +167,19 @@ do for [i=0:3] {
     
     # Calculate difference for SHRINK case (x-0-0)
     stats sprintf("balances-%d-0-0", level) u (last_y=$4) nooutput
-    diff_x00[i+1] = last_y - analytical
+    diff_x00[i+1] = abs(last_y - analytical)
     
     # Calculate difference for SWELLING case (x-1-0)
     stats sprintf("balances-%d-1-0", level) u (last_y=$4) nooutput
-    diff_x10[i+1] = last_y - analytical
+    diff_x10[i+1] = abs(last_y - analytical)
     
-    # Calculate difference for SWELLING case (x-0-1)
-    stats sprintf("balances-%d-0-1", level) u (last_y=$4) nooutput
-    diff_x01[i+1] = last_y - analytical
+    ## Calculate difference for SWELLING case (x-0-1)
+    #stats sprintf("balances-%d-0-1", level) u (last_y=$4) nooutput
+    #diff_x01[i+1] = last_y - analytical
     
-    # Calculate difference for SWELLING case (x-1-1)
-    stats sprintf("balances-%d-1-1", level) u (last_y=$4) nooutput
-    diff_x11[i+1] = last_y - analytical
+    ## Calculate difference for SWELLING case (x-1-1)
+    #stats sprintf("balances-%d-1-1", level) u (last_y=$4) nooutput
+    #diff_x11[i+1] = last_y - analytical
 }
 
 array x_levels[4] = [2**5, 2**6, 2**7, 2**8]
@@ -195,13 +195,11 @@ set size square
 set grid
 
 plot  x_levels u (x_levels[$1]):(diff_x00[$1]) w p pt 8 ps 2 t "SHRINK",\
-      x_levels u (x_levels[$1]):(diff_x01[$1]) w p pt 8 ps 2 t "SHRINK AMR",\
       10*x**(-1) lw 2 title "1^{st} order", \
       30*x**(-2) lw 2 title "2^{nd} order"
 
 set title "SWELLING"
 plot  x_levels u (x_levels[$1]):(diff_x10[$1]) w p pt 8 ps 2 t "SWELLING",\
-      x_levels u (x_levels[$1]):(diff_x11[$1]) w p pt 8 ps 2 t "SWELLING AMR",\
       10*x**(-1) lw 2 title "1^{st} order", \
       30*x**(-2) lw 2 title "2^{nd} order"
 
@@ -228,19 +226,19 @@ do for [i=0:3] {
     
     # Calculate difference for SHRINK case (x-0-0)
     stats sprintf("balances-%d-0-0", level) u (last_y=$2) nooutput
-    diff_x00[i+1] = abs(last_y - analytical)
+    diff_x00[i+1] = last_y - analytical
     
     # Calculate difference for SWELLING case (x-1-0)
     stats sprintf("balances-%d-1-0", level) u (last_y=$2) nooutput
-    diff_x10[i+1] = abs(last_y - analytical)
+    diff_x10[i+1] = last_y - analytical
     
-    # Calculate difference for SWELLING case (x-0-1)
-    stats sprintf("balances-%d-0-1", level) u (last_y=$2) nooutput
-    diff_x01[i+1] = abs(last_y - analytical)
+    ## Calculate difference for SWELLING case (x-0-1)
+    #stats sprintf("balances-%d-0-1", level) u (last_y=$2) nooutput
+    #diff_x01[i+1] = abs(last_y - analytical)
     
-    # Calculate difference for SWELLING case (x-1-1)
-    stats sprintf("balances-%d-1-1", level) u (last_y=$2) nooutput
-    diff_x11[i+1] = abs(last_y - analytical)
+    ## Calculate difference for SWELLING case (x-1-1)
+    #stats sprintf("balances-%d-1-1", level) u (last_y=$2) nooutput
+    #diff_x11[i+1] = abs(last_y - analytical)
 }
 
 array x_levels[4] = [2**5, 2**6, 2**7, 2**8]
@@ -258,9 +256,7 @@ set size square
 set grid
 
 plot  x_levels u (x_levels[$1]):(diff_x00[$1]) w p pt 8 ps 2 t "SHRINK",\
-      x_levels u (x_levels[$1]):(diff_x01[$1]) w p pt 8 ps 2 t "SHRINK AMR",\
       x_levels u (x_levels[$1]):(diff_x10[$1]) w p pt 8 ps 2 t "SWELLING",\
-      x_levels u (x_levels[$1]):(diff_x11[$1]) w p pt 8 ps 2 t "SWELLING AMR",\
       0.01*x**(-1) lw 2 title "1^{st} order", \
       0.13*x**(-2) lw 2 title "2^{nd} order"
 ~~~
@@ -294,13 +290,13 @@ do for [i=0:3] {
     stats sprintf("balances-%d-1-0", level) u (last_y=$3) nooutput
     diff_x10[i+1] = last_y - analytical
     
-    # Calculate difference for SWELLING case (x-0-1)
-    stats sprintf("balances-%d-0-1", level) u (last_y=$3) nooutput
-    diff_x01[i+1] = last_y - analytical
+    ## Calculate difference for SWELLING case (x-0-1)
+    #stats sprintf("balances-%d-0-1", level) u (last_y=$3) nooutput
+    #diff_x01[i+1] = last_y - analytical
     
-    # Calculate difference for SWELLING case (x-1-1)
-    stats sprintf("balances-%d-1-1", level) u (last_y=$3) nooutput
-    diff_x11[i+1] = last_y - analytical
+    ## Calculate difference for SWELLING case (x-1-1)
+    #stats sprintf("balances-%d-1-1", level) u (last_y=$3) nooutput
+    #diff_x11[i+1] = last_y - analytical
 }
 
 array x_levels[4] = [2**5, 2**6, 2**7, 2**8]
@@ -318,9 +314,7 @@ set size square
 set grid
 
 plot  x_levels u (x_levels[$1]):(diff_x00[$1]) w p pt 8 ps 2 t "SHRINK",\
-      x_levels u (x_levels[$1]):(diff_x01[$1]) w p pt 8 ps 2 t "SHRINK AMR",\
       x_levels u (x_levels[$1]):(diff_x10[$1]) w p pt 8 ps 2 t "SWELLING",\
-      x_levels u (x_levels[$1]):(diff_x11[$1]) w p pt 8 ps 2 t "SWELLING AMR",\
       0.5*x**(-1) lw 2 title "1^{st} order", \
       5*x**(-2) lw 2 title "2^{nd} order"
 ~~~

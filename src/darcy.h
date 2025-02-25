@@ -24,26 +24,21 @@ event defaults (i = 0) {
   }
 }
 
+face vector ef;
 event acceleration (i++){
-  foreach()
-    porosity[] = f[] > F_ERR ? porosity[]/f[] : 0.;
-
   face vector av = a;
-  face vector fS[];
-  face_fraction(f,fS);
+  face vector ff[];
+  face_fraction(f,ff);
   foreach_face() {
-    if (fS.x[] > F_ERR) {
-      double ef = face_value (porosity, 0);
-      double F  = 1.75/pow (150*pow (ef, 3), 0.5);
+    if (ff.x[] > F_ERR) {
+      ef.x[] = 1. - (1-porosity[]/f[])*ff.x[];
+      double F  = 1.75/pow (150*pow (ef.x[], 3), 0.5);
 
       // Darcy contribution, weighted by the face fraction of the interface
-      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (muG*ef/Da) *uf.x[] *fS.x[]; 
+      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (muG*ef.x[]/Da) *uf.x[] *ff.x[]; 
 
       // Forcheimer contribution
-      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*pow(ef,2)*rhoG/pow(Da,0.5)) *fabs(uf.x[])*uf.x[] *fS.x[];
+      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*ef.x[]*rhoG/pow(Da,0.5)) *fabs(uf.x[])*uf.x[] *ff.x[];
     }
   }
-
-  foreach()
-    porosity[] = porosity[]*f[];
 }

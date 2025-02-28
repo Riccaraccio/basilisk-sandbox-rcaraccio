@@ -2,10 +2,6 @@
 # define DARCY_INDEX 6
 #endif
 
-#ifndef EPSI0
-# define EPSI0 0.7
-#endif
-
 #define POROUS_ADVECTION 1
 #define POROUS_MEDIA 1
 #define AMR_ACTIVE 1
@@ -22,7 +18,7 @@ int maxlevel = 10;
 double Re = 20;
 double R0 = 0.5;
 double U0 = 1.;
-double epsi0 = EPSI0;
+double epsi0 = 0.7;
 double side_length = 40;
 double tend = 150.;
 ////////////////////////
@@ -74,17 +70,6 @@ event init (i = 0) {
     uf.x[] = ff > 0 ? U0*porosity[] : U0;
   }
 }
-
-// Avoid tranporting the interface: the solid is fixed
-// static scalar * interfaces_save = NULL;
-
-// event vof (i++) {
-//   interfaces_save = interfaces; 
-//   interfaces = NULL;
-// }
-// event tracer_advection (i++) {  
-//   interfaces = interfaces_save;
-// }
 
 #if AMR_ACTIVE
 event adapt (i++) {
@@ -207,7 +192,7 @@ void write_profile (void) {
   #endif
   FILE * fp = fopen (name, "w");
 
-  double step = L0/(1<<maxlevel);
+  double step = L0/(1<<maxlevel)/2;
   for (double x = 0; x<L0; x+=step){
     fprintf(fp, "%g %g\n", x, interpolate(u.x, x, 0));
   }

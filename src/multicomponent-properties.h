@@ -7,16 +7,17 @@ which is used as a sorce term for the velocity divergence, to
 describe low Mach compressibility effects. */
 
 #ifndef T_PROP
-# define T_PROP 1e-5
+// # define T_PROP 1e-5
+# define T_PROP F_ERR
 // # define T_PROP 0.1
 #endif
 
 #ifdef VARPROP
 
 extern scalar porosity;
-scalar DTDt1[], DTDt2[];
-scalar * DYDt1 = NULL;    // [NSS]
-scalar * DYDt2 = NULL;    // [NGS]
+scalar DTDtS[], DTDtG[];
+scalar * DYDtG_G = NULL;    // [NSS]
+scalar * DYDtG_S = NULL;    // [NGS]
 
 scalar Hcheck[];
 scalar betaexpG_G[], betaexpG_S[];
@@ -132,33 +133,40 @@ void update_properties_initial (void) {
   boundary (DmixGList_S);
 }
 
-event defaults (i = 0)
+event init (i = 0) //Should be done in the default event but is executed before OS++ initialization
 {
-  // for (int jj=0; jj<NSS; jj++) { //TODO: check if this is needed for the solid phase
-  //   scalar a = new scalar;
-  //   free (a.name);
-  //   char name[20];
-  //   sprintf (name, "DYDt1_%s", liq_species[jj]);
-  //   a.name = strdup (name);
-  //   a.nodump = true;
-  //   DYDt1 = list_append (DYDt1, a);
-  // }
+  DYDtG_G = NULL;
+  DYDtG_S = NULL;
 
-  // for (int jj=0; jj<NGS; jj++) {
-  //   scalar a = new scalar;
-  //   free (a.name);
-  //   char name[20];
-  //   sprintf (name, "DYDtG_%s", OpenSMOKE_NamesOfSpecies(jj));
-  //   a.name = strdup (name);
-  //   a.nodump = true;
-  //   DYDt2 = list_append (DYDt2, a);
-  // }
+  for (int jj=0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "DYDtG_%s_G", OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    a.nodump = true;
+    DYDtG_G = list_append (DYDtG_G, a);
+  }
+  reset (DYDtG_G, 0.);
+  
+  for (int jj=0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "DYDtG_%s_S", OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    a.nodump = true;
+    DYDtG_S = list_append (DYDtG_S, a);
+  }
+  reset (DYDtG_S, 0.);
 }
 
 event init (i = 0)
 {
   // update_properties_initial(); //TODO: it seems that this is not needed, update_properties works fine
 
+  MWmixG_G.dirty = true;
+  MWmixG_S.dirty = true;
 #if TREE
   //for (scalar s in {drhodt, drhodtext}) { //TODO: check if this is correct
   for (scalar s in {drhodt}) {
@@ -175,25 +183,25 @@ event init (i = 0)
 
 event cleanup (t = end)
 {
-  // delete (DYDt1), free (DYDt1), DYDt1 = NULL;
-  // delete (DYDt2), free (DYDt2), DYDt2 = NULL;
+  delete (DYDtG_G), free (DYDtG_G), DYDtG_G = NULL;
+  delete (DYDtG_S), free (DYDtG_S), DYDtG_S = NULL;
 }
 
 event reset_sources (i++)
 {
   foreach() {
-    // DTDt1[] = 0.;
-    DTDt2[] = 0.;
+    DTDtG[] = 0.;
+    DTDtS[] = 0.;
 
-    // for (int jj=0; jj<NLS; jj++) {
-    //   scalar DYDt1jj = DYDt1[jj];
-    //   DYDt1jj[] = 0.;
-    // }
-    // for (int jj=0; jj<NGS; jj++) {
-    //   fprintf(stderr, "DYDt2[%d] = %g\n", jj, DYDt2[jj]);
-    //   scalar DYDt2jj = DYDt2[jj];
-    //   DYDt2jj[] = 0.;
-    // }
+
+    for (int jj=0; jj<NGS; jj++) {
+      scalar DYDtGjj = DYDtG_G[jj];
+      DYDtGjj[] = 0.;
+    }
+    for (int jj=0; jj<NGS; jj++) {
+      scalar DYDtGjj = DYDtG_S[jj];
+      DYDtGjj[] = 0.;
+    }
   }
 }
 
@@ -232,6 +240,7 @@ void update_properties (void) {
       }
       double MWmixG;
       OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+      MWmixG_S[] = MWmixG;
 
       ThermoState tsGh;
       tsGh.T = TS[]/f[];
@@ -247,6 +256,9 @@ void update_properties (void) {
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
         DmixGv[] = tpG.diff (&tsGh, jj);
+        #ifdef CONST_DIFF
+        DmixGv[] = CONST_DIFF;
+        #endif
         DmixGv[] *= pow(porosity[]/f[], 3./2.);
       }
     }
@@ -260,6 +272,7 @@ void update_properties (void) {
       }
       double MWmixG;
       OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+      MWmixG_G[] = MWmixG;
 
       ThermoState tsGh;
       tsGh.T = TG[]/(1. - f[]);
@@ -275,6 +288,9 @@ void update_properties (void) {
       for (int jj=0; jj<NGS; jj++) {
         scalar Dmix2v = DmixGList_G[jj];
         Dmix2v[] = tpG.diff (&tsGh, jj);
+# ifdef CONST_DIFF
+        Dmix2v[] = CONST_DIFF;
+# endif
       }
     }
   }
@@ -290,139 +306,243 @@ event properties (i++) {
   update_properties();
 }
 
-// void update_divergence (void) {
+void update_divergence (void) {
 
-//   /**
-//   We define the variables used to compute the lagrangian derivative
-//   on each level. */
+  //TODO ENSURE THAT THE TRACER FORM IS LOST
+  /**
+  We define the variables used to compute the lagrangian derivative
+  on each level. */
 
-//   restriction ({T,TS,TG});
-//   restriction (YSList);
-//   restriction (YGList_G);
-//   restriction (YGList_S);
+  restriction ({T,TS,TG});
+  restriction (YSList);
+  restriction (YGList_G);
+  restriction (YGList_S);
 
-//   scalar dYdt[];
-//   foreach()
-//     dYdt[] = 0.;
+  /**
+  We calculate the Lagrangian derivative of the temperature fields. */
 
-//   face vector phicGtot[];
-//   foreach_face() {
-//     phicGtot.x[] = 0.;
-//     for (int jj=0; jj<NGS; jj++) {
-//       scalar Dmix2v = Dmix2List[jj];
-//       double rho2f = 0.5*(rho2v[] + rho2v[-1]);
-//       double Dmix2f = 0.5*(Dmix2v[] + Dmix2v[-1]);
-// #ifdef FICK_CORRECTED
-// # ifdef MOLAR_DIFFUSION
-//       scalar XG = XGList[jj];
-//       double MW2mixf = 0.5*(MW2mix[] + MW2mix[-1]);
-//       phicGtot.x[] += (MW2mixf > 0.) ?
-//         rho2f*Dmix2f*inMW[jj]/MW2mixf*face_gradient_x (XG, 0)*fsG.x[]*fm.x[] : 0.;
-// # else
-//       scalar YG = YGList[jj];
-//       phicGtot.x[] += rho2f*Dmix2f*face_gradient_x (YG, 0)*fsG.x[]*fm.x[];
-// #endif  // MOLAR_DIFFUSION
-// #else
-//       phicGtot.x[] = 0.;
-// #endif  // FICK_CORRECTED
-//     }
-//   }
+  face vector lambdagradTS[], lambdagradTG[];
+  foreach_face() {
+    double ef = face_value(porosity, 0);
+    double lambda1vh = ef*face_value(lambdaGv_S, 0) + (1. - ef)*face_value(lambdaSv, 0);
+    double lambda2vh = face_value(lambdaGv_G, 0);
+    lambdagradTS.x[] = lambda1vh*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
+    lambdagradTG.x[] = lambda2vh*face_gradient_x (TG, 0)*fm.x[]*fsG.x[];
+  }
 
-//   for (int jj=0; jj<NGS; jj++) {
-//     face vector phicGjj[];
-//     scalar YG = YGList[jj];
-//     //scalar DYDt2jj = DYDt2[jj];
-//     scalar Dmix2v = Dmix2List[jj];
-//     foreach_face() {
-//       double rho2f = 0.5*(rho2v[] + rho2v[-1]);
-//       double Dmix2f = 0.5*(Dmix2v[] + Dmix2v[-1]);
-// #ifdef MOLAR_DIFFUSION
-//       scalar XG = XGList[jj];
-//       double MW2mixf = 0.5*(MW2mix[] + MW2mix[-1]);
-//       phicGjj.x[] = (MW2mixf > 0.) ?
-//         rho2f*Dmix2f*inMW[jj]/MW2mixf*face_gradient_x (XG, 0)*fsG.x[]*fm.x[] : 0.;
-// #else
-//       phicGjj.x[] = rho2f*Dmix2f*face_gradient_x (YG, 0)*fsG.x[]*fm.x[];
-// #endif  // MOLAR_DIFFUSION
+  foreach() {
+    foreach_dimension()
+      DTDtS[] += (lambdagradTS.x[1] - lambdagradTS.x[])/Delta;
+    DTDtS[] += sST[];
 
-//       double YGf = 0.5*(YG[] + YG[-1]);
-//       phicGjj.x[] -= YGf*phicGtot.x[];
-//     }
+    foreach_dimension()
+      DTDtG[] += (lambdagradTG.x[1] - lambdagradTG.x[])/Delta;
+    DTDtG[] += sGT[];
+  }
 
-//     scalar sgexp = sgexpList[jj];
-//     scalar sgimp = sgimpList[jj];
+  //EXTERNAL GAS PHASE
+  /**
+  We calculate the Lagrangian derivative for the chemical species mass
+  fractions. */ 
 
-//     foreach() {
-//       foreach_dimension()
-//         dYdt[] += (phicGjj.x[1] - phicGjj.x[])/Delta;
-//       dYdt[] += (sgexp[] + sgimp[]*YG[]);
-//       dYdt[] *= 1./inMW[jj];
-//     }
-//   }
+  for (int jj=0; jj<NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    scalar DmixGv = DmixGList_G[jj];
+    scalar DYDtGjj = DYDtG_G[jj];
 
-//   scalar DrhoDt1[], DrhoDt2[];
+    face vector rhoDmixYGjj[];
+    foreach_face() {
+      double rhoGf = face_value (rhoGv_G, 0);
+      double DmixGf = face_value (DmixGv, 0);
+      rhoDmixYGjj.x[] = rhoGf*DmixGf*face_gradient_x (YG, 0)*fm.x[]*fsG.x[];
+    }
 
-//   foreach() {
+    scalar sgexp = sGexpList[jj];
+    // scalar sgimp = sgimpList[jj]; //not used in my case
+    // scalar YGInt = YGList_Int[jj];
 
-//     double DYDt2sum = dYdt[];
-//     for (int jj=0; jj<NGS; jj++) {
-//       scalar DYDt2jj = DYDt2[jj];
-//       DYDt2sum += 1./inMW[jj]*DYDt2jj[];
-//     }
-//     DYDt2sum *= (rho2v[] > 0.) ? MW2mix[]/rho2v[] : 0.;
+    foreach() {
+      foreach_dimension()
+        DYDtGjj[] += (rhoDmixYGjj.x[1] - rhoDmixYGjj.x[])/Delta;
+      // DYDtGjj[] += (sgexp[] + sgimp[]*YGInt[]);
+      DYDtGjj[] += sgexp[];
+    }
+  }
 
-//     // Compute temperature contribution
-//     double laplT1 = 0.;
-//     foreach_dimension() {
-//       double lambdafr = 0.5*(lambda1v[1] + lambda1v[]);
-//       double lambdafl = 0.5*(lambda1v[] + lambda1v[-1]);
-//       laplT1 += (fm.x[1]*fsL.x[1]*lambdafr*face_gradient_x (TL, 1) -
-//           fm.x[]*fsL.x[]*lambdafl*face_gradient_x (TL, 0));
-//     }
-//     laplT1 /= Delta;
+  /**
+  We add diffusion correction contributions to the chemical species
+  mass fraction derivatives. */ //TODO, FICK_CORRECTED is not defined
 
-//     double laplT2 = 0.;
-//     foreach_dimension() {
-//       double lambdafr = 0.5*(lambda2v[1] + lambda2v[]);
-//       double lambdafl = 0.5*(lambda2v[] + lambda2v[-1]);
-//       laplT2 += (fm.x[1]*fsG.x[1]*lambdafr*face_gradient_x (TG, 1) -
-//           fm.x[]*fsG.x[]*lambdafl*face_gradient_x (TG, 0));
-//     }
-//     laplT2 /= Delta;
+  face vector phicGtot[];
+  foreach_face() {
+    phicGtot.x[] = 0.;
+#ifdef FICK_CORRECTED
+    for (int jj=0; jj<NGS; jj++) {
+      scalar Dmix2v = Dmix2List[jj];
 
-//     DTDt1[] += (laplT1 + slT[]);
-//     DTDt2[] += (laplT2 + sgT[]);
+      double rho2f = face_value (rho2v, 0);
+      double Dmix2f = face_value (Dmix2v, 0);
+# ifdef MOLAR_DIFFUSION
+      double MW2mixf = face_value (MW2mix, 0);
 
-//     //double DrhoDt1 = 0.;
-//     //double DrhoDt2 = 0.;
-//     DrhoDt1[] = 0.;
-//     DrhoDt2[] = 0.;
+      scalar XG = XGList[jj];
+      phicGtot.x[] += (MW2mixf > 0.) ?
+        rho2f*Dmix2f*inMW[jj]/MW2mixf*face_gradient_x (XG, 0)*fm.x[]*fsG.x[] : 0.;
+# else
+      scalar YG = YGList[jj];
+      phicGtot.x[] += rho2f*Dmix2f*face_gradient_x (YG, 0)*fm.x[]*fsG.x[];
+# endif // MOLAR_DIFFUSION
+    }
+#endif  // FICK_CORRECTED
+  }
 
-//     // Add liquid compressibility due to temperature
-//     DrhoDt1[] += (rho1v[]*cp1v[] > 0.) ?
-//       -betaexp1[]/(rho1v[]*cp1v[])*DTDt1[] : 0.;
+  for (int jj=0; jj<NGS; jj++) {
+    face vector phicGjj[];
+    foreach_face() {
+      phicGjj.x[] = phicGtot.x[];
+#ifdef MOLAR_DIFFUSION
+      scalar Dmix2v = Dmix2List[jj];
 
-//     DrhoDt2[] += (TG[]*rho2v[]*cp2v[] > 0.) ?
-//       -1./(TG[]*rho2v[]*cp2v[])*DTDt2[] : 0.;
+      double rho2f = face_value (rho2v, 0);
+      double Dmix2f = face_value (Dmix2v, 0);
+      double MW2mixf = face_value (MW2mix, 0);
 
-//     // Add gas compressibility due to composition
-//     //DrhoDt2 += ((1. - f[]) > F_ERR) ? -DYDt2sum : 0.;
-//     DrhoDt2[] += (f[] == 0.) ? -DYDt2sum : 0.;
+      phicGjj.x[] -= (MW2mixf > 0.) ?
+        rho2f*Dmix2f/MW2mixf*face_gradient_x (MW2mix, 0)*fm.x[]*fsG.x[] : 0.;
+#endif
 
-//     //drhodt[] = DrhoDt1*f[] + DrhoDt2*(1. - f[])*(f[] < F_ERR);
-//     //drhodtext[] = DrhoDt1;
-//   }
-//   //shift_field (DrhoDt1, f, 1);
-//   //shift_field (DrhoDt2, f, 0);
+      scalar YG = YGList_G[jj];
+      phicGjj.x[] *= face_value (YG, 0);
+    }
 
-//   foreach() {
-//     drhodt[] = DrhoDt1[]*f[] + DrhoDt2[]*(1. - f[]);
-//     drhodtext[] = DrhoDt1[];
-//   }
-//   boundary ({drhodt, drhodtext});
-// }
+    scalar DYDtGjj = DYDtG_G[jj];
 
-// void update_divergence_density (void) {
+    foreach()
+      foreach_dimension()
+        DYDtGjj[] -= (phicGjj.x[1] - phicGjj.x[])/Delta;
+  }
+
+  //INTERNAL GAS PHASE
+  /**
+  We calculate the Lagrangian derivative for the chemical species mass
+  fractions. */ 
+
+  for (int jj=0; jj<NGS; jj++) {
+    scalar YG = YGList_S[jj];
+    scalar DmixGv = DmixGList_S[jj];
+    scalar DYDtGjj = DYDtG_S[jj];
+
+    face vector rhoDmixYGjj[];
+    foreach_face() {
+      double rhoGf = face_value (rhoGv_S, 0);
+      double DmixGf = face_value (DmixGv, 0);
+      rhoDmixYGjj.x[] = rhoGf*DmixGf*face_gradient_x (YG, 0)*fm.x[]*fsS.x[];
+    }
+
+    scalar ssexp = sSexpList[jj];
+    // scalar sgimp = sgimpList[jj]; //not used in my case
+    //scalar YGInt = YGList_Int[jj];
+
+    foreach() {
+      foreach_dimension()
+        DYDtGjj[] += (rhoDmixYGjj.x[1] - rhoDmixYGjj.x[])/Delta;
+      // DYDtGjj[] += (sgexp[] + sgimp[]*YGInt[]);
+      DYDtGjj[] += ssexp[];
+    }
+  }
+
+  /**
+  We add diffusion correction contributions to the chemical species
+  mass fraction derivatives. */ //TODO, FICK_CORRECTED is not defined
+
+  foreach_face() {
+    phicGtot.x[] = 0.;
+#ifdef FICK_CORRECTED
+    for (int jj=0; jj<NGS; jj++) {
+      scalar Dmix2v = DmixGList_S[jj];
+
+      double rho2f = face_value (rho2v, 0);
+      double Dmix2f = face_value (Dmix2v, 0);
+# ifdef MOLAR_DIFFUSION
+      double MW2mixf = face_value (MW2mix, 0);
+
+      scalar XG = XGList[jj];
+      phicGtot.x[] += (MW2mixf > 0.) ?
+        rho2f*Dmix2f*inMW[jj]/MW2mixf*face_gradient_x (XG, 0)*fm.x[]*fsG.x[] : 0.;
+# else
+      scalar YG = YGList[jj];
+      phicGtot.x[] += rho2f*Dmix2f*face_gradient_x (YG, 0)*fm.x[]*fsG.x[];
+# endif // MOLAR_DIFFUSION
+    }
+#endif  // FICK_CORRECTED
+  }
+
+  for (int jj=0; jj<NGS; jj++) {
+    face vector phicGjj[];
+    foreach_face() {
+      phicGjj.x[] = phicGtot.x[];
+#ifdef MOLAR_DIFFUSION
+      scalar Dmix2v = DmixGList_S[jj];
+
+      double rho2f = face_value (rho2v, 0);
+      double Dmix2f = face_value (Dmix2v, 0);
+      double MW2mixf = face_value (MW2mix, 0);
+
+      phicGjj.x[] -= (MW2mixf > 0.) ?
+        rho2f*Dmix2f/MW2mixf*face_gradient_x (MW2mix, 0)*fm.x[]*fsG.x[] : 0.;
+#endif
+
+      scalar YG = YGList_S[jj];
+      phicGjj.x[] *= face_value (YG, 0);
+    }
+
+    scalar DYDtGjj = DYDtG_S[jj];
+
+    foreach()
+      foreach_dimension()
+        DYDtGjj[] -= (phicGjj.x[1] - phicGjj.x[])/Delta;
+  }
+  
+  /**
+  We calculate the one-field divergence by volume-averaging the liquid and the
+  gas-phase contributions. */
+
+  foreach() {
+    double divu1 = 0., divu2 = 0.;
+
+    // Add internal gas temperature contribution
+    divu1 += (TS[]*rhoGv_S[]*cpGv_S[] > 0.) ?
+      1./(TS[]*rhoGv_S[]*cpGv_S[])*DTDtS[] : 0.;
+
+    // Add external gas temperature contribution
+    divu2 += (TG[]*rhoGv_G[]*cpGv_G[] > 0.) ?
+      1./(TG[]*rhoGv_G[]*cpGv_G[])*DTDtG[] : 0.;
+
+    // Add internal gas chemical species contribution
+    double divu1species = 0.;
+    for (int jj=0; jj<NGS; jj++) {
+      scalar DYDtGjj = DYDtG_S[jj];
+      divu1species += 1./gas_MWs[jj]*DYDtGjj[];
+    }
+    divu1 += (rhoGv_S[] > 0.) ? MWmixG_S[]/rhoGv_S[]*divu1species : 0.;
+
+    // Add external gas chemical species contribution
+    double divu2species = 0.;
+    for (int jj=0; jj<NGS; jj++) {
+      scalar DYDtGjj = DYDtG_G[jj];
+      divu2species += 1./gas_MWs[jj]*DYDtGjj[];
+    }
+    divu2 += (rhoGv_G[] > 0.) ? MWmixG_G[]/rhoGv_G[]*divu2species : 0.;
+    
+    // Volume averaged contributions
+    drhodt[] = divu1*f[] + divu2*(1. - f[]);
+
+    // Adjust sign for internal convention
+    drhodt[] *= -1.;
+  }
+}
+
+// void update_divergence_density (void) { //TODO
 //   vector grho1[], grho2[];
 //   gradients ({rho1v, rho2v}, {grho1, grho2});
 
@@ -453,5 +573,4 @@ event properties (i++) {
 //     }
 //   }
 // }
-
 #endif

@@ -1,19 +1,19 @@
 #define NO_ADVECTION_DIV    1
 #define FSOLVE_ABSTOL       1.e-3       //tolerance of fsolve, used in the interface condition
 #define SOLVE_TEMPERATURE   1           //wheter to solve the temperature field
-#define TURN_OFF_HEAT_OF_REACTION 1     //turn off the heat of reaction
+//#define TURN_OFF_HEAT_OF_REACTION 1     //turn off the heat of reaction
 //#define STOP_TRACER_ADVECTION 1         //stop the advection of tracers
 //#define EXPLICIT_REACTIONS  1         //explicit reactions
 //#define EXPLICIT_DIFFUSION  1         //explicit diffusion
-#define FIXED_INT_TEMP    1           //fixed interface temperature
+//#define FIXED_INT_TEMP    1           //fixed interface temperature
 #define CONST_DIFF 2e-5
 
-//#include "axi.h" 
+#include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
+// #include "gravity.h"
 #include "shrinking.h"
-
 #include "multicomponent-varprop.h"
 
 u.n[top]      = neumann (0.);
@@ -26,7 +26,12 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 2;
+u.n[left]    = neumann (0.);
+u.t[left]    = neumann (0.);
+p[left]      = dirichlet (0.);
+psi[left]    = dirichlet (0.);
+
+int maxlevel = 8; int minlevel = 2;
 double D0 = 2.e-2;
 
 int main() {
@@ -35,16 +40,17 @@ int main() {
   rhoS = 1000; rhoG = 1;
   muG = 3.e-5;
 
-  TS0 = 600; TG0 = 600.;
+  TS0 = 300; TG0 = 1000.;
   eps0 = 0.4;
 
   //dummy properties
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  L0 = 3.5*D0;
+  L0 = 20*D0;
   DT = 1e-1;
 
+  // G.x = 9.81;
   kinfolder = "biomass/dummy-solid";
   // kinfolder = "biomass/Solid-only-2003";
   
@@ -55,6 +61,8 @@ int main() {
   //4: LEVELSET
   zeta_policy = ZETA_SHRINK;
 
+  origin (-L0/2, 0.);
+
   init_grid(1 << maxlevel);
   run();
 }
@@ -62,6 +70,7 @@ int main() {
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
 event init(i = 0) {
+  mask (y > L0/2 ? top : none);
   fraction (f, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
@@ -88,10 +97,19 @@ event init(i = 0) {
   inert[right] = dirichlet (1.);
   tar[right]  = dirichlet (0.);
   water[right] = dirichlet (0.);
+  
+  inert[left] = dirichlet (1.);
+  tar[left]  = dirichlet (0.);
+  water[left] = dirichlet (0.);
 }
 
 event output (t+=1) {
   fprintf (stderr, "%g\n", t);
+}
+
+event adapt (i++) {
+  adapt_wavelet_leave_interface({porosity, u.x, u.y}, {f}, 
+    (double[]){1e-2, 1e-3, 1e-3}, maxlevel, minlevel);
 }
 
 event stop (t = 1000);

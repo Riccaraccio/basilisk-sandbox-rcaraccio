@@ -17,6 +17,11 @@ extern double rhoG, rhoS;
 extern double lambdaG, lambdaS;
 extern double cpG, cpS;
 extern double muG;
+#ifdef MULTICOMPONENT
+extern unsigned int NGS;
+extern scalar* DmixGList_S;
+extern scalar* DmixGList_G;
+#endif
 
 event properties (i++) {
   //Navier-Stokes equation are solved using the gas properties on the whole domain
@@ -45,4 +50,24 @@ event properties (i++) {
     rhocp2v[] =  rhoG*cpG;
 #endif
   }
+
+#ifdef MULTICOMPONENT
+  double Dmixv =  2.05e-5; //Diff of CO in N2 at 500K, 1 atm
+
+  foreach() {
+    if (f[] < 1.-F_ERR) {
+    //set the same for all species
+      for (int jj=0; jj<NGS; jj++) {
+        scalar Dmix2 = DmixGList_G[jj];
+        Dmix2[] = Dmixv;
+      }
+    } 
+    if (f[] > F_ERR) {
+      for (int jj=0; jj<NGS; jj++) {
+        scalar Dmix2 = DmixGList_S[jj];
+        Dmix2[] = Dmixv*pow(porosity[], 3./2.); //effect of solid, to be revised
+      }
+    }
+  }
+#endif
 }

@@ -20,7 +20,7 @@ typedef enum {
   ZETA_LEVELSET
 } zeta_types;
 
-zeta_types zeta_policy = ZETA_SHRINK;
+zeta_types zeta_policy;
 
 void set_zeta (zeta_types zeta_policy) {
   #if AXI
@@ -55,12 +55,9 @@ void set_zeta (zeta_types zeta_policy) {
   }
 }
 
-event defaults (i=0) {
-  set_zeta (zeta_policy);
-}
-
 event init (i=0) {
   f.tracers = list_append (f.tracers, porosity);
+  set_zeta (zeta_policy);
 }
 
 event reset_sources (i++);
@@ -80,8 +77,15 @@ event phasechange (i++) {
 
   mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
 
-  foreach()
-    gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoG - 1/rhoS)*cm[]; // gas production, *(f-ef)
+  foreach() {
+    if (f[] > F_ERR) {
+#ifdef VARPROP //*(f-ef)
+      gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoGv_S[] - 1/rhoSv[])*cm[];
+#else
+      gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoG - 1/rhoS)*cm[];
+#endif
+    }
+  }
 }
 
 face vector ufsave[];

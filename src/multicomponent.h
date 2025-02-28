@@ -13,7 +13,7 @@
 
 #include "common-evaporation.h"
 #include "memoryallocation.h"
-#include "reactions.h"
+#include "chemistry.h"
 #include "int-temperature.h"
 #include "int-concentration.h"
 
@@ -178,7 +178,7 @@ event tracer_diffusion (i++) {
         scalar YGInt = YGList_Int[jj];
         scalar YG    = YGList_S[jj];
         scalar sSexp = sSexpList[jj];
-        scalar Dmix2 = Dmix2List_S[jj];
+        scalar Dmix2 = DmixGList_S[jj];
 
         double bc = YGInt[];
         double Strgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, false, bc, &success);
@@ -196,7 +196,7 @@ event tracer_diffusion (i++) {
         scalar YGInt = YGList_Int[jj];
         scalar YG    = YGList_G[jj];
         scalar sGexp = sGexpList[jj];
-        scalar Dmix2 = Dmix2List_G[jj];
+        scalar Dmix2 = DmixGList_G[jj];
 
         double bc = YGInt[];
         double Gtrgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, true, bc, &success);
@@ -255,7 +255,7 @@ event tracer_diffusion (i++) {
   //internal diffusion
   for (int jj=0; jj<NGS; jj++) {
     face vector Dmixf[];
-    scalar Dmix2 = Dmix2List_S[jj];
+    scalar Dmix2 = DmixGList_S[jj];
     foreach_face()
       Dmixf.x[] = face_value(Dmix2, 0)*rhoG*fsS.x[]*fm.x[];
 
@@ -275,7 +275,7 @@ event tracer_diffusion (i++) {
   //external diffusion
   for (int jj=0; jj<NGS; jj++) {
     face vector Dmixf[];
-    scalar Dmix2 = Dmix2List_G[jj];
+    scalar Dmix2 = DmixGList_G[jj];
     foreach_face()
       Dmixf.x[] = face_value(Dmix2, 0)*rhoG*fsG.x[]*fm.x[];
 
@@ -358,14 +358,18 @@ event properties (i++) {
   //double Dmixv = 0.;
 
   foreach() {
+    if (f[] < 1.-F_ERR) {
     //set the same for all species
-    for (int jj=0; jj<NGS; jj++) {
-      scalar Dmix2 = Dmix2List_G[jj];
-      Dmix2[] = Dmixv;
-    }
-    for (int jj=0; jj<NGS; jj++) {
-      scalar Dmix2 = Dmix2List_S[jj];
-      Dmix2[] = Dmixv*pow(porosity[], 3./2.); //effect of solid, to be revised
+      for (int jj=0; jj<NGS; jj++) {
+        scalar Dmix2 = DmixGList_G[jj];
+        Dmix2[] = Dmixv;
+      }
+    } 
+    if (f[] > F_ERR) {
+      for (int jj=0; jj<NGS; jj++) {
+        scalar Dmix2 = DmixGList_S[jj];
+        Dmix2[] = Dmixv*pow(porosity[], 3./2.); //effect of solid, to be revised
+      }
     }
   }
 #else
@@ -388,11 +392,12 @@ event properties (i++) {
 
       //convert to mole fracs
       double gasmolefracs [NGS];
-      OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
+      double MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, MWmixG, gasmassfracs);
 
       //calculate diff coeff
       for (int jj=0; jj<NGS; jj++) {
-        scalar Dmix = Dmix2List_S[jj];
+        scalar Dmix = DmixGList_S[jj];
         Dmix[] = OpenSMOKE_GasProp_Dmix(gasmolefracs, jj);
         Dmix[] *= pow(porosity[], 3./2.); //effect of solid, to be revised
       }
@@ -416,17 +421,18 @@ event properties (i++) {
 
       //convert to mole fracs
       double gasmolefracs [NGS];
-      OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, gas_MWs, gasmassfracs);
+      double MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, MWmixG, gasmassfracs);
 
       //calculate diff coeff
       for (int jj=0; jj<NGS; jj++) {
-        scalar Dmix = Dmix2List_G[jj];
+        scalar Dmix = DmixGList_G[jj];
         Dmix[] = OpenSMOKE_GasProp_Dmix(gasmolefracs, jj);
       }
     }
   }
 
-  boundary (Dmix2List_G);
-  boundary (Dmix2List_S);
+  boundary (DmixGList_G);
+  boundary (DmixGList_S);
 #endif
 }

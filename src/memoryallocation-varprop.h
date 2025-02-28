@@ -9,13 +9,8 @@ scalar* YGList_Int  = NULL;
 scalar* sSexpList   = NULL;
 scalar* sGexpList   = NULL;
 scalar* YSList      = NULL;
-#ifdef VARPROP
 scalar* DmixGList_G = NULL;
 scalar* DmixGList_S = NULL;
-// scalar* CpGList_G   = NULL;
-// scalar* CpGList_S   = NULL;
-// scalar* CpSList     = NULL;
-#endif
 
 double* gas_start;
 double* sol_start;
@@ -37,7 +32,7 @@ face vector lambda1f[], lambda2f[];
 #endif
 
 bool success;
-scalar MWmix_G[], MWmix_S[]; //TODO: check if this is necessary
+scalar MWmixG_G[], MWmixG_S[];
 scalar fG[], fS[];
 face vector fsS[], fsG[];
 
@@ -65,13 +60,8 @@ event defaults (i = 0) {
   sSexpList   = NULL;
   sGexpList   = NULL;
   YSList      = NULL;
-#ifdef VARPROP
   DmixGList_G = NULL;
   DmixGList_S = NULL;
-  // CpGList_G   = NULL;
-  // CpGList_S   = NULL;
-  // CpSList     = NULL;
-#endif
 
   //Allocate gas species fields
   for (int jj = 0; jj<NGS; jj++) {
@@ -115,7 +105,6 @@ event defaults (i = 0) {
   }
   reset (YSList, 0.);
 
-#ifdef VARPROP
   //Allocate diff coeff fields
   for (int jj = 0; jj<NGS; jj++) {
     scalar s = new scalar;
@@ -137,36 +126,6 @@ event defaults (i = 0) {
   }
   reset (DmixGList_G, 0.);
 
-  // for (int jj = 0; jj<NGS; jj++) {
-  //   scalar s = new scalar;
-  //   free (s.name);
-  //   char name[20];
-  //   sprintf (name, "Cp_%s_S",OpenSMOKE_NamesOfSpecies(jj));
-  //   s.name = strdup (name);
-  //   CpGList_S = list_append (CpGList_S, s);
-  // }
-  // reset (CpGList_S, 0.);
-
-  // for (int jj = 0; jj<NGS; jj++) {
-  //   scalar s = new scalar;
-  //   free (s.name);
-  //   char name[20];
-  //   sprintf (name, "Cp_%s_G",OpenSMOKE_NamesOfSpecies(jj));
-  //   s.name = strdup (name);
-  //   CpGList_G = list_append (CpGList_G, s);
-  // }
-  // reset (CpGList_G, 0.);
-
-  // for (int jj = 0; jj<NSS; jj++) {
-  //   scalar s = new scalar;
-  //   free (s.name);
-  //   char name[20];
-  //   sprintf (name, "Cp_%s",OpenSMOKE_NamesOfSpecies(jj));
-  //   s.name = strdup (name);
-  //   CpSList = list_append (CpSList, s);
-  // }
-  // reset (CpSList, 0.);
-#endif
 // fields for the source therms
 for (int jj=0; jj<NGS; jj++) {
     scalar a = new scalar;
@@ -201,7 +160,6 @@ for (int jj=0; jj<NGS; jj++) {
   for (int jj=0; jj<NSS; jj++) {
     sol_start[jj] = 0.;
     sol_MWs[jj] = OpenSMOKE_MW_Solid(jj);
-    fprintf(stderr, "sol_MWs[%d] = %g\n", jj, sol_MWs[jj]);
   }
 
   for (scalar s in YGList_S)

@@ -1,4 +1,4 @@
-#include "osreactors.h"
+#include "reactors.h"
 
 extern scalar zeta;
 extern scalar T;
@@ -121,8 +121,18 @@ event chemistry (i++) {
 
       porosity[] = y0ode[NGS+NSS]*f[];
 
+#ifdef VARPROP
+      for (int jj=0; jj<NGS; jj++) {
+        scalar DYDtGjj = DYDtG_S[jj];
+        DYDtGjj[] += sources[jj]*cm[];
+      }
+#endif
+
 #ifdef SOLVE_TEMPERATURE
       TS[] = y0ode[NGS+NSS+1]*f[];
+# ifdef VARPROP
+      DTDtS[] += sources[NGS+NSS+1]*cm[];
+# endif
 #endif
       omega[] = sources[NGS+NSS];
     }

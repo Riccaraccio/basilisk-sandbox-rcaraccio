@@ -1,17 +1,85 @@
 #ifndef DARCY
-# define DARCY_INDEX 0
+# define DARCY_INDEX 6
 #endif
 
+#define POROUS_ADVECTION 1
 #define POROUS_MEDIA 1
+#define AMR_ACTIVE 1
 
-#ifndef POROUS_MEDIA 
-  #include "embed.h"
-#endif
-#include "navier-stokes/centered.h"
 #ifdef POROUS_MEDIA
-  #include "two-phase.h"
-  #include "darcy.h"
+#include "navier-stokes/centered-phasechange.h"
+#include "fractions.h"
+#include "darcy.h"
+#include "view.h"
+#include "adapt_wavelet_leave_interface.h"
+
+////INPUTS//////////////
+int maxlevel = 10; 
+double Re = 20;
+double R0 = 0.5;
+double U0 = 1.;
+double epsi0 = 0.7;
+double side_length = 40;
+double tend = 150.;
+////////////////////////
+
+// BOUNDARIES: left and right open, top and bottom no-slip
+u.n[left] = dirichlet (U0);
+u.t[left] = dirichlet (0.);
+p[left] = neumann (0.);
+pf[left] = neumann (0.);
+
+u.n[right] = neumann (0.);
+u.t[right] = neumann (0.);
+p[right] = dirichlet (0.);
+pf[right] = dirichlet (0.);
+
+scalar porosity[];
+double rhoG, muG;
+
+int main() {
+  double DaList[] = {1.00E-05, 5.00E-05, 1.00E-04, 5.00E-04, 1.00E-03, 2.50E-03, 5.00E-03};
+  muG = R0*2*U0/Re;
+  const face vector muv[] = {muG, muG};
+  mu = muv;
+  rhoG = 1;
+  Da = DaList[DARCY_INDEX];
+  fprintf(stderr, "Da = %g\n", Da);
+
+  L0 = side_length*R0*2;
+  DT = 0.5e-3;
+  origin(-L0/2, 0);
+  init_grid (1 << maxlevel);
+  run();
+}
+
+#define circle(x, y, R) (sq(R) - sq(x) - sq(y))
+scalar f[];
+event init (i = 0) {
+  mask (y > L0/2 ? top : none);
+  fraction (f, circle(x, y, R0));
+
+  foreach()
+    porosity[] = (1.-f[]) + f[]*epsi0;
+  
+  foreach()
+    u.x[] = f[] > 0 ? U0*porosity[] : U0; 
+
+  foreach_face(x){
+    double ff = face_value(f, 0);
+    uf.x[] = ff > 0 ? U0*porosity[] : U0;
+  }
+}
+
+#if AMR_ACTIVE
+event adapt (i++) {
+  adapt_wavelet_leave_interface ({u.x, u.y}, {f}, (double[]){1.e-3, 1.e-3}, maxlevel, 3, padding=1);
+}
 #endif
+
+#else // !POROUS_MEDIA
+#include "embed.h"
+#include "navier-stokes/centered.h"
 #include "view.h"
 #include "adapt_wavelet_leave_interface.h"
 
@@ -34,30 +102,13 @@ u.n[right] = neumann (0.);
 u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 
-#ifndef POROUS_MEDIA
-  u.n[embed] = fabs(y) > R0 ? neumann(0.) : dirichlet(0.);
-  u.t[embed] = fabs(y) > R0 ? neumann(0.) : dirichlet(0.);
-#endif
+u.n[embed] = fabs(y) > R0 ? neumann(0.) : dirichlet(0.);
+u.t[embed] = fabs(y) > R0 ? neumann(0.) : dirichlet(0.);
 
-#ifdef POROUS_MEDIA
-  scalar porosity[];
-  double rhoG, muG;
-#else
-  face vector muv[];
-#endif
+face vector muv[];
 
 int main() {
-  double DaList[] = {1.00E-05, 5.00E-05, 1.00E-04, 5.00E-04, 1.00E-03, 2.50E-03, 5.00E-03};
-  #ifndef POROUS_MEDIA
-    mu = muv;
-  #else
-    mu1 = R0*2*U0/Re;
-    mu2 = R0*2*U0/Re;
-    rhoG = 1;
-    muG = mu1;
-    Da = DaList[DARCY_INDEX];
-    fprintf(stderr, "Da = %g\n", Da);
-  #endif
+  mu = muv;
 
   L0 = side_length*R0*2;
   DT = 1e-3;
@@ -68,63 +119,30 @@ int main() {
 
 #define circle(x, y, R) (sq(R) - sq(x) - sq(y))
 
-#ifndef POROUS_MEDIA
-  event properties (i++){
-    foreach_face()
-      muv.x[] = fm.x[]*R0*2*U0/Re;
-  }
-#endif
+event properties (i++){
+  foreach_face()
+    muv.x[] = fm.x[]*R0*2*U0/Re;
+}
 
 event init (i = 0) {
   mask (y > L0/2 ? top : none);
-  #ifdef POROUS_MEDIA
-    fraction (f, circle(x, y, R0));
-
-    foreach()
-      porosity[] = f[]*epsi0;
-  
-    foreach() {
-      u.x[] = f[] > 0 ? 0 : U0; 
-    }
-
-    foreach_face(x){
-      double ff = face_value(f, 0);
-      uf.x[] = ff > 0 ? 0 : U0;
-    }
-    #else
-      solid (cs, fs, -circle(x, y, R0));
-      foreach()
-        u.x[] = cs[] > 1.- 1.e-10 ? U0 : 0;
-    #endif
+  solid (cs, fs, -circle(x, y, R0));
+  foreach()
+    u.x[] = cs[] > 1.- 1.e-10 ? U0 : 0;
 }
-
-#ifdef POROUS_MEDIA
-  // Avoid tranporting the interface: the solid is fixed
-  static scalar * interfaces_save = NULL;
-
-  event vof (i++) {
-    interfaces_save = interfaces; 
-    interfaces = NULL;
-  }
-  event tracer_advection (i++) {  
-    interfaces = interfaces_save;
-  }
-#endif
 
 # if   AMR_ACTIVE
 event adapt (i++) {
-#  ifndef POROUS_MEDIA  
   adapt_wavelet_leave_interface ({u.x, u.y}, {cs}, (double[]){1.e-3, 1.e-3}, maxlevel, 3, padding=1);
-#  else
-  adapt_wavelet_leave_interface ({u.x, u.y}, {f}, (double[]){1.e-3, 1.e-3}, maxlevel, 3, padding=1);
-#  endif
 }
-# endif
+# endif // AMR_ACTIVE
+#endif // !POROUS_MEDIA
+
 
 scalar psi[];
 scalar omega[];
 // Movie event
-event movie (t += 1) {
+event movie (t += 2) {
   foreach()
     omega[] = 0;
 
@@ -165,7 +183,7 @@ event logfile (t += 1) {
 }
 
 // Output data
-void write_profile (void){
+void write_profile (void) {
   char name[80];
   #ifdef POROUS_MEDIA
     sprintf (name, "WakeLength-Da-%d", DARCY_INDEX);
@@ -174,7 +192,7 @@ void write_profile (void){
   #endif
   FILE * fp = fopen (name, "w");
 
-  double step = L0/(1<<maxlevel);
+  double step = L0/(1<<maxlevel)/2;
   for (double x = 0; x<L0; x+=step){
     fprintf(fp, "%g %g\n", x, interpolate(u.x, x, 0));
   }
@@ -183,8 +201,7 @@ void write_profile (void){
   fflush(fp);
 }
 
-event end (t = tend)
-{
+event end (t = tend) {
   printf("Reached final time\n");
   write_profile();
 }

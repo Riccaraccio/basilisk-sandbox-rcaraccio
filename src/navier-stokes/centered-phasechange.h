@@ -1,5 +1,6 @@
 #include "poisson.h"
 extern double rhoG;
+extern scalar porosity;
 
 scalar gasSource[];
 scalar drhodt[];
@@ -88,23 +89,31 @@ event defaults (i = 0) {
 #undef project
 
 #ifdef POROUS_ADVECTION
-// the advection term is modified to account for the porous media,
-// dividing the velocity by the porosity
-
 // we set stokes=true to suppress the original advection term
 // performend in the centered.h file.
 event defaults (i=0) {
   stokes = true;
 }
 
+// the advection term is modified to account for the porous media,
+// dividing the velocity by the porosity
 event advection_term (i++,last) {
   prediction();
   mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);
 
   face vector ufn[];
-  foreach_face()
-    ufn.x[] = uf.x[]/epsf.x[];
+  foreach_face() {
+    double ef = face_value(porosity, 0);
+    ufn.x[] = uf.x[]/ef;
+  }
   
   advection ((scalar *){u}, ufn, dt, (scalar *){g});
+}
+
+// the stability event gets disable if stokes is set to true
+// since the solution is implicit. Therefore, we redefine the
+// stability event to set the timestep.
+event stability (i++,last) {
+  dt = dtnext (timestep (uf, dtmax));
 }
 #endif

@@ -8,7 +8,7 @@
 //#define FIXED_INT_TEMP    1
 #define CONST_DIFF 2.05e-5
 
-#include "temperature-profile.h"
+// #include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -38,7 +38,7 @@ int main() {
 #ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
 #else
-  TS0 = 300.; TG0 = 300.;
+  TS0 = 300.; TG0 = 750.;
 #endif
   rhoS = 850; rhoG = 0.674;
   muG = 3.53e-5;

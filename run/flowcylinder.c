@@ -14,7 +14,7 @@
 #include "adapt_wavelet_leave_interface.h"
 
 ////INPUTS//////////////
-int maxlevel = 10; 
+int maxlevel = 11; 
 double Re = 20;
 double R0 = 0.5;
 double U0 = 1.;
@@ -47,7 +47,7 @@ int main() {
   fprintf(stderr, "Da = %g\n", Da);
 
   L0 = side_length*R0*2;
-  DT = 0.5e-3;
+  // DT = 1e-1;
   origin(-L0/2, 0);
   init_grid (1 << maxlevel);
   run();
@@ -63,12 +63,7 @@ event init (i = 0) {
     porosity[] = (1.-f[]) + f[]*epsi0;
   
   foreach()
-    u.x[] = f[] > 0 ? U0*porosity[] : U0; 
-
-  foreach_face(x){
-    double ff = face_value(f, 0);
-    uf.x[] = ff > 0 ? U0*porosity[] : U0;
-  }
+    u.x[] = f[] > 0 ? U0/10 : U0; 
 }
 
 #if AMR_ACTIVE
@@ -192,13 +187,14 @@ void write_profile (void) {
   #endif
   FILE * fp = fopen (name, "w");
 
-  double step = L0/(1<<maxlevel)/2;
+  double step = L0/(1<<maxlevel);
   for (double x = 0; x<L0; x+=step){
     fprintf(fp, "%g %g\n", x, interpolate(u.x, x, 0));
   }
 
   fprintf (fp, "\n\n");
   fflush(fp);
+  fclose(fp);
 }
 
 event end (t = tend) {

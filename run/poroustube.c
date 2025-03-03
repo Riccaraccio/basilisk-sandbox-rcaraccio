@@ -14,9 +14,9 @@ u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 pf[right] = dirichlet (0.);
 
-int maxlevel = 8;
+int maxlevel = 10;
 
-double eps0 = 0.5;
+double eps0 = 0.6;
 scalar eps[];
 face vector epsf[];
 
@@ -58,7 +58,7 @@ event endtimestep (i++) {
       v.x[] = u.x[]/eps[];
 
   foreach()
-    p_prime[] = p[]/eps[];
+    true_p[] = p[]/eps[];
 }
 
 event advection_term (i++,last) {
@@ -108,7 +108,7 @@ event logprofile (i = 100) {
   static FILE * fp = fopen (name, "w");
 
   for (double x = 0.; x < L0; x += L0/(1<<maxlevel))
-    fprintf (fp, "%g %g %g %g %g\n", x, interpolate (u.x, x, 0.5), interpolate (v.x, x, 0.5),  interpolate (p, x, 0.5),  interpolate (p_prime, x, 0.5));
+    fprintf (fp, "%g %g %g %g %g\n", x, interpolate (u.x, x, 0.5), interpolate (v.x, x, 0.5),  interpolate (p, x, 0.5),  interpolate (true_p, x, 0.5));
   fflush (fp);
 }
 
@@ -119,37 +119,42 @@ event stop (i = 100);
 reset
 set xlabel "x"
 set ylabel "velocity"
-set yrange [0:2.5]
+set yrange [0:2]
 set key top right box width 1
 set samples 40
 
+set object 1 rectangle from 0.4,graph 0 to 0.6,graph 1 behind fc "black" fs solid 0.2
+set label 1 at 0.5,0.1 "porous region" center
+
 u_in = 0.8
-epsilon = 0.5
+epsilon = 0.6
 analytical_u(x) = u_in
 analytical_v(x) = (x < 0.4) ? u_in : (x > 0.6) ? u_in : u_in/epsilon
-plot "Output" u 1:2 w l lw 2 lc "red" t "u", \
-     "Output" u 1:3 w l lw 2 lc "web-green" t "v", \
-      analytical_u(x) w p pt 4 lc "red" t "analytical u", \
-      analytical_v(x) w p pt 4 lc "web-green" t "analytical v"
+plot "Output" u 1:2 w l lw 2 lc "red" t "v = εu", \
+     "Output" u 1:3 w l lw 2 lc "web-green" t "u", \
+      analytical_u(x) w p pt 4 lc "red" t "analytical v", \
+      analytical_v(x) w p pt 4 lc "web-green" t "analytical u"
 ~~~
 
 ~~~gnuplot pressure profile
 reset
 set xlabel "x"
 set ylabel "pressure"
-set yrange [-2.5:0.5]
+set yrange [-1.5:0.5]
 set samples 40
 set key bottom right box width 1
 
-u_in = 0.8
-epsilon = 0.5
+set object 1 rectangle from 0.4,graph 0 to 0.6,graph 1 behind fc "black" fs solid 0.2
+set label 1 at 0.5,-1.4 "porous region" center
 
+u_in = 0.8
+epsilon = 0.6
 analytical_p(x) = (x < 0.4) ? 0 : (x > 0.6) ? 0 : u_in*u_in*(1-1/epsilon)
 analytical_p_prime(x) = (x < 0.4) ? 0 : (x > 0.6) ? 0 : u_in*u_in*(1-1/epsilon)/epsilon
 
-plot "Output" u 1:4 w l lw 2 lc "red" t "p", \
-     "Output" u 1:5 w l lw 2 lc "web-green" t "p'", \
-      analytical_p(x) w p pt 4 lc "red" t "analytical p", \
-      analytical_p_prime(x) w p pt 4 lc "web-green" t "analytical p'"
+plot "Output" u 1:4 w l lw 2 lc "red" t "p' = εp", \
+     "Output" u 1:5 w l lw 2 lc "web-green" t "p", \
+      analytical_p(x) w p pt 4 lc "red" t "analytical p'", \
+      analytical_p_prime(x) w p pt 4 lc "web-green" t "analytical p"
 ~~~
 */

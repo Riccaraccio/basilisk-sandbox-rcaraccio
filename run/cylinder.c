@@ -3,7 +3,8 @@
 #define SOLVE_TEMPERATURE 1
 #define CONST_DIFF 2.05e-5
 #define FSOLVE_ABSTOL 1.e-3
-// #define RADIATION_INTERFACE 1
+#define RADIATION_INTERFACE 1
+#define KK_CONDUCTIVITY 1
 
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
@@ -13,6 +14,7 @@
 #include "multicomponent-varprop.h"
 // #include "darcy.h"
 #include "view.h"
+#include "superquadric.h"
 
 u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
@@ -24,11 +26,6 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-u.n[left]    = neumann (0.);
-u.t[left]    = neumann (0.);
-p[left]      = dirichlet (0.);
-psi[left]    = dirichlet (0.);
-
 int maxlevel = 7; int minlevel = 2;
 double D0 = 2e-2; //2cm
 double H0 = 3e-2; //3cm
@@ -38,15 +35,14 @@ int main() {
   eps0 = 0.4;
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
-  // DT = 1e-2;
 
   lambdaS = 0.2;
   TS0 = 300.; TG0 = 723.;
   rhoS = 1200.;
 
-  L0 = 6.1415e-2;
-  DT = 1e-2;
-  origin(-L0/2, 0);
+  L0 = 5*H0;
+  DT = 1e-1;
+  // origin(-L0/2, 0);
 
   //0: SHRINK, 
   //1: SWELLING, 
@@ -59,11 +55,12 @@ int main() {
   run();
 }
 
-#define rect(x,y)(fabs(x) < 0.5*H0 && fabs(y) < 0.5*D0)
+double solid_mass0 = 0.;
 
 event init(i=0) {
-  fraction (f, rect(x, y));
-  mask (y > 0.5*L0 ? top : none);
+
+  fraction (f, superquadric(x, y, 20, 0.5*H0, 0.5*D0));
+  // mask (y > 0.5*L0 ? top : none);
   
   foreach()
     porosity[] = eps0*f[];
@@ -80,24 +77,26 @@ event init(i=0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0080;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]= 0.0000;
 
-  #ifdef SOLVE_TEMPERATURE
-    TG[top] = dirichlet (TG0);
-    TG[right] = dirichlet (TG0);
-    TG[left] = dirichlet (TG0);
-  #endif
+  TG[top] = dirichlet (TG0);
+  TG[right] = dirichlet (TG0);
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
       YG[top] = dirichlet (1.);
       YG[right] = dirichlet (1.);
-      YG[left] = dirichlet (1.);
+      // YG[left] = dirichlet (1.);
     } else {
       YG[top] = dirichlet (0.);
       YG[right] = dirichlet (0.);
-      YG[left] = dirichlet (0.);
+      // YG[left] = dirichlet (0.);
     }
   }
+
+  foreach (reduction(+:solid_mass0))
+    solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
+
+  boundary({TG});
 }
 
 event adapt (i++) {
@@ -105,20 +104,54 @@ event adapt (i++) {
     (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
 }
 
-event output (t += 0.1) {
+event output (t += 1) {
   fprintf(stderr, "%g\n", t);
+
+  char name[80];
+  sprintf(name, "OutputData-%d", maxlevel);
+  static FILE * fp = fopen (name, "w");
+
+  //log mass profile
+  double solid_mass = 0.;
+  foreach (reduction(+:solid_mass))
+    solid_mass += (f[]-porosity[])*rhoS*dv();
+  
+  //radial shrinking
+  double step = L0/(1 << maxlevel);
+  double r = 0.;
+  for (double y=step/2; y<L0; y+=step) {
+    double f_cell = interpolate(f, 0, y);
+    if (f_cell < 1.-F_ERR && f_cell > F_ERR) {
+      r = y+step*(f_cell - 0.5);
+      break;
+    }
+  }
+
+  //axial shrinking
+  double z = 0.;
+  for (double x=step/2; x<L0; x+=step) {
+    double f_cell = interpolate(f, x, 0);
+    if (f_cell < 1.-F_ERR && f_cell > F_ERR) {
+      z = x+step*(f_cell-0.5);
+      break;
+    }
+  }
+
+  //print on file
+  fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/(D0/2), z/(H0/2));
+  fflush(fp);
 }
 
-event movie (t += 0.1) {
-  clear();
-  view (tx = -0.5*L0, ty = 0);
-  draw_vof ("f");
-  squares("p", spread = -1);
-  mirror ({0, 1}) {
-    draw_vof("f");
-    squares("(u.x^2 + u.y^2)^0.5", spread = -1);
-  }
-  save ("movie.mp4");
-}
+// event movie (t += 0.1) {
+//   clear();
+//   view (tx = -0.5*L0, ty = 0);
+//   draw_vof ("f");
+//   squares("p", spread = -1);
+//   mirror ({0, 1}) {
+//     draw_vof("f");
+//     squares("(u.x^2 + u.y^2)^0.5", spread = -1);
+//   }
+//   save ("movie.mp4");
+// }
 
 event stop (t = tend);

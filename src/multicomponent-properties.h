@@ -14,6 +14,11 @@ describe low Mach compressibility effects. */
 
 #ifdef VARPROP
 
+#ifdef KK_CONDUCTIVITY
+double lS_per = 0.430;
+double lS_par = 0.766;
+#endif
+
 extern scalar porosity;
 scalar DTDtS[], DTDtG[];
 scalar * DYDtG_G = NULL;    // [NSS]
@@ -63,75 +68,75 @@ void update_properties_constant (void) {
 }
 */
 
-void update_properties_initial (void) {
-  foreach() {
-    ThermoState tsGh, tsSh;
-    if (f[] < 1. - T_PROP) {
+// void update_properties_initial (void) {
+//   foreach() {
+//     ThermoState tsGh, tsSh;
+//     if (f[] < 1. - T_PROP) {
 
-      // Update the properties of the external gas phase
-      tsGh.T = TG0;
-      tsGh.P = Pref;
-      tsGh.x = gas_start;
+//       // Update the properties of the external gas phase
+//       tsGh.T = TG0;
+//       tsGh.P = Pref;
+//       tsGh.x = gas_start;
 
-      rhoGv_G[] = tpG.rhov (&tsGh);
-      //rhoGvInt_G[] = rhoGv_G[];
-      rhoGv0_G[] = rhoGv_G[];
-      muGv_G[] = tpG.muv (&tsGh);
-      cpGv_G[] = tpG.cpv (&tsGh);
-      lambdaGv_G[] = tpG.lambdav (&tsGh);
+//       rhoGv_G[] = tpG.rhov (&tsGh);
+//       //rhoGvInt_G[] = rhoGv_G[];
+//       rhoGv0_G[] = rhoGv_G[];
+//       muGv_G[] = tpG.muv (&tsGh);
+//       cpGv_G[] = tpG.cpv (&tsGh);
+//       lambdaGv_G[] = tpG.lambdav (&tsGh);
 
-      for(int jj=0; jj<NGS; jj++) {
-        scalar DmixGv = DmixGList_G[jj];
-        #ifdef CONST_DIFF
-        DmixGv[] = CONST_DIFF;
-        #else
-        DmixGv[] = tpG.diff (&tsGh, jj);
-        #endif
-      }
-    }
+//       for(int jj=0; jj<NGS; jj++) {
+//         scalar DmixGv = DmixGList_G[jj];
+//         #ifdef CONST_DIFF
+//         DmixGv[] = CONST_DIFF;
+//         #else
+//         DmixGv[] = tpG.diff (&tsGh, jj);
+//         #endif
+//       }
+//     }
 
-    if (f[] > T_ERR) {
-      // Update the properties of the internal gas phase
-      tsGh.T = TS0;
-      tsGh.P = Pref;
-      tsGh.x = gas_start;
+//     if (f[] > T_ERR) {
+//       // Update the properties of the internal gas phase
+//       tsGh.T = TS0;
+//       tsGh.P = Pref;
+//       tsGh.x = gas_start;
 
-      rhoGv_S[] = tpG.rhov (&tsGh);
-      //rhoGvInt_S[] = rhoGv_S[];
-      rhoGv0_S[] = rhoGv_S[];
-      muGv_S[] = tpG.muv (&tsGh);
-      cpGv_S[] = tpG.cpv (&tsGh);
-      lambdaGv_S[] = tpG.lambdav (&tsGh);
+//       rhoGv_S[] = tpG.rhov (&tsGh);
+//       //rhoGvInt_S[] = rhoGv_S[];
+//       rhoGv0_S[] = rhoGv_S[];
+//       muGv_S[] = tpG.muv (&tsGh);
+//       cpGv_S[] = tpG.cpv (&tsGh);
+//       lambdaGv_S[] = tpG.lambdav (&tsGh);
 
-      for(int jj=0; jj<NGS; jj++) {
-        scalar DmixGv = DmixGList_S[jj];
-        #ifdef CONST_DIFF
-        DmixGv[] = CONST_DIFF;
-        #else
-        DmixGv[] = tpG.diff (&tsGh, jj);
-        DmixGv[] *= pow(porosity[]/f[], 3./2.); //effect of solid, to be revised
-        #endif
-      }
+//       for(int jj=0; jj<NGS; jj++) {
+//         scalar DmixGv = DmixGList_S[jj];
+//         #ifdef CONST_DIFF
+//         DmixGv[] = CONST_DIFF;
+//         #else
+//         DmixGv[] = tpG.diff (&tsGh, jj);
+//         DmixGv[] *= pow(porosity[]/f[], 3./2.); //effect of solid, to be revised
+//         #endif
+//       }
 
-      //Update the properties of the solid phase
-      tsSh.T = TS0;
-      tsSh.P = Pref;
-      tsSh.x = sol_start;
+//       //Update the properties of the solid phase
+//       tsSh.T = TS0;
+//       tsSh.P = Pref;
+//       tsSh.x = sol_start;
 
-      rhoSv[] = tpS.rhov (&tsSh);
-      //rhoSvInt[] = rhoSv[];
-      rhoSv0[] = rhoSv[];
-      cpSv[] = tpS.cpv (&tsSh);
-      lambdaSv[] = tpS.lambdav (&tsSh);
-    }
-  }
+//       rhoSv[] = tpS.rhov (&tsSh);
+//       //rhoSvInt[] = rhoSv[];
+//       rhoSv0[] = rhoSv[];
+//       cpSv[] = tpS.cpv (&tsSh);
+//       lambdaSv[] = tpS.lambdav (&tsSh);
+//     }
+//   }
 
-  boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
-            rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,
-            rhoGv_S, rhoGv0_S, muGv_S, cpGv_S, lambdaGv_S});
-  boundary (DmixGList_G);
-  boundary (DmixGList_S);
-}
+//   boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
+//             rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,
+//             rhoGv_S, rhoGv0_S, muGv_S, cpGv_S, lambdaGv_S});
+//   boundary (DmixGList_G);
+//   boundary (DmixGList_S);
+// }
 
 event init (i = 0) //Should be done in the default event but is executed before OS++ initialization
 {
@@ -168,7 +173,6 @@ event init (i = 0)
   MWmixG_G.dirty = true;
   MWmixG_S.dirty = true;
 #if TREE
-  //for (scalar s in {drhodt, drhodtext}) { //TODO: check if this is correct
   for (scalar s in {drhodt}) {
 #if EMBED
     s.refine = s.prolongation = refine_embed_linear;
@@ -261,6 +265,20 @@ void update_properties (void) {
         #endif
         DmixGv[] *= pow(porosity[]/f[], 3./2.);
       }
+
+      #ifdef KK_CONDUCTIVITY //anisotropic conductivity
+      double leff_per = 1 / ( (1.-porosity[])/lS_per + porosity[]/lambdaGv_S[]);
+      double leff_par = (1.-porosity[]/f[])*lS_par + porosity[]/f[]*lambdaGv_S[];
+
+      //longitudinal direction theta = 1.0
+      lambda1v.x[] = leff_par;
+
+      // trasversal direction theta = 0.58
+      lambda1v.y[] = 0.58*leff_par + (1.-0.58)*leff_per;
+      #else //!KK_CONDUCTIVITY, std case
+      foreach_dimension()
+        lambda1v.x[] = (1.-porosity[]/f[])*lambdaSv[] + porosity[]/f[]*lambdaGv_S[];
+      #endif
     }
 
     if ((1. - f[]) > T_PROP) {
@@ -292,6 +310,8 @@ void update_properties (void) {
         Dmix2v[] = CONST_DIFF;
 # endif
       }
+      foreach_dimension()
+        lambda2v.x[] = lambdaGv_G[];
     }
   }
 

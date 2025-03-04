@@ -4,10 +4,8 @@
 
 #define pavg(p,vg,vs) (p*vg+(1-p)*vs)
 
-scalar lambda1v[], lambda2v[];
 scalar rho1v[], rho2v[];
-scalar rhocp1v[], rhocp2v[];
-
+extern vector lambda1v, lambda2v;
 extern face vector alphav;
 extern scalar rhov;
 extern scalar f;
@@ -43,11 +41,10 @@ event properties (i++) {
     rho2v[] = rhoG;
 
 #ifdef SOLVE_TEMPERATURE
-    lambda1v[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
-    lambda2v[] = lambdaG;
-
-    rhocp1v[] =  f[] > F_ERR ? pavg (porosity[]/f[], rhoG*cpG, rhoS*cpS) : rhoG*cpG;
-    rhocp2v[] =  rhoG*cpG;
+    foreach_dimension() {
+      lambda1v.x[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
+      lambda2v.x[] = lambdaG;
+    }
 #endif
   }
 

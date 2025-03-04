@@ -29,6 +29,7 @@ scalar TInt[];
 scalar TS, TG;
 scalar sST[], sGT[];
 face vector lambda1f[], lambda2f[];
+vector lambda1v[], lambda2v[];
 #endif
 
 bool success;

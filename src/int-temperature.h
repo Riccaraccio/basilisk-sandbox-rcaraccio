@@ -8,11 +8,7 @@
 extern scalar fS, fG;
 extern face vector fsS, fsG;
 extern scalar porosity;
-#ifdef VARPROP
-extern scalar lambdaGv_S, lambdaGv_G, rhoSv;
-#else
-extern double lambdaG, lambdaS;
-#endif
+extern vector lambda1v, lambda2v;
 extern double TG0;
 extern scalar TInt, TS, TG, T;
 
@@ -38,14 +34,11 @@ void EqTemperature (const double* xdata, double* fdata, void* params) {
     double gradTGn = ebmgrad (point, TG, fS, fG, fsS, fsG, true, TInti, &success);
     double gradTSn = ebmgrad (point, TS, fS, fG, fsS, fsG, false, TInti, &success);
 
-    double lambda1vh, lambda2vh;
-#ifdef VARPROP
-    lambda1vh = porosity[]*lambdaGv_S[] + (1. - porosity[])*lambdaSv[];
-    lambda2vh = lambdaGv_G[];
-#else
-    lambda1vh = porosity[]*lambdaG + (1. - porosity[])*lambdaS;
-    lambda2vh = lambdaG;
-#endif
+    coord n = facet_normal (point, fS, fsS);
+    double lambda1vh = lambda1v.x[]*n.x + lambda1v.y[]*n.y;
+  
+    //lambdaG is not dipendent on the direction, this is just to treat it the same way as lambdaS
+    double lambda2vh = lambda2v.x[]*n.x + lambda2v.y[]*n.y;
 
     //Interface energy balance
     fdata[0] = - divq_rad_int (TInti, TG0, RADIATION_INTERFACE)

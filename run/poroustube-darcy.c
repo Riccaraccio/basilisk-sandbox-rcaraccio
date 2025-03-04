@@ -1,6 +1,6 @@
 #include "navier-stokes/centered.h"
 #include "fractions.h"
-// #define DARCY 1
+#define DARCY 1
 #define F_ERR 1e-8
 
 double uin = 0.8;
@@ -140,18 +140,25 @@ plot "Output" u 1:2 w l lw 2 lc "red" t "v = εu", \
 reset
 set xlabel "x"
 set ylabel "pressure"
-set yrange [-1.5:0.5]
+set yrange [-1:3.5]
 set samples 40
-set key bottom right box width 1
+set key top right box width 1
 
 set object 1 rectangle from 0.4,graph 0 to 0.6,graph 1 behind fc "black" fs solid 0.2
-set label 1 at 0.5,-1.4 "porous region" center
+set label 1 at 0.5, -0.8 "porous region" center
 
+mu = 1e-1
 u_in = 0.8
-rho = 1
 epsilon = 0.6
-analytical_p(x) = (x < 0.4) ? 0 : (x > 0.6) ? 0 : rho*u_in*u_in*(1-1/epsilon)
-analytical_p_prime(x) = (x < 0.4) ? 0 : (x > 0.6) ? 0 : rho*u_in*u_in*(1-1/epsilon)/epsilon
+K = 5e-3
+rho = 1
+F = 1.75/sqrt (150*epsilon**3)
+B = mu*u_in*epsilon/K + rho*F*epsilon*u_in*u_in/K**0.5
+analytical_p(x) = (x < 0.4) ? B*(0.6-0.4) : \
+                  (x > 0.6) ? 0 : \
+                  rho*u_in*u_in*(1-1/epsilon) + B*(0.4-x + (0.6-0.4))
+
+analytical_p_prime(x) = (x < 0.4) ? analytical_p(x) : analytical_p(x)/epsilon
 
 plot "Output" u 1:4 w l lw 2 lc "red" t "p' = εp", \
      "Output" u 1:5 w l lw 2 lc "web-green" t "p", \

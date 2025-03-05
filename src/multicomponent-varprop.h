@@ -242,17 +242,8 @@ event tracer_diffusion (i++) {
       double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
       double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true, bc, &success);
 
-      double lambda1vh, lambda2vh;
-# ifdef VARPROP
-      lambda1vh = porosity[]*lambdaGv_S[] + (1. - porosity[])*lambdaSv[];
-      lambda2vh = lambdaGv_G[];
-# else
-      lambda1vh = porosity[]*lambdaG + (1. - porosity[])*lambdaS;
-      lambda2vh = lambdaG;
-# endif
-
-      double Sheatflux = lambda1vh*Strgrad;
-      double Gheatflux = lambda2vh*Gtrgrad;
+      double Sheatflux = lambda1v.x[]*Strgrad;
+      double Gheatflux = lambda2v.x[]*Gtrgrad;
 
 # ifdef AXI
       sST[] += Sheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
@@ -342,18 +333,20 @@ event tracer_diffusion (i++) {
 
 #ifdef SOLVE_TEMPERATURE
   foreach_face() {
-    double lambda1vh, lambda2vh;
-    double ef = face_value(porosity, 0);
-    #ifdef VARPROP
-    lambda1vh = ef*face_value(lambdaGv_S, 0) + (1. - ef)*face_value(lambdaSv, 0);
-    lambda2vh = face_value(lambdaGv_G, 0);
-    #else
-    lambda1vh = ef*lambdaG + (1. - ef)*lambdaS;
-    lambda2vh = lambdaG;
-    #endif
+    // double ef = face_value(porosity, 0);
+    // double lambda1x = ef*face_value(lambdaSv, 0) + (1. - ef)*face_value(lambdaGv_S, 0);
+    // double lambda2x = face_value(lambdaGv_G, 0);
 
-    lambda1f.x[] = lambda1vh*fsS.x[]*fm.x[];
-    lambda2f.x[] = lambda2vh*fsG.x[]*fm.x[];
+    // lambda1f.x[] =lambda1x*fsS.x[]*fm.x[];
+    // lambda2f.x[] =lambda2x*fsG.x[]*fm.x[];
+
+    // double test = face_value(lambda2v.x, 0)*fsG.x[]*fm.x[];
+    // if (test != lambda2f.x[])
+    //   fprintf(stderr, "lambda2f.x[] = %g \t %g\n", lambda2f.x[], test);
+
+
+    lambda1f.x[] = face_value(lambda1v.x, 0)*fsS.x[]*fm.x[];
+    lambda2f.x[] = face_value(lambda2v.x, 0)*fsG.x[]*fm.x[];
   }
 
   foreach() {

@@ -9,7 +9,7 @@
 #define CONST_DIFF 2.05e-5
 
 // #include "temperature-profile.h"
-#include "axi.h" 
+// #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
@@ -173,18 +173,18 @@ event adapt (i++) {
 //   save ("LVG.mp4");
 // }
 
-event movie(t+=5) {
-  clear();
-  box();
-  view (ty=-0.5, width = 1400.);
-  draw_vof("f", lw=2);
-  squares ("T", min=300, max=800, linear=true);
-  mirror ({1.,0.}) {
-    draw_vof ("f", lw=2);
-    squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
-    // vectors ("u", scale=1);
- }
- save ("movie.mp4");
+// event movie(t+=5) {
+//   clear();
+//   box();
+//   view (ty=-0.5, width = 1400.);
+//   draw_vof("f", lw=2);
+//   squares ("T", min=300, max=800, linear=true);
+//   mirror ({1.,0.}) {
+//     draw_vof ("f", lw=2);
+//     squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
+//     // vectors ("u", scale=1);
+//  }
+//  save ("movie.mp4");
 
   // clear ();
   // box ();
@@ -200,7 +200,7 @@ event movie(t+=5) {
   //   vectors ("u", scale = 1e-2);
   // }
   // save("movie2.mp4");
-}
+// }
 
 #if DUMP
 int count = 0;

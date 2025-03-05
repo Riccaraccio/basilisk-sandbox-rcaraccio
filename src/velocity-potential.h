@@ -14,7 +14,7 @@ mgstats project_sv (face vector ubf, scalar psi,
 {
   scalar prod[];
   foreach()
-    prod[] = (omega[]*zeta[]/rhoS*cm[])/dt;
+    prod[] = (omega[]*zeta[]/rhoS*cm[])/dt; //TODO: variable density
 
   mgstats mgp = poisson (psi, prod, alpha, 
       tolerance = TOLERANCE/sq(dt), nrelax = nrelax);

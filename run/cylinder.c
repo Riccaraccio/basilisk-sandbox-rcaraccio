@@ -12,7 +12,7 @@
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
-// #include "darcy.h"
+#include "darcy.h"
 #include "view.h"
 #include "superquadric.h"
 
@@ -49,13 +49,14 @@ int main() {
   //2: SMOOTH, 
   //3: SHARP, 
   //4: LEVELSET
-  zeta_policy = ZETA_SHRINK;
+  zeta_policy = ZETA_REACTION;
   kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
 }
 
 double solid_mass0 = 0.;
+double r0, z0;
 
 event init(i=0) {
 
@@ -97,6 +98,27 @@ event init(i=0) {
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
   boundary({TG});
+  
+  //radial shrinking
+  double step = L0/(1 << maxlevel);
+  for (double y=step/2; y<L0; y+=step) {
+    double f_cell = interpolate(f, 0, y);
+    if (f_cell < 1.-F_ERR && f_cell > F_ERR) {
+      r0 = y+step*(f_cell - 0.5);
+      break;
+    }
+  }
+
+  //axial shrinking
+  for (double x=step/2; x<L0; x+=step) {
+    double f_cell = interpolate(f, x, 0);
+    if (f_cell < 1.-F_ERR && f_cell > F_ERR) {
+      z0 = x+step*(f_cell-0.5);
+      break;
+    }
+  }
+
+  fprintf(stderr, "r0 = %g, z0 = %g\n", r0, z0);
 }
 
 event adapt (i++) {
@@ -138,7 +160,7 @@ event output (t += 1) {
   }
 
   //print on file
-  fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/(D0/2), z/(H0/2));
+  fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, z/z0);
   fflush(fp);
 }
 
@@ -155,3 +177,25 @@ event output (t += 1) {
 // }
 
 event stop (t = tend);
+
+/*
+~~~gnuplot Mass profile
+reset
+set xlabel "t [s]"
+set ylabel "M/M_0"
+set yrange [0:1]
+
+plot "OutputData-7" u 1:2 w l lw 2 lc "red" t "Mass profile"
+~~~
+
+~~~gnuplot Shrinking
+reset
+set xlabel "t [s]"
+set ylabel "Shrinking factor"
+set key bottom right box width 1
+set yrange [0.5:1]
+
+plot "OutputData-7" u 1:3 w l lw 2 lc "red" t "Radial shrinking", \
+     "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "Axial shrinking"
+~~~
+*/

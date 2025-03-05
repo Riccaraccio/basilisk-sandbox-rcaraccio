@@ -17,7 +17,8 @@ typedef enum {
   ZETA_SWELLING,
   ZETA_SMOOTH,
   ZETA_SHARP,
-  ZETA_LEVELSET
+  ZETA_LEVELSET,
+  ZETA_REACTION
 } zeta_types;
 
 zeta_types zeta_policy;
@@ -48,9 +49,13 @@ void set_zeta (zeta_types zeta_policy) {
         zeta[] = (sqrt(sq(x) + sq(y)) > radius*0.8) ? 1. : 0.;
       break;
     case 4: // ZETA_LEVELSET
-      vof_to_ls (f, levelset, imax=10); //Solution is sensible to imax value
+      vof_to_ls (f, levelset, imax=5);
       foreach()
-        zeta[] = levelset[] > 0.8*statsf(levelset).min ? 1. : 0.;
+        zeta[] = levelset[] > 0.9*statsf(levelset).min ? 1. : 0.;
+      break;
+    case 5: // ZETA_REACTION
+      foreach()
+        zeta[] = omega[] >= 0.9*statsf(omega).max ? 1. : 0.;
       break;
   }
 }

@@ -2,7 +2,7 @@
 
 //#include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
-#include "prop.h"
+#include "const-prop.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "balances.h"
@@ -47,8 +47,8 @@ int main() {
 //   }
 // }
 
-amr = 0;
-for (maxlevel=5; maxlevel<=8; maxlevel++) {
+amr = 1;
+for (maxlevel=5; maxlevel<=7; maxlevel++) {
   for (zetamodel=0; zetamodel <= 1; zetamodel++) {
         fprintf(stderr, "Running maxlevel %d zetamodel %d, amr %d\n",
           maxlevel, zetamodel, amr);
@@ -100,8 +100,8 @@ event chemistry(i++) {
 
 event adapt (i++) {
   if (amr > 0) {
-  adapt_wavelet_leave_interface({porosity, u.x, u.y}, {f}, 
-    (double[]){1e-2, 1e-3, 1e-3}, maxlevel, minlevel);
+    adapt_wavelet_leave_interface({porosity, u.x, u.y}, {f}, 
+      (double[]){1e-2, 1e-3, 1e-3}, maxlevel, minlevel);
   }
 }
 
@@ -232,13 +232,13 @@ do for [i=0:3] {
     stats sprintf("balances-%d-1-0", level) u (last_y=$2) nooutput
     diff_x10[i+1] = last_y - analytical
     
-    ## Calculate difference for SWELLING case (x-0-1)
-    #stats sprintf("balances-%d-0-1", level) u (last_y=$2) nooutput
-    #diff_x01[i+1] = abs(last_y - analytical)
+    # Calculate difference for SWELLING case (x-0-1)
+    stats sprintf("balances-%d-0-1", level) u (last_y=$2) nooutput
+    diff_x01[i+1] = abs(last_y - analytical)
     
-    ## Calculate difference for SWELLING case (x-1-1)
-    #stats sprintf("balances-%d-1-1", level) u (last_y=$2) nooutput
-    #diff_x11[i+1] = abs(last_y - analytical)
+    # Calculate difference for SWELLING case (x-1-1)
+    stats sprintf("balances-%d-1-1", level) u (last_y=$2) nooutput
+    diff_x11[i+1] = abs(last_y - analytical)
 }
 
 array x_levels[4] = [2**5, 2**6, 2**7, 2**8]
@@ -256,7 +256,9 @@ set size square
 set grid
 
 plot  x_levels u (x_levels[$1]):(diff_x00[$1]) w p pt 8 ps 2 t "SHRINK",\
+      x_levels u (x_levels[$1]):(diff_x01[$1]) w p pt 8 ps 2 t "SHRINK AMR",\
       x_levels u (x_levels[$1]):(diff_x10[$1]) w p pt 8 ps 2 t "SWELLING",\
+      x_levels u (x_levels[$1]):(diff_x11[$1]) w p pt 8 ps 2 t "SWELLING AMR",\
       0.01*x**(-1) lw 2 title "1^{st} order", \
       0.13*x**(-2) lw 2 title "2^{nd} order"
 ~~~
@@ -290,13 +292,13 @@ do for [i=0:3] {
     stats sprintf("balances-%d-1-0", level) u (last_y=$3) nooutput
     diff_x10[i+1] = last_y - analytical
     
-    ## Calculate difference for SWELLING case (x-0-1)
-    #stats sprintf("balances-%d-0-1", level) u (last_y=$3) nooutput
-    #diff_x01[i+1] = last_y - analytical
-    
-    ## Calculate difference for SWELLING case (x-1-1)
-    #stats sprintf("balances-%d-1-1", level) u (last_y=$3) nooutput
-    #diff_x11[i+1] = last_y - analytical
+    # Calculate difference for SWELLING case (x-0-1)
+    stats sprintf("balances-%d-0-1", level) u (last_y=$3) nooutput
+    diff_x01[i+1] = last_y - analytical
+
+    # Calculate difference for SWELLING case (x-1-1)
+    stats sprintf("balances-%d-1-1", level) u (last_y=$3) nooutput
+    diff_x11[i+1] = last_y - analytical
 }
 
 array x_levels[4] = [2**5, 2**6, 2**7, 2**8]
@@ -314,7 +316,9 @@ set size square
 set grid
 
 plot  x_levels u (x_levels[$1]):(diff_x00[$1]) w p pt 8 ps 2 t "SHRINK",\
+      x_levels u (x_levels[$1]):(diff_x01[$1]) w p pt 8 ps 2 t "SHRINK AMR",\
       x_levels u (x_levels[$1]):(diff_x10[$1]) w p pt 8 ps 2 t "SWELLING",\
+      x_levels u (x_levels[$1]):(diff_x11[$1]) w p pt 8 ps 2 t "SWELLING AMR",\
       0.5*x**(-1) lw 2 title "1^{st} order", \
       5*x**(-2) lw 2 title "2^{nd} order"
 ~~~

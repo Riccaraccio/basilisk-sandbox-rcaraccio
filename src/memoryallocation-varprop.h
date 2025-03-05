@@ -30,6 +30,24 @@ scalar TS, TG;
 scalar sST[], sGT[];
 face vector lambda1f[], lambda2f[];
 vector lambda1v[], lambda2v[];
+
+lambda2v.n[bottom] = neumann(0.); 
+lambda2v.t[bottom] = neumann(0.);
+lambda2v.n[left] = neumann(0.);
+lambda2v.t[left] = neumann(0.);
+lambda2v.n[right] = neumann(0.);
+lambda2v.t[right] = neumann(0.);
+lambda2v.n[top] = neumann(0.);
+lambda2v.t[top] = neumann(0.);
+
+lambda1v.n[bottom] = neumann(0.);
+lambda1v.t[bottom] = neumann(0.);
+lambda1v.n[left] = neumann(0.);
+lambda1v.t[left] = neumann(0.);
+lambda1v.n[right] = neumann(0.);
+lambda1v.t[right] = neumann(0.);
+lambda1v.n[top] = neumann(0.);
+lambda1v.t[top] = neumann(0.);
 #endif
 
 bool success;

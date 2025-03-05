@@ -337,11 +337,8 @@ event tracer_diffusion (i++) {
 
 #ifdef SOLVE_TEMPERATURE
   foreach_face() {
-    double lambda1vh, lambda2vh;
-    lambda1vh = face_value(lambda1v.x, 0);
-    lambda1f.x[] = lambda1vh*fsS.x[]*fm.x[];
-    lambda2vh = face_value(lambda2v.x, 0);
-    lambda2f.x[] = lambda2vh*fsG.x[]*fm.x[];
+    lambda1f.x[] = face_value(lambda1v.x, 0)*fsS.x[]*fm.x[];
+    lambda2f.x[] = face_value(lambda2v.x, 0)*fsG.x[]*fm.x[];
   }
 
   foreach() {

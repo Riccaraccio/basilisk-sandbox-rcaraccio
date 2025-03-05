@@ -318,6 +318,7 @@ void update_properties (void) {
   boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
             rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,
             rhoGv_S, rhoGv0_S, muGv_S, cpGv_S, lambdaGv_S});
+  boundary ({lambda1v, lambda2v});
   boundary (DmixGList_G);
   boundary (DmixGList_S);
 }

@@ -28,7 +28,7 @@ void EqSpecies (const double* xdata, double* fdata, void* params) {
   double jG_G[NGS];
   bool success = false;
 
-  foreach_point(data->c.x, data->c.y, data->c.z) {
+  foreach_point(data->c.x, data->c.y, data->c.z, serial) {
 
     for (int jj=0; jj<NGS; jj++)
       YGInti[jj] = xdata[jj];

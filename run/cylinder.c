@@ -26,7 +26,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 8; int minlevel = 2;
 double D0 = 2e-2; //2cm
 double H0 = 3e-2; //3cm
 double tend = 800.; //800s
@@ -44,11 +44,6 @@ int main() {
   DT = 1e-1;
   // origin(-L0/2, 0);
 
-  //0: SHRINK, 
-  //1: SWELLING, 
-  //2: SMOOTH, 
-  //3: SHARP, 
-  //4: LEVELSET
   zeta_policy = ZETA_REACTION;
   kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
@@ -184,8 +179,11 @@ reset
 set xlabel "t [s]"
 set ylabel "M/M_0"
 set yrange [0:1]
+set key top right box width 1
 
-plot "OutputData-7" u 1:2 w l lw 2 lc "red" t "Mass profile"
+plot  "OutputData-7" u 1:2 w l lw 2 lc "black" t "Mass profile", \
+      "data/mass-exp" u 1:2 w p pt 4 lc "black" t "Exp mass", \
+      "data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Gentile mass"
 ~~~
 
 ~~~gnuplot Shrinking
@@ -196,6 +194,10 @@ set key bottom right box width 1
 set yrange [0.5:1]
 
 plot "OutputData-7" u 1:3 w l lw 2 lc "red" t "Radial shrinking", \
-     "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "Axial shrinking"
+     "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "Axial shrinking",\
+     "data/radial-exp" u 1:2 w p pt 4 lc "red" t "Radial exp", \
+     "data/axial-exp" u 1:2 w p pt 4 lc "web-green" t "Axial exp",\
+     "data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "red" t "Radial Gentile", \
+     "data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "web-green" t "Axial Gentile"
 ~~~
 */

@@ -34,7 +34,7 @@ void set_zeta (zeta_types zeta_policy) {
     case 0: // ZETA_SHRINK
       foreach()
         zeta[] = 1.;
-        break;
+      break;
     case 1: // ZETA_SWELLING
       foreach()
         zeta[] = 0.;
@@ -54,9 +54,16 @@ void set_zeta (zeta_types zeta_policy) {
         zeta[] = levelset[] > 0.9*statsf(levelset).min ? 1. : 0.;
       break;
     case 5: // ZETA_REACTION
-      foreach()
-        zeta[] = omega[] >= 0.9*statsf(omega).max ? 1. : 0.;
-      break;
+      {
+        double omega_max = statsf(omega).max;
+        foreach() {
+          if (omega_max > 1e-10)
+            zeta[] = omega[] >= 0.9*omega_max ? 1. : 0.;
+          else
+            zeta[] = 0.;
+        }
+        break;
+      }
   }
 }
 

@@ -26,7 +26,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 8; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 double D0 = 2e-2; //2cm
 double H0 = 3e-2; //3cm
 double tend = 800.; //800s
@@ -44,7 +44,7 @@ int main() {
   DT = 1e-1;
   // origin(-L0/2, 0);
 
-  zeta_policy = ZETA_REACTION;
+  zeta_policy = ZETA_LEVELSET;
   kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
@@ -53,7 +53,7 @@ int main() {
 double solid_mass0 = 0.;
 double r0, z0;
 
-event init(i=0) {
+event init (i = 0) {
 
   fraction (f, superquadric(x, y, 20, 0.5*H0, 0.5*D0));
   // mask (y > 0.5*L0 ? top : none);
@@ -81,11 +81,9 @@ event init(i=0) {
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
       YG[top] = dirichlet (1.);
       YG[right] = dirichlet (1.);
-      // YG[left] = dirichlet (1.);
     } else {
       YG[top] = dirichlet (0.);
       YG[right] = dirichlet (0.);
-      // YG[left] = dirichlet (0.);
     }
   }
 

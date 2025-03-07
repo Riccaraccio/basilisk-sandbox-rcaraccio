@@ -11,6 +11,12 @@ extern scalar omega;
 scalar porosity[];
 scalar zeta[];
 scalar levelset[];
+scalar o[];
+
+extern scalar TS;
+vector gTS[];
+scalar modg[];
+
 
 typedef enum {
   ZETA_SHRINK = 0,
@@ -18,7 +24,8 @@ typedef enum {
   ZETA_SMOOTH,
   ZETA_SHARP,
   ZETA_LEVELSET,
-  ZETA_REACTION
+  ZETA_REACTION,
+  ZETA_GRADIENT
 } zeta_types;
 
 zeta_types zeta_policy;
@@ -35,35 +42,73 @@ void set_zeta (zeta_types zeta_policy) {
       foreach()
         zeta[] = 1.;
       break;
+
     case 1: // ZETA_SWELLING
       foreach()
         zeta[] = 0.;
       break;
+
     case 2: // ZETA_SMOOTH
       foreach()
           //zeta[] = 1 / (1 + exp(32*radius - 40*sqrt(sq(x)+sq(y)+sq(z))));
           zeta[] = 1 / (1 + exp(-(sqrt(sq(x)+sq(y)+sq(z))-radius/2)/pow(radius, 4./3.)));
       break;
+
     case 3: // ZETA_SHARP
       foreach()
         zeta[] = (sqrt(sq(x) + sq(y)) > radius*0.8) ? 1. : 0.;
       break;
-    case 4: // ZETA_LEVELSET
+
+    case 4: { // ZETA_LEVELSET
       vof_to_ls (f, levelset, imax=5);
-      foreach()
-        zeta[] = levelset[] > 0.9*statsf(levelset).min ? 1. : 0.;
-      break;
-    case 5: // ZETA_REACTION
-      {
-        double omega_max = statsf(omega).max;
+      double lmin = statsf(levelset).min;
+      if (fabs(lmin) > F_ERR)
         foreach() {
-          if (omega_max > 1e-10)
-            zeta[] = omega[] >= 0.9*omega_max ? 1. : 0.;
+          zeta[] = 1 - levelset[]/statsf(levelset).min;
+          zeta[] = clamp(zeta[], 0., 1.);
+        }
+          
+      else
+        foreach()
+          zeta[] = 0.;
+      break;
+    }
+
+    case 5: { // ZETA_REACTION
+        foreach()
+          o[] = f[] > 1. - F_ERR ? omega[] : 0.;
+
+        double o_max = statsf(omega).max;
+        foreach() {
+          if (o_max > F_ERR)
+            // zeta[] = omega[] >= 0.9*o_max ? 1. : 0.;
+            zeta[] = omega[]/o_max;
           else
             zeta[] = 0.;
         }
         break;
       }
+    case 6: { // ZETA_GRADIENT
+      foreach()
+        TS[] = f[] > F_ERR ? TS[] / f[] : 0.;
+
+      gradients({TS}, {gTS});
+
+      foreach() {
+        modg[] = 0.;
+        foreach_dimension()
+            modg[] += sq(gTS.x[]);
+        modg[] = sqrt(modg[]);
+      }
+
+      double delta = L0/(1<<7);
+      foreach() {
+        zeta[] = f[] > F_ERR ? tanh(modg[]/TS[]*delta) : 0.;
+        // zeta[] = TS[] > 0. ? 1 - 1/((modg[]/TS[])+1) : 0.;
+        TS[] = f[] > F_ERR ? TS[]*f[] : 0.;
+      }
+      break;
+    } 
   }
 }
 

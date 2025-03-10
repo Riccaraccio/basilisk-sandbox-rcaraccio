@@ -40,23 +40,23 @@ int main() {
   TS0 = 300.; TG0 = 723.;
   rhoS = 1200.;
 
-  L0 = 5*H0;
+  L0 = 4.1*H0;
   DT = 1e-1;
   // origin(-L0/2, 0);
 
-  zeta_policy = ZETA_LEVELSET;
+  zeta_policy = ZETA_REACTION;
   kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
 }
 
 double solid_mass0 = 0.;
-double r0, z0;
+double r0, h0;
+scalar d[];
 
 event init (i = 0) {
 
-  fraction (f, superquadric(x, y, 20, 0.5*H0, 0.5*D0));
-  // mask (y > 0.5*L0 ? top : none);
+  fraction (f, superquadric(x, y, 30, 0.5*H0, 0.5*D0));
   
   foreach()
     porosity[] = eps0*f[];
@@ -90,33 +90,22 @@ event init (i = 0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-  boundary({TG});
-  
   //radial shrinking
-  double step = L0/(1 << maxlevel);
-  for (double y=step/2; y<L0; y+=step) {
-    double f_cell = interpolate(f, 0, y);
-    if (f_cell < 1.-F_ERR && f_cell > F_ERR) {
-      r0 = y+step*(f_cell - 0.5);
-      break;
-    }
-  }
+  foreach_boundary (left, serial) 
+    if (f[] < 1.-F_ERR && f[] > F_ERR)
+      r0 = y + Delta*(f[] - 0.5);
 
   //axial shrinking
-  for (double x=step/2; x<L0; x+=step) {
-    double f_cell = interpolate(f, x, 0);
-    if (f_cell < 1.-F_ERR && f_cell > F_ERR) {
-      z0 = x+step*(f_cell-0.5);
-      break;
-    }
-  }
+  foreach_boundary (bottom, serial) 
+    if (f[] < 1.-F_ERR && f[] > F_ERR)
+      h0 = x + Delta*(f[] - 0.5);
 
-  fprintf(stderr, "r0 = %g, z0 = %g\n", r0, z0);
+  fprintf(stderr, "r0 = %g, h0 = %g\n", r0, h0);
 }
 
 event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+  adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
+    (double[]){1.e0, 1.e-1, 1.e-1, 1e-2}, maxlevel, minlevel, 1);
 }
 
 event output (t += 1) {
@@ -132,28 +121,19 @@ event output (t += 1) {
     solid_mass += (f[]-porosity[])*rhoS*dv();
   
   //radial shrinking
-  double step = L0/(1 << maxlevel);
   double r = 0.;
-  for (double y=step/2; y<L0; y+=step) {
-    double f_cell = interpolate(f, 0, y);
-    if (f_cell < 1.-F_ERR && f_cell > F_ERR) {
-      r = y+step*(f_cell - 0.5);
-      break;
-    }
-  }
+  foreach_boundary (left, serial) 
+    if (f[] < 1.-F_ERR && f[] > F_ERR)
+      r = y + Delta*(f[] - 0.5);
 
   //axial shrinking
-  double z = 0.;
-  for (double x=step/2; x<L0; x+=step) {
-    double f_cell = interpolate(f, x, 0);
-    if (f_cell < 1.-F_ERR && f_cell > F_ERR) {
-      z = x+step*(f_cell-0.5);
-      break;
-    }
-  }
+  double h = 0.;
+  foreach_boundary (bottom, serial)
+    if (f[] < 1.-F_ERR && f[] > F_ERR)
+      h = x + Delta*(f[] - 0.5);
 
   //print on file
-  fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, z/z0);
+  fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, h/h0);
   fflush(fp);
 }
 

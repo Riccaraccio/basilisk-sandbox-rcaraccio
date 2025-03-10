@@ -8,6 +8,7 @@ double rhoG = 1.;
 double muG = 1e-5;
 
 extern scalar omega;
+
 scalar porosity[];
 scalar zeta[];
 scalar levelset[];
@@ -18,19 +19,19 @@ vector gTS[];
 scalar modg[];
 
 
-typedef enum {
-  ZETA_SHRINK = 0,
+enum zeta_types {
+  ZETA_SHRINK,
   ZETA_SWELLING,
   ZETA_SMOOTH,
   ZETA_SHARP,
   ZETA_LEVELSET,
   ZETA_REACTION,
   ZETA_GRADIENT
-} zeta_types;
+};
 
-zeta_types zeta_policy;
+enum zeta_types zeta_policy;
 
-void set_zeta (zeta_types zeta_policy) {
+void set_zeta (enum zeta_types zeta_policy) {
   #if AXI
     double radius = pow (3.*statsf(f).sum, 1./3.);
   #else
@@ -38,57 +39,53 @@ void set_zeta (zeta_types zeta_policy) {
   #endif
 
   switch (zeta_policy) {
-    case 0: // ZETA_SHRINK
+    case ZETA_SHRINK:
       foreach()
         zeta[] = 1.;
       break;
 
-    case 1: // ZETA_SWELLING
+    case ZETA_SWELLING:
       foreach()
         zeta[] = 0.;
       break;
 
-    case 2: // ZETA_SMOOTH
+    case ZETA_SMOOTH:
       foreach()
           //zeta[] = 1 / (1 + exp(32*radius - 40*sqrt(sq(x)+sq(y)+sq(z))));
           zeta[] = 1 / (1 + exp(-(sqrt(sq(x)+sq(y)+sq(z))-radius/2)/pow(radius, 4./3.)));
       break;
 
-    case 3: // ZETA_SHARP
+    case ZETA_SHARP:
       foreach()
         zeta[] = (sqrt(sq(x) + sq(y)) > radius*0.8) ? 1. : 0.;
       break;
 
-    case 4: { // ZETA_LEVELSET
-      vof_to_ls (f, levelset, imax=5);
-      double lmin = statsf(levelset).min;
-      if (fabs(lmin) > F_ERR)
-        foreach() {
-          zeta[] = 1 - levelset[]/statsf(levelset).min;
-          zeta[] = clamp(zeta[], 0., 1.);
-        }
-          
-      else
-        foreach()
-          zeta[] = 0.;
+    case ZETA_LEVELSET: {
+      // vof_to_ls (f, levelset, imax=5);
+      // double lmin = statsf(levelset).min;
+      // if (fabs(lmin) > F_ERR)
+      //   foreach() {
+      //     zeta[] = 1 - levelset[]/statsf(levelset).min;
+      //     zeta[] = clamp(zeta[], 0., 1.);
+      //   }
+      
+      vof_to_ls (f, levelset, imax=60);
+      foreach()
+        zeta[] = 1.;
+
       break;
     }
 
-    case 5: { // ZETA_REACTION
+    case ZETA_REACTION: {
+      foreach()
+        o[] = omega[]*f[];  
+      double o_max = statsf(o).max;
         foreach()
-          o[] = f[] > 1. - F_ERR ? omega[] : 0.;
-
-        double o_max = statsf(omega).max;
-        foreach() {
-          if (o_max > F_ERR)
-            // zeta[] = omega[] >= 0.9*o_max ? 1. : 0.;
-            zeta[] = omega[]/o_max;
-          else
-            zeta[] = 0.;
-        }
+          zeta[] = omega[] > 0.9*o_max ? 1 : 0.;  
         break;
       }
-    case 6: { // ZETA_GRADIENT
+    case ZETA_GRADIENT: {
+      #ifdef SOLVE_TEMPERATURE
       foreach()
         TS[] = f[] > F_ERR ? TS[] / f[] : 0.;
 
@@ -107,8 +104,12 @@ void set_zeta (zeta_types zeta_policy) {
         // zeta[] = TS[] > 0. ? 1 - 1/((modg[]/TS[])+1) : 0.;
         TS[] = f[] > F_ERR ? TS[]*f[] : 0.;
       }
+      #endif
       break;
     } 
+    default:
+      fprintf (stderr, "Unknown Shrinking model\n");
+      return;
   }
 }
 

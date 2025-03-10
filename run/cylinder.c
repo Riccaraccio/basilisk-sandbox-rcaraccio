@@ -52,7 +52,7 @@ int main() {
 
 double solid_mass0 = 0.;
 double r0, h0;
-scalar d[];
+FILE *fp;
 
 event init (i = 0) {
 
@@ -102,6 +102,12 @@ event init (i = 0) {
       h0 = x + Delta*(f[] - 0.5);
 
   fprintf(stderr, "r0 = %g, h0 = %g\n", r0, h0);
+  
+  if (pid() == 0) {
+    char name[80];
+    sprintf (name, "OutputData-%d", maxlevel);
+    fp = fopen(name, "w");
+  }
 }
 
 event adapt (i++) {
@@ -109,12 +115,10 @@ event adapt (i++) {
     (double[]){1.e0, 1.e-1, 1.e-1, 1e-2}, maxlevel, minlevel, 1);
 }
 
-event output (t += 1) {
-  fprintf(stderr, "%g\n", t);
 
-  char name[80];
-  sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
+event output (t += 1) {
+  if (pid() == 0)
+    fprintf (stderr, "%g\n", t);
 
   //log mass profile
   double solid_mass = 0.;
@@ -133,9 +137,11 @@ event output (t += 1) {
     if (f[] < 1.-F_ERR && f[] > F_ERR)
       h = x + Delta*(f[] - 0.5);
 
-  //print on file
-  fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, h/h0);
-  fflush(fp);
+  if (pid() == 0) {
+    // print on file
+    fprintf(fp, "%g %g %g %g\n", t, solid_mass / solid_mass0, r / r0, h / h0);
+    fflush(fp);
+  }
 }
 
 // event movie (t += 0.1) {

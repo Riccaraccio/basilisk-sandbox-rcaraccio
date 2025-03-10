@@ -78,10 +78,12 @@ void set_zeta (enum zeta_types zeta_policy) {
 
     case ZETA_REACTION: {
       foreach()
-        o[] = omega[]*f[];  
+        o[] = f[] > 1.-F_ERR ? omega[] : 0.;  
       double o_max = statsf(o).max;
-        foreach()
-          zeta[] = omega[] > 0.9*o_max ? 1 : 0.;  
+        foreach() {
+          zeta[] = o_max>F_ERR?  omega[]/o_max : 0.;
+          zeta[] = clamp(zeta[], 0., 1.);
+        }
         break;
       }
     case ZETA_GRADIENT: {

@@ -56,7 +56,8 @@ scalar d[];
 
 event init (i = 0) {
 
-  fraction (f, superquadric(x, y, 30, 0.5*H0, 0.5*D0));
+  fraction (f, superquadric(x, y, 15, 0.5*H0, 0.5*D0));
+  // fraction (f, rectangle(x, y, 0.5*H0, 0.5*D0));
   
   foreach()
     porosity[] = eps0*f[];

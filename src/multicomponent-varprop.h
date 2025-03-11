@@ -242,12 +242,8 @@ event tracer_diffusion (i++) {
       double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
       double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true, bc, &success);
 
-      double lambda1vh, lambda2vh;
-      lambda1vh = n.x*lambda1v.x[] + n.y*lambda1v.y[];
-      lambda2vh = n.x*lambda2v.x[] + n.y*lambda2v.y[];
-
-      double Sheatflux = lambda1vh*Strgrad;
-      double Gheatflux = lambda2vh*Gtrgrad;
+      double Sheatflux = (n.x*lambda1v.x[] + n.y*lambda1v.y[])*Strgrad;
+      double Gheatflux = (n.x*lambda2v.x[] + n.y*lambda2v.y[])*Gtrgrad;
 
 # ifdef AXI
       sST[] += Sheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];

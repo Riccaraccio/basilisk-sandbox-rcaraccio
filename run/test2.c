@@ -3,14 +3,14 @@
 #define SOLVE_TEMPERATURE   1
 #define MULTICOMPONENT 1
 
-#include "axi.h" 
+// #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
-#include "opensmoke-properties.h"
-// #include "const-prop.h"
+// #include "opensmoke-properties.h"
+#include "const-prop.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
-#include "darcy.h"
+// #include "darcy.h"
 
 u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
@@ -72,16 +72,10 @@ event init(i=0) {
   TG[right] = dirichlet (TG0);
 #endif
 
-  for (int jj=0; jj<NGS; jj++) {
-    scalar YG = YGList_G[jj];
-    if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
-      YG[top] = dirichlet (1.);
-      YG[right] = dirichlet (1.);
-    } else {
-      YG[top] = dirichlet (0.);
-      YG[right] = dirichlet (0.);
-    }
-  }
+  scalar nitrogen = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
+  nitrogen[top] = dirichlet (1.);
+  nitrogen[right] = dirichlet (1.);
+
 }
 
 event output (t+=1) {

@@ -10,3 +10,15 @@ macro double superquadric (double x, double y,
 {
     return 1. - pow((x-xc*L0)/a, m) - pow((y-yc*L0)/b, m);
 }
+
+// macro double rectangle (double x, double y, 
+//                     double a, double b, 
+//                     double xc = 0., double yc = 0.)
+// {
+//   double distancex = fabs(x - xc*L0) - a;
+//   double distancey = fabs(y - yc*L0) - b;
+
+//   double outside_distance = max(max(distancex, distancey), 0.); //FIXME
+//   double inside_distance = min(max(distancex, distancey), 0.);
+//   return outside_distance + inside_distance;
+// }

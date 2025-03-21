@@ -19,8 +19,8 @@ typedef struct {
 } UserDataNls;
 #endif
 
-void EqSpecies (const double* xdata, double* fdata, void* params) {
-  UserDataNls* data = (UserDataNls*)params;
+void EqSpecies(const double *xdata, double *fdata, void *params) {
+  UserDataNls *data = (UserDataNls *)params;
 
   double YGInti[NGS];
   // double XGInti[NGS];
@@ -28,44 +28,42 @@ void EqSpecies (const double* xdata, double* fdata, void* params) {
   double jG_G[NGS];
   bool success = false;
 
-  foreach_point(data->c.x, data->c.y, data->c.z, serial) {
+  Point point = locate(data->c.x, data->c.y, data->c.z);
+  for (int jj = 0; jj < NGS; jj++)
+    YGInti[jj] = xdata[jj];
 
-    for (int jj=0; jj<NGS; jj++)
-      YGInti[jj] = xdata[jj];
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    scalar DmixG = DmixGList_G[jj];
+    double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, YGInti[jj], &success);
 
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_G[jj];
-      scalar DmixG = DmixGList_G[jj];
-      double gtrgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, true, YGInti[jj], &success);
-      
-      double rhoGvh_G;
+    double rhoGvh_G;
 #ifdef VARPROP
-      rhoGvh_G = rhoGv_G[];
+    rhoGvh_G = rhoGv_G[];
 #else
-      rhoGvh_G = rhoG;
+    rhoGvh_G = rhoG;
 #endif
 
-      jG_G[jj] = rhoGvh_G*DmixG[]*gtrgrad;
-    }
-
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_S[jj];
-      scalar DmixG = DmixGList_S[jj];
-      double gtrgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, false, YGInti[jj], &success);
-
-      double rhoGvh_S;
-#ifdef VARPROP
-      rhoGvh_S = rhoGv_S[];
-#else
-      rhoGvh_S = rhoG;
-#endif
-
-      jG_S[jj] = rhoGvh_S*DmixG[]*gtrgrad;
-    }
-
-    for (int jj=0; jj<NGS; jj++)
-      fdata[jj] = jG_G[jj] + jG_S[jj];
+    jG_G[jj] = rhoGvh_G*DmixG[]*gtrgrad;
   }
+
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_S[jj];
+    scalar DmixG = DmixGList_S[jj];
+    double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, false, YGInti[jj], &success);
+
+    double rhoGvh_S;
+#ifdef VARPROP
+    rhoGvh_S = rhoGv_S[];
+#else
+    rhoGvh_S = rhoG;
+#endif
+
+    jG_S[jj] = rhoGvh_S * DmixG[] * gtrgrad;
+  }
+
+  for (int jj = 0; jj < NGS; jj++)
+    fdata[jj] = jG_G[jj] + jG_S[jj];
 }
 
 int EqSpeciesGsl (const gsl_vector* x, void* params, gsl_vector*f) {

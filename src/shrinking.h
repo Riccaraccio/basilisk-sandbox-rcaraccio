@@ -14,9 +14,43 @@ scalar zeta[];
 scalar levelset[];
 scalar o[];
 
-extern scalar TS;
+extern double TG0, TS0;
+extern scalar TS, T;
 vector gTS[];
 scalar modg[];
+
+
+void tracer_gradients(scalar tr, scalar f, vector g) {
+  // Compute gradient of tracer field tr using centered differences
+  // tr: tracer field, ASSUMED TO NOT BE IN TRACER FORM
+  // f: volume fraction field
+  // g: gradient field
+
+  foreach() {
+    if (f[] > F_ERR) {
+      foreach_dimension() {
+        if (f[-1] > F_ERR && f[1] < F_ERR) {
+          g.x[] = (tr[]-tr[-1])/Delta;
+        } else if (f[-1] < F_ERR && f[-1] > F_ERR) {
+          g.x[] = (tr[1]-tr[])/Delta;
+        } else {
+          g.x[] = (tr[1]-tr[-1])/(2.*Delta);
+        }
+      }
+    }
+  }
+}
+
+
+int compare_double(const void *a, const void *b) {
+  return (*(double*)a > *(double*)b) - (*(double*)a < *(double*)b);
+}
+
+double findMax (double *arr, int n) {
+  qsort(arr, n, sizeof(double), compare_double);
+  int index = (int)ceil(0.95 * (n-1));
+  return arr[index];
+}
 
 
 enum zeta_types {
@@ -26,7 +60,8 @@ enum zeta_types {
   ZETA_SHARP,
   ZETA_LEVELSET,
   ZETA_REACTION,
-  ZETA_GRADIENT
+  ZETA_GRADIENT,
+  ZETA_LAST
 };
 
 enum zeta_types zeta_policy;
@@ -77,11 +112,16 @@ void set_zeta (enum zeta_types zeta_policy) {
     }
 
     case ZETA_REACTION: {
-      foreach ()
-        o[] = f[] > 1. - F_ERR ? omega[] : 0.;
-      double o_max = statsf(o).max;
       foreach () {
-        zeta[] = o_max > F_ERR ? omega[] / o_max : 0.;
+        //o[] = f[] > 1. - F_ERR ? omega[] : 0.;
+        o[] = omega[]*f[];
+      }
+
+      double o_max = statsf(o).max;
+
+      foreach () {
+        zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;
+        // zeta[] = omega[] > 0.9*o_max ? 1 : 0.;
         zeta[] = clamp(zeta[], 0., 1.);
       }
       break;
@@ -91,7 +131,9 @@ void set_zeta (enum zeta_types zeta_policy) {
       foreach()
         TS[] = f[] > F_ERR ? TS[] / f[] : 0.;
 
-      gradients({TS}, {gTS});
+      //gradients({TS}, {gTS});
+      gradients({T}, {gTS});
+      // tracer_gradients(TS, f, gTS);
 
       foreach() {
         modg[] = 0.;
@@ -100,22 +142,54 @@ void set_zeta (enum zeta_types zeta_policy) {
         modg[] = sqrt(modg[]);
       }
 
-      double delta = L0/(1<<7);
       foreach() {
-        zeta[] = f[] > F_ERR ? tanh(modg[]/TS[]*delta) : 0.;
+        
+        double Lc = (D0*0.5)*H0/(2*(D0*0.5+H0));
+        double Rc = modg[]/fabs(TG0-TS0)*Lc;
+       
+        zeta[] = f[] > F_ERR ? Rc: 0.;
+        zeta[] = clamp(zeta[], 0., 1.);
+
+        // zeta[] = f[] > F_ERR ? tanh(modg[]/TS[]*delta) : 0.;
+        // zeta[] = f[] > F_ERR ? tanh(modg[]/TS[]*delta) : 0.;
         // zeta[] = TS[] > 0. ? 1 - 1/((modg[]/TS[])+1) : 0.;
+
         TS[] = f[] > F_ERR ? TS[]*f[] : 0.;
       }
       #endif
       break;
     } 
+    case ZETA_LAST: {
+      double* omega_arr = NULL;
+      int n = 0;
+      foreach()
+        if (f[] > F_ERR) {
+          omega_arr = (double*) realloc (omega_arr, (n+1)*sizeof(double));
+          omega_arr[n] = omega[]*f[];
+          n++;
+        }
+    
+      double omega_max = findMax(omega_arr, n);
+      free (omega_arr); 
+
+      foreach() {
+        if (omega_max > F_ERR) {
+        zeta[] = f[] > F_ERR ? omega[]/omega_max : 0.;
+        zeta[] = clamp(zeta[], 0., 1.);
+        } else {
+          zeta[] = 0.;
+        }
+      }
+      
+      break;
+    }
     default:
       fprintf (stderr, "Unknown Shrinking model\n");
       return;
   }
 }
 
-event init (i=0) {
+event defaults (i=0) {
   f.tracers = list_append (f.tracers, porosity);
   set_zeta (zeta_policy);
 }
@@ -135,7 +209,8 @@ event phasechange (i++) {
 
   set_zeta (zeta_policy);
 
-  mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
+  // mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
+  mgpsf = project_sv (ubf, psi, dt=dt, nrelax=mgpsf.nrelax);
 
   foreach() {
     if (f[] > F_ERR) {

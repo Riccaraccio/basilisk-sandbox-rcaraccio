@@ -6,6 +6,9 @@
 #define RADIATION_INTERFACE 1
 #define KK_CONDUCTIVITY 1
 
+double D0 = 2e-2; //2cm
+double H0 = 3e-2; //3cm
+
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -27,9 +30,7 @@ p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
 int maxlevel = 7; int minlevel = 2;
-double D0 = 2e-2; //2cm
-double H0 = 3e-2; //3cm
-double tend = 800.; //800s
+double tend = 600.; //800s
 
 int main() {
   eps0 = 0.4;
@@ -40,12 +41,13 @@ int main() {
   TS0 = 300.; TG0 = 723.;
   rhoS = 1200.;
 
-  L0 = 4.1*H0;
-  DT = 1e-1;
+  L0 = 5*H0;
+  DT = 1.e-1;
   // origin(-L0/2, 0);
 
   zeta_policy = ZETA_REACTION;
   kinfolder = "biomass/Solid-only-2407";
+  // kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
   run();
 }
@@ -54,10 +56,23 @@ double solid_mass0 = 0.;
 double r0, h0;
 FILE *fp;
 
+#define rect(x,y)(fabs(x) < 0.5*H0 && fabs(y) < 0.5*D0)
+
 event init (i = 0) {
 
-  fraction (f, superquadric(x, y, 15, 0.5*H0, 0.5*D0));
-  // fraction (f, rectangle(x, y, 0.5*H0, 0.5*D0));
+  fraction (f, superquadric(x, y, 20, 0.5*H0, 0.5*D0));
+  // fraction (f, rect(x, y));
+
+  // scalar f0[];
+  // foreach() {
+  //   f0[] = f[];
+  //   foreach_dimension()
+  //     if (f[-1] == 1 && f[1] == 0 && f[] == 1)
+  //       f0[] = 0.9999;
+  // }
+
+  // foreach()
+  //   f[] = f0[];
   
   foreach()
     porosity[] = eps0*f[];
@@ -111,8 +126,11 @@ event init (i = 0) {
 }
 
 event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1, 1e-2}, maxlevel, minlevel, 1);
+
+  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
+
+  adapt_wavelet_leave_interface ({T, u.x, u.y, porosity, inert}, {f},
+    (double[]){1.e0, 1.e-1, 1.e-1, 1e-2, 1.e-3}, maxlevel, minlevel, 1);
 }
 
 
@@ -144,14 +162,15 @@ event output (t += 1) {
   }
 }
 
-// event movie (t += 0.1) {
+// event movie (t += 1) {
 //   clear();
-//   view (tx = -0.5*L0, ty = 0);
+//   box();
+//   view (ty = -0.5, width=1400.);
 //   draw_vof ("f");
-//   squares("p", spread = -1);
-//   mirror ({0, 1}) {
+//   squares("T", min=300, max=750, linear=true, spread=-1);
+//   mirror ({1, 0}) {
 //     draw_vof("f");
-//     squares("(u.x^2 + u.y^2)^0.5", spread = -1);
+//     squares("zeta", min=0, max=1, linear=true, spread=-1);
 //   }
 //   save ("movie.mp4");
 // }

@@ -197,42 +197,6 @@ for (int jj=0; jj<NGS; jj++) {
   fS.nodump = true;
   fG.nodump =true;
 
-#if TREE
-  for (scalar s in YGList_S) {
-#if EMBED
-    s.refine = s.prolongation = refine_embed_linear;
-#else
-    s.refine  = refine_linear;
-#endif
-    s.restriction = restriction_volume_average;
-    s.dirty = true;
-  }
-#endif
-
-#if TREE
-  for (scalar s in YGList_G) {
-#if EMBED
-    s.refine = s.prolongation = refine_embed_linear;
-#else
-    s.refine  = refine_linear;
-#endif
-    s.restriction = restriction_volume_average;
-    s.dirty = true;
-  }
-#endif
-
-#if TREE
-  for (scalar s in YSList) {
-#if EMBED
-    s.refine = s.prolongation = refine_embed_linear;
-#else
-    s.refine  = refine_linear;
-#endif
-    s.restriction = restriction_volume_average;
-    s.dirty = true;
-  }
-#endif
-
 #ifdef SOLVE_TEMPERATURE
   TS = new scalar;
   TG = new scalar;
@@ -245,16 +209,6 @@ for (int jj=0; jj<NGS; jj++) {
 
   f.tracers = list_append (f.tracers, TS);
   f.tracers = list_append (f.tracers, TG);
-
-# if TREE
-  TS.refine = refine_linear;
-  TS.restriction  = restriction_volume_average;
-  TS.dirty = true;
-
-  TG.refine = refine_linear;
-  TG.restriction  = restriction_volume_average;
-  TG.dirty = true;
-# endif
 #endif
 
 #ifdef VARPROP

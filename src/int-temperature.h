@@ -1,16 +1,15 @@
 #include "intgrad.h"
 #ifndef USE_GSL
-# define USE_GSL
+# define USE_GSL 1
 #endif
 #include "fsolve-gsl.h"
 
 //Extern variables
 extern scalar fS, fG;
 extern face vector fsS, fsG;
-extern scalar porosity;
 extern vector lambda1v, lambda2v;
 extern double TG0;
-extern scalar TInt, TS, TG, T;
+extern scalar TInt, TS, TG;
 
 typedef struct {
   coord c;
@@ -27,7 +26,8 @@ double divq_rad_int (double TInti, double Tbulk = 300., double alphacorr = 1.) {
 void EqTemperature (const double* xdata, double* fdata, void* params) {
   UserDataNls* data = (UserDataNls*) params;
 
-  foreach_point (data->c.x, data->c.y, data->c.z, serial) {
+    Point point = locate (data->c.x, data->c.y, data->c.z);
+
     double TInti = xdata[0];
     bool success = false;
 
@@ -37,14 +37,13 @@ void EqTemperature (const double* xdata, double* fdata, void* params) {
     coord n = facet_normal (point, fS, fsS);
     double lambda1vh = lambda1v.x[]*n.x + lambda1v.y[]*n.y;
   
-    //lambdaG is not dipendent on the direction, this is just to treat it the same way as lambdaS
+    //lambdaG_G is not dipendent on the direction, this is just to treat it the same way as lambdaS
     double lambda2vh = lambda2v.x[]*n.x + lambda2v.y[]*n.y;
 
     //Interface energy balance
     fdata[0] = - divq_rad_int (TInti, TG0, RADIATION_INTERFACE)
                      + lambda1vh*gradTSn
                      + lambda2vh*gradTGn;
-  }
 }
 
 int EqTemperatureGsl (const gsl_vector* x, void* params, gsl_vector* f) {

@@ -52,6 +52,18 @@ double findMax (double *arr, int n) {
   return arr[index];
 }
 
+double avgTop (double *arr, int n) {
+  qsort(arr, n, sizeof(double), compare_double);
+  int index = (int)ceil(0.95 * (n-1));
+  if (index == n)
+    return 0.;
+
+  double sum = 0.;
+  for (int i = index; i < n; i++)
+    sum += arr[i];
+  
+  return sum/(n-index);
+}
 
 enum zeta_types {
   ZETA_SHRINK,
@@ -61,7 +73,8 @@ enum zeta_types {
   ZETA_LEVELSET,
   ZETA_REACTION,
   ZETA_GRADIENT,
-  ZETA_LAST
+  ZETA_LAST,
+  ZETA_AVGTOP
 };
 
 enum zeta_types zeta_policy;
@@ -162,7 +175,7 @@ void set_zeta (enum zeta_types zeta_policy) {
     case ZETA_LAST: {
       double* omega_arr = NULL;
       int n = 0;
-      foreach()
+      foreach(serial)
         if (f[] > F_ERR) {
           omega_arr = (double*) realloc (omega_arr, (n+1)*sizeof(double));
           omega_arr[n] = omega[]*f[];
@@ -174,8 +187,32 @@ void set_zeta (enum zeta_types zeta_policy) {
 
       foreach() {
         if (omega_max > F_ERR) {
-        zeta[] = f[] > F_ERR ? omega[]/omega_max : 0.;
-        zeta[] = clamp(zeta[], 0., 1.);
+          zeta[] = f[] > F_ERR ? omega[]/omega_max : 0.;
+          zeta[] = clamp(zeta[], 0., 1.);
+        } else {
+          zeta[] = 0.;
+        }
+      }
+      
+      break;
+    }
+    case ZETA_AVGTOP: {
+      double* omega_arr = NULL;
+      int n = 0;
+      foreach(serial)
+        if (f[] > F_ERR) {
+          omega_arr = (double*) realloc (omega_arr, (n+1)*sizeof(double));
+          omega_arr[n] = omega[]*f[];
+          n++;
+        }
+    
+      double omega_max = avgTop(omega_arr, n);
+      free (omega_arr); 
+
+      foreach() {
+        if (omega_max > F_ERR) {
+          zeta[] = f[] > F_ERR ? omega[]/omega_max : 0.;
+          zeta[] = clamp(zeta[], 0., 1.);
         } else {
           zeta[] = 0.;
         }

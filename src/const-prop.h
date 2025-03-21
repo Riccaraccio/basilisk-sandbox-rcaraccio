@@ -4,13 +4,15 @@
 
 #define pavg(p,vg,vs) (p*vg+(1-p)*vs)
 
-scalar rho1v[], rho2v[];
-extern vector lambda1v, lambda2v;
+extern double rhoG, rhoS;
+extern double muG;
 extern face vector alphav;
 extern scalar rhov;
 extern scalar f;
 extern scalar porosity;
 
+#ifdef SOLVE_TEMPERATURE
+extern vector lambda1v, lambda2v;
 lambda2v.n[bottom] = neumann(0.); 
 lambda2v.t[bottom] = neumann(0.);
 lambda2v.n[left] = neumann(0.);
@@ -29,10 +31,9 @@ lambda1v.t[right] = neumann(0.);
 lambda1v.n[top] = neumann(0.);
 lambda1v.t[top] = neumann(0.);
 
-extern double rhoG, rhoS;
 extern double lambdaG, lambdaS;
 extern double cpG, cpS;
-extern double muG;
+#endif
 #ifdef MULTICOMPONENT
 extern unsigned int NGS;
 extern scalar* DmixGList_S;
@@ -52,19 +53,14 @@ event properties (i++) {
   foreach()
     rhov[] = rhoG*cm[];
 
-  //Update other fields properties
-  foreach() {
-
-    rho1v[] = f[] > F_ERR ? pavg (porosity[]/f[], rhoG, rhoS) : rhoG;
-    rho2v[] = rhoG;
-
 #ifdef SOLVE_TEMPERATURE
+  foreach() {
     foreach_dimension() {
       lambda1v.x[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
       lambda2v.x[] = lambdaG;
     }
-#endif
   }
+#endif
 
 #ifdef MULTICOMPONENT
   double Dmixv =  2.05e-5; //Diff of CO in N2 at 500K, 1 atm

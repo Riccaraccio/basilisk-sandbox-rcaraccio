@@ -83,7 +83,7 @@ event tracer_advection (i++) {
     cpGvh_S = cpG; cpSvh = cpS;
     #endif
 
-    u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoGvh_S*cpGvh_S*ef)/(rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1.-ef)) : ufsave.x[];
+    u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoGvh_S*cpGvh_S)/(rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1.-ef)) : ufsave.x[];
   }
 
   advection_div({TS}, u_prime, dt);

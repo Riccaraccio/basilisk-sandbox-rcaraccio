@@ -49,6 +49,8 @@ int compare_double(const void *a, const void *b) {
 double findMax (double *arr, int n) {
   qsort(arr, n, sizeof(double), compare_double);
   int index = (int)ceil(0.95 * (n-1));
+  if (index == n)
+    return 0.;
   return arr[index];
 }
 
@@ -89,7 +91,7 @@ void set_zeta (enum zeta_types zeta_policy) {
   switch (zeta_policy) {
     case ZETA_SHRINK:
       foreach()
-        zeta[] = 1.;
+        zeta[] = 0.5;//temp
       break;
 
     case ZETA_SWELLING:
@@ -133,8 +135,8 @@ void set_zeta (enum zeta_types zeta_policy) {
       double o_max = statsf(o).max;
 
       foreach () {
-        zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;
-        // zeta[] = omega[] > 0.9*o_max ? 1 : 0.;
+        // zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;
+        zeta[] = omega[] > 0.9*o_max ? 1 : 0.;
         zeta[] = clamp(zeta[], 0., 1.);
       }
       break;
@@ -175,13 +177,14 @@ void set_zeta (enum zeta_types zeta_policy) {
     case ZETA_LAST: {
       double* omega_arr = NULL;
       int n = 0;
+
       foreach(serial)
         if (f[] > F_ERR) {
           omega_arr = (double*) realloc (omega_arr, (n+1)*sizeof(double));
           omega_arr[n] = omega[]*f[];
           n++;
         }
-    
+
       double omega_max = findMax(omega_arr, n);
       free (omega_arr); 
 

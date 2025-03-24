@@ -267,7 +267,7 @@ void update_properties (void) {
       }
 
       #ifdef KK_CONDUCTIVITY //anisotropic conductivity
-      double leff_per = 1 / ( (1.-porosity[])/lS_per + porosity[]/lambdaGv_S[]);
+      double leff_per = 1 / ((1.-porosity[]/f[])/lS_per + porosity[]/f[]/lambdaGv_S[]);
       double leff_par = (1.-porosity[]/f[])*lS_par + porosity[]/f[]*lambdaGv_S[];
 
       //longitudinal direction theta = 1.0

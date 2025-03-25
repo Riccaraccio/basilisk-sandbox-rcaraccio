@@ -18,7 +18,48 @@ extern double TG0, TS0;
 extern scalar TS, T;
 vector gTS[];
 scalar modg[];
+double o_max = 0.;
+extern scalar ls;
 
+/////////////SMA
+
+#define WINDOW_SIZE 1000
+
+typedef struct {
+  double window[WINDOW_SIZE];
+  int count;
+  int index;
+  double sum;
+} MovingAverage;
+
+// Initialize the moving average structure
+void init_moving_average(MovingAverage *ma) {
+    ma->count = 0;
+    ma->index = 0;
+    ma->sum = 0.0;
+}
+
+// Add a new value and compute the moving average
+double add_value(MovingAverage *ma, double value) {
+    if (ma->count < WINDOW_SIZE) {
+        ma->count++;
+    } else {
+        // Remove the oldest value from the sum
+        ma->sum -= ma->window[ma->index];
+    }
+
+    // Add the new value to the window and sum
+    ma->window[ma->index] = value;
+    ma->sum += value;
+
+    // Move the index in a circular fashion
+    ma->index = (ma->index + 1) % WINDOW_SIZE;
+
+    return ma->sum / ma->count;
+}
+
+MovingAverage ma;
+////////////
 
 void tracer_gradients(scalar tr, scalar f, vector g) {
   // Compute gradient of tracer field tr using centered differences
@@ -119,9 +160,12 @@ void set_zeta (enum zeta_types zeta_policy) {
       //     zeta[] = clamp(zeta[], 0., 1.);
       //   }
       
-      vof_to_ls (f, levelset, imax=60);
+      // vof_to_ls (f, levelset, imax=60);
+
+      redistance (ls, 3);
       foreach()
-        zeta[] = 1.;
+        // zeta[] = ls[] > 0 ? 1. : 0.;
+        zeta[] = f[] > F_ERR ? (tanh(ls[]/f[]/min(D0, H0)*20) + 1)/2 : 0.;
 
       break;
     }
@@ -132,11 +176,11 @@ void set_zeta (enum zeta_types zeta_policy) {
         o[] = omega[]*f[];
       }
 
-      double o_max = statsf(o).max;
+      o_max = statsf(o).max;
 
       foreach () {
-        // zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;
-        zeta[] = omega[] > 0.9*o_max ? 1 : 0.;
+        zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;
+        //zeta[] = omega[]*f[] > 0.9*o_max ? 1 : 0.;
         zeta[] = clamp(zeta[], 0., 1.);
       }
       break;
@@ -200,27 +244,18 @@ void set_zeta (enum zeta_types zeta_policy) {
       break;
     }
     case ZETA_AVGTOP: {
-      double* omega_arr = NULL;
-      int n = 0;
-      foreach(serial)
-        if (f[] > F_ERR) {
-          omega_arr = (double*) realloc (omega_arr, (n+1)*sizeof(double));
-          omega_arr[n] = omega[]*f[];
-          n++;
-        }
-    
-      double omega_max = avgTop(omega_arr, n);
-      free (omega_arr); 
+      //compute moving window average of the maximun
+      //store 
+      foreach()
+        o[] = omega[]*f[];
+
+      o_max = add_value(&ma, statsf(o).max);
 
       foreach() {
-        if (omega_max > F_ERR) {
-          zeta[] = f[] > F_ERR ? omega[]/omega_max : 0.;
-          zeta[] = clamp(zeta[], 0., 1.);
-        } else {
-          zeta[] = 0.;
-        }
+        zeta[] = f[] > F_ERR ? omega[]/o_max : 0.;
+        zeta[] = clamp(zeta[], 0., 1.);
       }
-      
+
       break;
     }
     default:
@@ -231,6 +266,7 @@ void set_zeta (enum zeta_types zeta_policy) {
 
 event defaults (i=0) {
   f.tracers = list_append (f.tracers, porosity);
+  init_moving_average(&ma);
   set_zeta (zeta_policy);
 }
 

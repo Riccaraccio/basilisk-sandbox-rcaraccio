@@ -3,7 +3,8 @@
 #define SOLVE_TEMPERATURE 1
 #define CONST_DIFF 2.05e-5
 #define FSOLVE_ABSTOL 1.e-3
-#define RADIATION_INTERFACE 1
+#define RADIATION_INTERFACE n.y+0.25*n.x
+// #define TURN_OFF_HEAT_OF_REACTION 1
 #define KK_CONDUCTIVITY 1
 
 double D0 = 2e-2; //2cm
@@ -29,7 +30,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 6; int minlevel = 2;
 double tend = 600.; //800s
 
 int main() {
@@ -41,11 +42,13 @@ int main() {
   TS0 = 300.; TG0 = 723.;
   rhoS = 1200.;
 
-  L0 = 5*H0;
+  // Da = 1e-12;
+
+  L0 = 3*H0;
   DT = 1.e-1;
   // origin(-L0/2, 0);
 
-  zeta_policy = ZETA_REACTION;
+  zeta_policy = ZETA_SHRINK;
   kinfolder = "biomass/Solid-only-2407";
   // kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
@@ -58,11 +61,21 @@ FILE *fp;
 
 #define rect(x,y)(fabs(x) < 0.5*H0 && fabs(y) < 0.5*D0)
 
+scalar ls[];
 event init (i = 0) {
 
   fraction (f, superquadric(x, y, 20, 0.5*H0, 0.5*D0));
-  // fraction (f, rect(x, y));
 
+  if (zeta_policy == ZETA_LEVELSET) {
+    double d = min(D0, H0)*0.5*0.25;
+    foreach()
+      ls[] = -superquadric(x, y, 20, 0.5*H0-d, 0.5*D0-d)*f[];
+
+    f.tracers = list_append (f.tracers, ls);
+  }
+  
+  // fraction (f, rect(x, y));
+  //
   // scalar f0[];
   // foreach() {
   //   f0[] = f[];
@@ -70,7 +83,6 @@ event init (i = 0) {
   //     if (f[-1] == 1 && f[1] == 0 && f[] == 1)
   //       f0[] = 0.9999;
   // }
-
   // foreach()
   //   f[] = f0[];
   
@@ -127,12 +139,9 @@ event init (i = 0) {
 
 event adapt (i++) {
 
-  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
-
-  adapt_wavelet_leave_interface ({T, u.x, u.y, porosity, inert}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1, 1e-2, 1.e-3}, maxlevel, minlevel, 1);
+  adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
+    (double[]){1.e0, 1.e-1, 1.e-1, 1e-2}, maxlevel, minlevel, 1);
 }
-
 
 event output (t += 1) {
   if (pid() == 0)
@@ -195,10 +204,10 @@ reset
 set xlabel "t [s]"
 set ylabel "Shrinking factor"
 set key bottom right box width 1
-set yrange [0.5:1]
+set yrange [0.5:1.0]
 
-plot "OutputData-7" u 1:3 w l lw 2 lc "red" t "Radial shrinking", \
-     "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "Axial shrinking",\
+plot "OutputData-6" u 1:3 w l lw 2 lc "red" t "Radial shrinking", \
+     "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "Axial shrinking",\
      "data/radial-exp" u 1:2 w p pt 4 lc "red" t "Radial exp", \
      "data/axial-exp" u 1:2 w p pt 4 lc "web-green" t "Axial exp",\
      "data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "red" t "Radial Gentile", \

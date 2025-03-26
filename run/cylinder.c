@@ -30,7 +30,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 double tend = 600.; //800s
 
 int main() {
@@ -42,15 +42,11 @@ int main() {
   TS0 = 300.; TG0 = 723.;
   rhoS = 1200.;
 
-  // Da = 1e-12;
-
   L0 = 3*H0;
   DT = 1.e-1;
-  // origin(-L0/2, 0);
 
   zeta_policy = ZETA_SHRINK;
   kinfolder = "biomass/Solid-only-2407";
-  // kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
   run();
 }
@@ -119,17 +115,17 @@ event init (i = 0) {
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
   //radial shrinking
-  foreach_boundary (left, serial) 
+  r0 = -HUGE;
+  foreach_boundary (left, reduction(max:r0)) 
     if (f[] < 1.-F_ERR && f[] > F_ERR)
       r0 = y + Delta*(f[] - 0.5);
 
   //axial shrinking
-  foreach_boundary (bottom, serial) 
+  h0 = -HUGE.;
+  foreach_boundary (bottom, reduction(max:h0)) 
     if (f[] < 1.-F_ERR && f[] > F_ERR)
       h0 = x + Delta*(f[] - 0.5);
 
-  fprintf(stderr, "r0 = %g, h0 = %g\n", r0, h0);
-  
   if (pid() == 0) {
     char name[80];
     sprintf (name, "OutputData-%d", maxlevel);
@@ -138,9 +134,8 @@ event init (i = 0) {
 }
 
 event adapt (i++) {
-
   adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1, 1e-2}, maxlevel, minlevel, 1);
+    (double[]){1.e-1, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 1);
 }
 
 event output (t += 1) {
@@ -153,20 +148,19 @@ event output (t += 1) {
     solid_mass += (f[]-porosity[])*rhoS*dv();
   
   //radial shrinking
-  double r = 0.;
-  foreach_boundary (left, serial) 
+  double r = -HUGE;
+  foreach_boundary (left, reduction(max:r)) 
     if (f[] < 1.-F_ERR && f[] > F_ERR)
       r = y + Delta*(f[] - 0.5);
 
   //axial shrinking
-  double h = 0.;
-  foreach_boundary (bottom, serial)
+  double h = -HUGE;
+  foreach_boundary (bottom, reduction(max:h))
     if (f[] < 1.-F_ERR && f[] > F_ERR)
       h = x + Delta*(f[] - 0.5);
 
   if (pid() == 0) {
-    // print on file
-    fprintf(fp, "%g %g %g %g\n", t, solid_mass / solid_mass0, r / r0, h / h0);
+    fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, h/h0);
     fflush(fp);
   }
 }

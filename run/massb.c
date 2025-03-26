@@ -210,9 +210,7 @@ unset multiplot
 reset
 #set terminal pdfcairo
 
-rhoS = 100.
-omega = 10.
-analytical = exp(-omega/rhoS*10)
+analytical = exp(-1)
 
 # Initialize arrays to store differences
 array diff_x00[4]  # For SHRINK cases
@@ -269,7 +267,7 @@ reset
 
 rhoS = 100.
 omega = 10.
-analytical = 1-exp(-omega/rhoS*10)
+analytical = 1-exp(-1)
 
 # Initialize arrays to store differences
 array diff_x00[4]  # For SHRINK cases

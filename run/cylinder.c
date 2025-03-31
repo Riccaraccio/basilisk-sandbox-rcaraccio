@@ -4,6 +4,7 @@
 #define CONST_DIFF 2.05e-5
 #define FSOLVE_ABSTOL 1.e-3
 #define RADIATION_INTERFACE n.y+0.25*n.x
+// #define RADIATION_INTERFACE 1
 // #define TURN_OFF_HEAT_OF_REACTION 1
 #define KK_CONDUCTIVITY 1
 
@@ -20,10 +21,16 @@ double H0 = 3e-2; //3cm
 #include "view.h"
 #include "superquadric.h"
 
-u.n[top]      = neumann (0.);
-u.t[top]      = neumann (0.);
-p[top]        = dirichlet (0.);
-psi[top]      = dirichlet (0.);
+// u.n[top]      = neumann (0.);
+// u.t[top]      = neumann (0.);
+// p[top]        = dirichlet (0.);
+// psi[top]      = dirichlet (0.);
+
+u.n[top]     = dirichlet (0.);
+u.t[top]     = dirichlet (0.);
+p[top]       = neumann (0.);
+// psi[top]     = neumann (0.);
+psi[top]     = dirichlet (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
@@ -31,7 +38,7 @@ p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
 int maxlevel = 7; int minlevel = 2;
-double tend = 600.; //800s
+double tend = 800.; //800s
 
 int main() {
   eps0 = 0.4;
@@ -42,11 +49,12 @@ int main() {
   TS0 = 300.; TG0 = 723.;
   rhoS = 1200.;
 
-  L0 = 3*H0;
-  DT = 1.e-1;
+  L0 = 1.9*H0;
+  DT = 0.5e-1;
 
-  zeta_policy = ZETA_SHRINK;
+  zeta_policy = ZETA_REACTION;
   kinfolder = "biomass/Solid-only-2407";
+  // kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
   run();
 }
@@ -59,6 +67,7 @@ FILE *fp;
 
 scalar ls[];
 event init (i = 0) {
+  mask (y > 6e-3+D0/2 ? top : none);
 
   fraction (f, superquadric(x, y, 20, 0.5*H0, 0.5*D0));
 
@@ -96,6 +105,8 @@ event init (i = 0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]  = 0.0349;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0080;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]= 0.0000;
+  
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")]= 1.0000;
 
   TG[top] = dirichlet (TG0);
   TG[right] = dirichlet (TG0);
@@ -135,7 +146,7 @@ event init (i = 0) {
 
 event adapt (i++) {
   adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
-    (double[]){1.e-1, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 1);
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-2}, maxlevel, minlevel, padding=1);
 }
 
 event output (t += 1) {
@@ -188,7 +199,7 @@ set ylabel "M/M_0"
 set yrange [0:1]
 set key top right box width 1
 
-plot  "OutputData-7" u 1:2 w l lw 2 lc "black" t "Mass profile", \
+plot  "OutputData-6" u 1:2 w l lw 2 lc "black" t "Mass profile", \
       "data/mass-exp" u 1:2 w p pt 4 lc "black" t "Exp mass", \
       "data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Gentile mass"
 ~~~
@@ -197,12 +208,12 @@ plot  "OutputData-7" u 1:2 w l lw 2 lc "black" t "Mass profile", \
 reset
 set xlabel "t [s]"
 set ylabel "Shrinking factor"
-set key bottom right box width 1
+ u 1:2 set key bottom left box width 1
 set yrange [0.5:1.0]
 
-plot "OutputData-6" u 1:3 w l lw 2 lc "red" t "Radial shrinking", \
-     "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "Axial shrinking",\
-     "data/radial-exp" u 1:2 w p pt 4 lc "red" t "Radial exp", \
+plot "OutputData-6" u 1:3 w l lw 2 lc "red" t "Radial shrinking - 6", \
+     "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "Axial shrinking - 6",\
+     "data/radial-exp"w p pt 4 lc "red" t "Radial exp", \
      "data/axial-exp" u 1:2 w p pt 4 lc "web-green" t "Axial exp",\
      "data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "red" t "Radial Gentile", \
      "data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "web-green" t "Axial Gentile"

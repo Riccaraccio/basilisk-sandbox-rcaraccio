@@ -256,7 +256,7 @@ event tracer_diffusion (i++) {
     }
   }
 
-#ifdef VARPROP
+#if defined VARPROP && !defined NO_EXPANSION
   update_divergence();
 #endif
 

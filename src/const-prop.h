@@ -56,8 +56,8 @@ event properties (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
     foreach_dimension() {
-      lambda1v.x[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : lambdaG;
-      lambda2v.x[] = lambdaG;
+      lambda1v.x[] = f[] > F_ERR ? pavg (porosity[]/f[], lambdaG, lambdaS) : 0.;
+      lambda2v.x[] = f[] < 1.-F_ERR ? lambdaG : 0.;
     }
   }
 #endif

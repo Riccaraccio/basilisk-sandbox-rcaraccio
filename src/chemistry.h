@@ -22,11 +22,12 @@ event cleanup (t = end) {
   OpenSMOKE_CleanODESolver ();
 }
 
-event chemistry (i++) {
-
-  //reset omega
+event reset_sources (i++) {
   foreach()
     omega[] = 0.;
+}
+
+event chemistry (i++) {
 
 #ifdef SOLVE_TEMPERATURE
   odefunction batch = &batch_nonisothermal_constantpressure;

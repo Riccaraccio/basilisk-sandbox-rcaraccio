@@ -19,7 +19,8 @@ extern scalar TS, T;
 vector gTS[];
 scalar modg[];
 double o_max = 0.;
-extern scalar ls;
+scalar ls[];
+
 
 /////////////SMA
 
@@ -161,12 +162,6 @@ void set_zeta (enum zeta_types zeta_policy) {
       //   }
       
       // vof_to_ls (f, levelset, imax=60);
-
-      redistance (ls, 3);
-      foreach()
-        // zeta[] = ls[] > 0 ? 1. : 0.;
-        zeta[] = f[] > F_ERR ? (tanh(ls[]/f[]/min(D0, H0)*20) + 1)/2 : 0.;
-
       break;
     }
 
@@ -200,7 +195,8 @@ void set_zeta (enum zeta_types zeta_policy) {
 
       foreach() {
         
-        double Lc = (D0*0.5)*H0/(2*(D0*0.5+H0));
+        // double Lc = (D0*0.5)*H0/(2*(D0*0.5+H0));
+        double Lc = 0.5*D0;
         double Rc = modg[]/fabs(TG0-TS0)*Lc;
        
         zeta[] = f[] > F_ERR ? Rc: 0.;
@@ -282,7 +278,16 @@ event phasechange (i++) {
 
   set_zeta (zeta_policy);
 
-  mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax);
+  face vector alpha_save[];
+  foreach_face() {
+    alpha_save.x[] = alpha.x[];
+    alpha.x[] = fm.x[];
+  }
+
+  mgpsf = project_sv (ubf, psi, alpha, dt, mgpsf.nrelax); //TODO: should recive fm instead of alpha
+
+  foreach_face()
+    alpha.x[] = alpha_save.x[];
 
   foreach() {
     if (f[] > F_ERR) {

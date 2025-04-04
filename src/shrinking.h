@@ -133,7 +133,7 @@ void set_zeta (enum zeta_types zeta_policy) {
   switch (zeta_policy) {
     case ZETA_SHRINK:
       foreach()
-        zeta[] = 0.5;//temp
+        zeta[] = 1.;//temp
       break;
 
     case ZETA_SWELLING:
@@ -172,7 +172,7 @@ void set_zeta (enum zeta_types zeta_policy) {
       o_max = statsf(o).max;
 
       foreach() {
-        zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;
+        zeta[] = o_max > F_ERR ? (omega[]*f[])/o_max : 0.;
         zeta[] = clamp(zeta[], 0., 1.);
       }
       break;

@@ -154,6 +154,7 @@ void update_properties_initial (void) {
   }
 }
 
+trace
 void update_properties (void) {
   foreach() {
     ThermoState tsGh, tsSh;
@@ -252,13 +253,6 @@ void update_properties (void) {
         lambda2v.x[] = lambdaGv_G[];
     }
   }
-
-  // boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
-  //           rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,
-  //           rhoGv_S, rhoGv0_S, muGv_S, cpGv_S, lambdaGv_S});
-  // boundary ({lambda1v, lambda2v});
-  // boundary (DmixGList_G);
-  // boundary (DmixGList_S);
 }
 
 event init (i = 0) //Should be done in the default event but is executed before OS++ initialization otherwise

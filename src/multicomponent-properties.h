@@ -156,101 +156,123 @@ void update_properties_initial (void) {
 
 trace
 void update_properties (void) {
+  const double Pref_const = 1.01325e5; // Pa
   foreach() {
+
+    double f_val = f[];
+    double one_minus_f = 1. - f_val;
     ThermoState tsGh, tsSh;
-    if (f[] > T_PROP) {
+    double xG[NGS], yG[NGS];
+    double MWmix;
+    double P_local = Pref_const + p[];
+
+    if (f_val > T_PROP) {
+      double inv_f = 1./f_val;
+      double porosity_val = porosity[]*inv_f;
+      double TS_val = TS[]*inv_f;
+      double por_f_pow = pow(porosity_val, 1.5);
+
       // Update internal gas properties
-      double xG[NGS], yG[NGS];
       foreach_elem (YGList_S, jj) {
         scalar YG = YGList_S[jj];
-        yG[jj] = YG[]/f[];
+        yG[jj] = YG[]*inv_f;
       }
-      double MWmixG;
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
-      MWmixG_S[] = MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmix, yG);
+      MWmixG_S[] = MWmix;
 
-      tsGh.T = TS[]/f[];
-      tsGh.P = Pref;
+      tsGh.T = TS_val;
+      tsGh.P = P_local;
       tsGh.x = xG;
 
       rhoGv_S[] = tpG.rhov (&tsGh);
       cpGv_S[] = tpG.cpv (&tsGh);
       lambdaGv_S[] = tpG.lambdav (&tsGh);
       muGv_S[] = tpG.muv (&tsGh);
-      betaexpG_S[] = gasprop_thermal_expansion (&tsGh);
+      #ifndef NO_EXPANSION
+        betaexpG_S[] = gasprop_thermal_expansion (&tsGh);
+      #endif
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
-        DmixGv[] = tpG.diff (&tsGh, jj);
         #ifdef CONST_DIFF
-        DmixGv[] = CONST_DIFF;
+        DmixGv[] = CONST_DIFF*por_f_pow;
+        #else
+        DmixGv[] = tpG.diff (&tsGh, jj)*por_f_pow;
         #endif
-        DmixGv[] *= pow(porosity[]/f[], 3./2.);
       }
       
       // Update internal solid properties
       double xS[NSS], yS[NSS];
       foreach_elem (YSList, jj) {
         scalar YS = YSList[jj];
-        yS[jj] = (NSS == 1) ?  1. : YS[]/f[];
+        yS[jj] = YS[]*inv_f;
       }
-      double MWmixS;
-      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, yS);
+      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmix, yS);
 
-      tsSh.T = TS[]/f[];
-      tsSh.P = Pref;
+      tsSh.T = TS_val;
+      tsSh.P = Pref+p[];
       tsSh.x = xS;
 
       rhoSv[] = tpS.rhov (&tsSh);
       cpSv[] = tpS.cpv (&tsSh);
-
+    
+      double one_minus_porosity = 1. - porosity_val;
       #ifdef KK_CONDUCTIVITY //anisotropic conductivity
-      double leff_per = 1 / ((1.-porosity[]/f[])/lS_per + porosity[]/f[]/lambdaGv_S[]);
-      double leff_par = (1.-porosity[]/f[])*lS_par + porosity[]/f[]*lambdaGv_S[];
+      
+      //possible optimization: double lambdag_s = lambdaGv_S[];
+      double leff_per = 1 / (one_minus_porosity/lS_per + porosity_val/lambdaGv_S[]);
+      double leff_par = one_minus_porosity*lS_par + porosity_val*lambdaGv_S[];
 
       //longitudinal direction theta = 1.0
       lambda1v.x[] = leff_par;
 
       // trasversal direction theta = 0.58
-      lambda1v.y[] = 0.58*leff_par + (1.-0.58)*leff_per;
+      const double theta_const = 0.58;
+      lambda1v.y[] = theta_const*leff_par + (1.-theta_const)*leff_per;
       
       #else //!KK_CONDUCTIVITY, std case
       lambdaSv[] = tpS.lambdav (&tsSh);
       foreach_dimension()
-        lambda1v.x[] = (1.-porosity[]/f[])*lambdaSv[] + porosity[]/f[]*lambdaGv_S[];
+        lambda1v.x[] = one_minus_porosity*lambdaSv[] + porosity_val*lambdaGv_S[];
       #endif
     }
 
-    if ((1. - f[]) > T_PROP) {
+    if (one_minus_f > T_PROP) {
+      double inv_one_minus_f = 1./one_minus_f;
+      double TG_val = TG[]*inv_one_minus_f;
+
       // Update external gas properties
-      double xG[NGS], yG[NGS];
       foreach_elem (YGList_G, jj) {
         scalar YG = YGList_G[jj];
-        yG[jj] = YG[]/(1. - f[]);
+        yG[jj] = YG[]*inv_one_minus_f;
       }
-      double MWmixG;
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
-      MWmixG_G[] = MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmix, yG);
+      MWmixG_G[] = MWmix;
 
-      tsGh.T = TG[]/(1. - f[]);
-      tsGh.P = Pref;
+      tsGh.T = TG_val;
+      tsGh.P = P_local;
       tsGh.x = xG;
 
       rhoGv_G[] = tpG.rhov (&tsGh);
       muGv_G[] = tpG.muv (&tsGh);
       cpGv_G[] = tpG.cpv (&tsGh);
       lambdaGv_G[] = tpG.lambdav (&tsGh);
-      betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
+      #ifndef NO_EXPANSION
+        betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
+      #endif
 
       for (int jj=0; jj<NGS; jj++) {
         scalar Dmix2v = DmixGList_G[jj];
-        Dmix2v[] = tpG.diff (&tsGh, jj);
 # ifdef CONST_DIFF
         Dmix2v[] = CONST_DIFF;
+# else
+        Dmix2v[] = tpG.diff (&tsGh, jj);
 # endif
       }
+
+      double lambda_g = lambdaGv_G[];
       foreach_dimension()
-        lambda2v.x[] = lambdaGv_G[];
+        lambda2v.x[] = lambda_g;
     }
   }
 }

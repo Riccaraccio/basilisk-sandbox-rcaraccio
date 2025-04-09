@@ -116,6 +116,9 @@ event tracer_advection (i++) {
 #endif
 
 event tracer_diffusion (i++) {
+
+  update_properties();
+
   foreach() {
     f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;

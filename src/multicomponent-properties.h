@@ -68,77 +68,200 @@ void update_properties_constant (void) {
 }
 */
 
-// void update_properties_initial (void) {
-//   foreach() {
-//     ThermoState tsGh, tsSh;
-//     if (f[] < 1. - T_PROP) {
+void update_properties_initial (void) {
+  foreach() {
+    ThermoState tsGh, tsSh;
+    if (f[] > T_ERR) {
+      // Update the properties of the internal gas phase
+      double xG[NGS];
+      double MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, gas_start);
+      MWmixG_S[] = MWmixG;
 
-//       // Update the properties of the external gas phase
-//       tsGh.T = TG0;
-//       tsGh.P = Pref;
-//       tsGh.x = gas_start;
+      tsGh.T = TS0;
+      tsGh.P = Pref;
+      tsGh.x = xG;
 
-//       rhoGv_G[] = tpG.rhov (&tsGh);
-//       //rhoGvInt_G[] = rhoGv_G[];
-//       rhoGv0_G[] = rhoGv_G[];
-//       muGv_G[] = tpG.muv (&tsGh);
-//       cpGv_G[] = tpG.cpv (&tsGh);
-//       lambdaGv_G[] = tpG.lambdav (&tsGh);
+      rhoGv_S[] = tpG.rhov (&tsGh);
+      cpGv_S[] = tpG.cpv (&tsGh);
+      muGv_S[] = tpG.muv (&tsGh);
+      lambdaGv_S[] = tpG.lambdav (&tsGh);
 
-//       for(int jj=0; jj<NGS; jj++) {
-//         scalar DmixGv = DmixGList_G[jj];
-//         #ifdef CONST_DIFF
-//         DmixGv[] = CONST_DIFF;
-//         #else
-//         DmixGv[] = tpG.diff (&tsGh, jj);
-//         #endif
-//       }
-//     }
+      for(int jj=0; jj<NGS; jj++) {
+        scalar DmixGv = DmixGList_S[jj];
+        #ifdef CONST_DIFF
+        DmixGv[] = CONST_DIFF;
+        #else
+        DmixGv[] = tpG.diff (&tsGh, jj);
+        DmixGv[] *= pow(porosity[]/f[], 3./2.); //effect of solid, to be revised
+        #endif
+      }
+      
+      //Update the properties of the solid phase
+      double xS[NSS];
+      double MWmixS;
+      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, sol_start);
 
-//     if (f[] > T_ERR) {
-//       // Update the properties of the internal gas phase
-//       tsGh.T = TS0;
-//       tsGh.P = Pref;
-//       tsGh.x = gas_start;
+      tsSh.T = TS0;
+      tsSh.P = Pref;
+      tsSh.x = xS;
 
-//       rhoGv_S[] = tpG.rhov (&tsGh);
-//       //rhoGvInt_S[] = rhoGv_S[];
-//       rhoGv0_S[] = rhoGv_S[];
-//       muGv_S[] = tpG.muv (&tsGh);
-//       cpGv_S[] = tpG.cpv (&tsGh);
-//       lambdaGv_S[] = tpG.lambdav (&tsGh);
+      rhoSv[] = tpS.rhov (&tsSh);
+      cpSv[] = tpS.cpv (&tsSh);
 
-//       for(int jj=0; jj<NGS; jj++) {
-//         scalar DmixGv = DmixGList_S[jj];
-//         #ifdef CONST_DIFF
-//         DmixGv[] = CONST_DIFF;
-//         #else
-//         DmixGv[] = tpG.diff (&tsGh, jj);
-//         DmixGv[] *= pow(porosity[]/f[], 3./2.); //effect of solid, to be revised
-//         #endif
-//       }
+      #ifdef KK_CONDUCTIVITY //anisotropic conductivity
+      double leff_per = 1 / ((1.-porosity[]/f[])/lS_per + porosity[]/f[]/lambdaGv_S[]);
+      double leff_par = (1.-porosity[]/f[])*lS_par + porosity[]/f[]*lambdaGv_S[];
 
-//       //Update the properties of the solid phase
-//       tsSh.T = TS0;
-//       tsSh.P = Pref;
-//       tsSh.x = sol_start;
+      //longitudinal direction theta = 1.0
+      lambda1v.x[] = leff_par;
+      // trasversal direction theta = 0.58
+      lambda1v.y[] = 0.58*leff_par + (1.-0.58)*leff_per;
+      
+      #else //!KK_CONDUCTIVITY, std case
+      lambdaSv[] = tpS.lambdav (&tsSh);
+      foreach_dimension()
+        lambda1v.x[] = (1.-porosity[]/f[])*lambdaSv[] + porosity[]/f[]*lambdaGv_S[];
+      #endif
+    }
+    
+    if (f[] < 1. - T_PROP) {
+      // Update the properties of the external gas phase
+      double xG[NGS];
+      double MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, gas_start);
+      MWmixG_G[] = MWmixG;
 
-//       rhoSv[] = tpS.rhov (&tsSh);
-//       //rhoSvInt[] = rhoSv[];
-//       rhoSv0[] = rhoSv[];
-//       cpSv[] = tpS.cpv (&tsSh);
-//       lambdaSv[] = tpS.lambdav (&tsSh);
-//     }
-//   }
+      tsGh.T = TG0;
+      tsGh.P = Pref;
+      tsGh.x = xG;
 
-//   boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
-//             rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,
-//             rhoGv_S, rhoGv0_S, muGv_S, cpGv_S, lambdaGv_S});
-//   boundary (DmixGList_G);
-//   boundary (DmixGList_S);
-// }
+      rhoGv_G[] = tpG.rhov (&tsGh);
+      muGv_G[] = tpG.muv (&tsGh);
+      cpGv_G[] = tpG.cpv (&tsGh);
+      lambdaGv_G[] = tpG.lambdav (&tsGh);
+      betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
 
-event init (i = 0) //Should be done in the default event but is executed before OS++ initialization
+      for(int jj=0; jj<NGS; jj++) {
+        scalar DmixGv = DmixGList_G[jj];
+        #ifdef CONST_DIFF
+        DmixGv[] = CONST_DIFF;
+        #else
+        DmixGv[] = tpG.diff (&tsGh, jj);
+        #endif
+      }
+    }
+  }
+}
+
+void update_properties (void) {
+  foreach() {
+    ThermoState tsGh, tsSh;
+    if (f[] > T_PROP) {
+      // Update internal gas properties
+      double xG[NGS], yG[NGS];
+      foreach_elem (YGList_S, jj) {
+        scalar YG = YGList_S[jj];
+        yG[jj] = YG[]/f[];
+      }
+      double MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+      MWmixG_S[] = MWmixG;
+
+      tsGh.T = TS[]/f[];
+      tsGh.P = Pref;
+      tsGh.x = xG;
+
+      rhoGv_S[] = tpG.rhov (&tsGh);
+      cpGv_S[] = tpG.cpv (&tsGh);
+      lambdaGv_S[] = tpG.lambdav (&tsGh);
+      muGv_S[] = tpG.muv (&tsGh);
+      betaexpG_S[] = gasprop_thermal_expansion (&tsGh);
+
+      for(int jj=0; jj<NGS; jj++) {
+        scalar DmixGv = DmixGList_S[jj];
+        DmixGv[] = tpG.diff (&tsGh, jj);
+        #ifdef CONST_DIFF
+        DmixGv[] = CONST_DIFF;
+        #endif
+        DmixGv[] *= pow(porosity[]/f[], 3./2.);
+      }
+      
+      // Update internal solid properties
+      double xS[NSS], yS[NSS];
+      foreach_elem (YSList, jj) {
+        scalar YS = YSList[jj];
+        yS[jj] = (NSS == 1) ?  1. : YS[]/f[];
+      }
+      double MWmixS;
+      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, yS);
+
+      tsSh.T = TS[]/f[];
+      tsSh.P = Pref;
+      tsSh.x = xS;
+
+      rhoSv[] = tpS.rhov (&tsSh);
+      cpSv[] = tpS.cpv (&tsSh);
+
+      #ifdef KK_CONDUCTIVITY //anisotropic conductivity
+      double leff_per = 1 / ((1.-porosity[]/f[])/lS_per + porosity[]/f[]/lambdaGv_S[]);
+      double leff_par = (1.-porosity[]/f[])*lS_par + porosity[]/f[]*lambdaGv_S[];
+
+      //longitudinal direction theta = 1.0
+      lambda1v.x[] = leff_par;
+
+      // trasversal direction theta = 0.58
+      lambda1v.y[] = 0.58*leff_par + (1.-0.58)*leff_per;
+      
+      #else //!KK_CONDUCTIVITY, std case
+      lambdaSv[] = tpS.lambdav (&tsSh);
+      foreach_dimension()
+        lambda1v.x[] = (1.-porosity[]/f[])*lambdaSv[] + porosity[]/f[]*lambdaGv_S[];
+      #endif
+    }
+
+    if ((1. - f[]) > T_PROP) {
+      // Update external gas properties
+      double xG[NGS], yG[NGS];
+      foreach_elem (YGList_G, jj) {
+        scalar YG = YGList_G[jj];
+        yG[jj] = YG[]/(1. - f[]);
+      }
+      double MWmixG;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+      MWmixG_G[] = MWmixG;
+
+      tsGh.T = TG[]/(1. - f[]);
+      tsGh.P = Pref;
+      tsGh.x = xG;
+
+      rhoGv_G[] = tpG.rhov (&tsGh);
+      muGv_G[] = tpG.muv (&tsGh);
+      cpGv_G[] = tpG.cpv (&tsGh);
+      lambdaGv_G[] = tpG.lambdav (&tsGh);
+      betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
+
+      for (int jj=0; jj<NGS; jj++) {
+        scalar Dmix2v = DmixGList_G[jj];
+        Dmix2v[] = tpG.diff (&tsGh, jj);
+# ifdef CONST_DIFF
+        Dmix2v[] = CONST_DIFF;
+# endif
+      }
+      foreach_dimension()
+        lambda2v.x[] = lambdaGv_G[];
+    }
+  }
+
+  // boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
+  //           rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,
+  //           rhoGv_S, rhoGv0_S, muGv_S, cpGv_S, lambdaGv_S});
+  // boundary ({lambda1v, lambda2v});
+  // boundary (DmixGList_G);
+  // boundary (DmixGList_S);
+}
+
+event init (i = 0) //Should be done in the default event but is executed before OS++ initialization otherwise
 {
   DYDtG_G = NULL;
   DYDtG_S = NULL;
@@ -168,7 +291,7 @@ event init (i = 0) //Should be done in the default event but is executed before 
 
 event init (i = 0)
 {
-  // update_properties_initial(); //TODO: it seems that this is not needed, update_properties works fine
+  update_properties_initial();
 
   MWmixG_G.dirty = true;
   MWmixG_S.dirty = true;
@@ -209,123 +332,9 @@ event reset_sources (i++)
   }
 }
 
-void update_properties (void) {
-  foreach() {
-    rhoSv0[] = rhoSv[];
-    rhoGv0_G[] = rhoGv_G[];
-    rhoGv0_S[] = rhoGv_S[];
-  }
-
-  foreach() {
-    if (f[] > T_PROP) {
-      // Update internal solid properties
-      double xS[NSS], yS[NSS];
-      foreach_elem (YSList, jj) {
-        scalar YS = YSList[jj];
-        yS[jj] = (NSS == 1) ?  1. : YS[]/f[];
-      }
-      double MWmixS;
-      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, yS);
-
-      ThermoState tsSh;
-      tsSh.T = TS[]/f[];
-      tsSh.P = Pref;
-      tsSh.x = xS;
-
-      rhoSv[] = tpS.rhov (&tsSh);
-      cpSv[] = tpS.cpv (&tsSh);
-      lambdaSv[] = tpS.lambdav (&tsSh);
-
-      // Update internal gas properties
-      double xG[NGS], yG[NGS];
-      foreach_elem (YGList_S, jj) {
-        scalar YG = YGList_S[jj];
-        yG[jj] = YG[]/f[];
-      }
-      double MWmixG;
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
-      MWmixG_S[] = MWmixG;
-
-      ThermoState tsGh;
-      tsGh.T = TS[]/f[];
-      tsGh.P = Pref;
-      tsGh.x = xG;
-
-      rhoGv_S[] = tpG.rhov (&tsGh);
-      cpGv_S[] = tpG.cpv (&tsGh);
-      lambdaGv_S[] = tpG.lambdav (&tsGh);
-      muGv_S[] = tpG.muv (&tsGh);
-      betaexpG_S[] = gasprop_thermal_expansion (&tsGh);
-
-      for(int jj=0; jj<NGS; jj++) {
-        scalar DmixGv = DmixGList_S[jj];
-        DmixGv[] = tpG.diff (&tsGh, jj);
-        #ifdef CONST_DIFF
-        DmixGv[] = CONST_DIFF;
-        #endif
-        DmixGv[] *= pow(porosity[]/f[], 3./2.);
-      }
-
-      #ifdef KK_CONDUCTIVITY //anisotropic conductivity
-      double leff_per = 1 / ((1.-porosity[]/f[])/lS_per + porosity[]/f[]/lambdaGv_S[]);
-      double leff_par = (1.-porosity[]/f[])*lS_par + porosity[]/f[]*lambdaGv_S[];
-
-      //longitudinal direction theta = 1.0
-      lambda1v.x[] = leff_par;
-
-      // trasversal direction theta = 0.58
-      lambda1v.y[] = 0.58*leff_par + (1.-0.58)*leff_per;
-      #else //!KK_CONDUCTIVITY, std case
-      foreach_dimension()
-        lambda1v.x[] = (1.-porosity[]/f[])*lambdaSv[] + porosity[]/f[]*lambdaGv_S[];
-      #endif
-    }
-
-    if ((1. - f[]) > T_PROP) {
-      // Update external gas properties
-      double xG[NGS], yG[NGS];
-      foreach_elem (YGList_G, jj) {
-        scalar YG = YGList_G[jj];
-        yG[jj] = YG[]/(1. - f[]);
-      }
-      double MWmixG;
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
-      MWmixG_G[] = MWmixG;
-
-      ThermoState tsGh;
-      tsGh.T = TG[]/(1. - f[]);
-      tsGh.P = Pref;
-      tsGh.x = xG;
-
-      rhoGv_G[] = tpG.rhov (&tsGh);
-      muGv_G[] = tpG.muv (&tsGh);
-      cpGv_G[] = tpG.cpv (&tsGh);
-      lambdaGv_G[] = tpG.lambdav (&tsGh);
-      betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
-
-      for (int jj=0; jj<NGS; jj++) {
-        scalar Dmix2v = DmixGList_G[jj];
-        Dmix2v[] = tpG.diff (&tsGh, jj);
-# ifdef CONST_DIFF
-        Dmix2v[] = CONST_DIFF;
-# endif
-      }
-      foreach_dimension()
-        lambda2v.x[] = lambdaGv_G[];
-    }
-  }
-
-  boundary ({rhoSv, rhoSv0, cpSv, lambdaSv,
-            rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,
-            rhoGv_S, rhoGv0_S, muGv_S, cpGv_S, lambdaGv_S});
-  boundary ({lambda1v, lambda2v});
-  boundary (DmixGList_G);
-  boundary (DmixGList_S);
-}
-
-event properties (i++) {
-  update_properties();
-}
+// event properties (i++) {
+//   update_properties();
+// }
 
 void update_divergence (void) {
 

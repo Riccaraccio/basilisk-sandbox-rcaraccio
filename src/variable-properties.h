@@ -4,7 +4,6 @@
 # define F_ERR 1e-10
 #endif
 
-
 // IDK WHY THIS DOESN'T WORK
 // (const) scalar rhoGv_G = zeroc, rhoGv_S = zeroc, rhoSv = zeroc;
 // (const) scalar muGv_G = zeroc, muGv_S = zeroc;
@@ -24,13 +23,13 @@ typedef struct {
 
 typedef struct {
   // Mixture properties
-  double (* rhov) (void *);
-  double (* muv) (void *);
-  double (* lambdav) (void *);
-  double (* cpv) (void *);
+  double (* rhov)     (void *);
+  double (* muv)      (void *);
+  double (* lambdav)  (void *);
+  double (* cpv)      (void *);
   // Species properties
-  double (* diff) (void *, int);
-  double (* cps)  (void *, int);
+  void   (* diff)     (void *, double *);
+  double (* cps)      (void *, int);
 } ThermoProps;
 
 #define aavg(f,v1,v2) (clamp(f,0.,1.)*(v1 - v2) + v2)

@@ -71,6 +71,7 @@ void update_properties_constant (void) {
 void update_properties_initial (void) {
   foreach() {
     ThermoState tsGh, tsSh;
+    double Diff_coeff[NGS];
     if (f[] > T_ERR) {
       // Update the properties of the internal gas phase
       double xG[NGS];
@@ -86,13 +87,14 @@ void update_properties_initial (void) {
       cpGv_S[] = tpG.cpv (&tsGh);
       muGv_S[] = tpG.muv (&tsGh);
       lambdaGv_S[] = tpG.lambdav (&tsGh);
+      tpG.diff (&tsGh, Diff_coeff);
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
         #ifdef CONST_DIFF
         DmixGv[] = CONST_DIFF;
         #else
-        DmixGv[] = tpG.diff (&tsGh, jj);
+        DmixGv[] = Diff_coeff[jj];
         DmixGv[] *= pow(porosity[]/f[], 3./2.); //effect of solid, to be revised
         #endif
       }
@@ -141,13 +143,14 @@ void update_properties_initial (void) {
       cpGv_G[] = tpG.cpv (&tsGh);
       lambdaGv_G[] = tpG.lambdav (&tsGh);
       betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
+      tpG.diff (&tsGh, Diff_coeff);
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_G[jj];
         #ifdef CONST_DIFF
         DmixGv[] = CONST_DIFF;
         #else
-        DmixGv[] = tpG.diff (&tsGh, jj);
+        DmixGv[] = Diff_coeff[jj];
         #endif
       }
     }
@@ -165,6 +168,7 @@ void update_properties (void) {
     double xG[NGS], yG[NGS];
     double MWmix;
     double P_local = Pref_const + p[];
+    double Diff_coeff[NGS];
 
     if (f_val > T_PROP) {
       double inv_f = 1./f_val;
@@ -188,16 +192,15 @@ void update_properties (void) {
       cpGv_S[] = tpG.cpv (&tsGh);
       lambdaGv_S[] = tpG.lambdav (&tsGh);
       muGv_S[] = tpG.muv (&tsGh);
-      #ifndef NO_EXPANSION
-        betaexpG_S[] = gasprop_thermal_expansion (&tsGh);
-      #endif
+      tpG.diff (&tsGh, Diff_coeff);
+      betaexpG_S[] = gasprop_thermal_expansion (&tsGh);
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
         #ifdef CONST_DIFF
         DmixGv[] = CONST_DIFF*por_f_pow;
         #else
-        DmixGv[] = tpG.diff (&tsGh, jj)*por_f_pow;
+        DmixGv[] = Diff_coeff[jj]*por_f_pow;
         #endif
       }
       
@@ -257,16 +260,15 @@ void update_properties (void) {
       muGv_G[] = tpG.muv (&tsGh);
       cpGv_G[] = tpG.cpv (&tsGh);
       lambdaGv_G[] = tpG.lambdav (&tsGh);
-      #ifndef NO_EXPANSION
-        betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
-      #endif
+      tpG.diff (&tsGh, Diff_coeff);
+      betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
 
       for (int jj=0; jj<NGS; jj++) {
         scalar Dmix2v = DmixGList_G[jj];
 # ifdef CONST_DIFF
         Dmix2v[] = CONST_DIFF;
 # else
-        Dmix2v[] = tpG.diff (&tsGh, jj);
+        Dmix2v[] = Diff_coeff[jj];
 # endif
       }
 

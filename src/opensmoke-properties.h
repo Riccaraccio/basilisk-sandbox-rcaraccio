@@ -1,6 +1,7 @@
 #include "opensmoke.h"
 #include "variable-properties.h"
 
+trace
 double opensmoke_gasprop_density (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -9,6 +10,7 @@ double opensmoke_gasprop_density (void * p) {
   return OpenSMOKE_GasProp_Density_IdealGas (ts->T, ts->P, MWmix);
 }
 
+trace
 double opensmoke_gasprop_viscosity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -16,6 +18,7 @@ double opensmoke_gasprop_viscosity (void * p) {
   return OpenSMOKE_GasProp_DynamicViscosity (ts->x);
 }
 
+trace
 double opensmoke_gasprop_thermalconductivity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -23,6 +26,7 @@ double opensmoke_gasprop_thermalconductivity (void * p) {
   return OpenSMOKE_GasProp_ThermalConductivity (ts->x);
 }
 
+trace
 double opensmoke_gasprop_heatcapacity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -30,22 +34,22 @@ double opensmoke_gasprop_heatcapacity (void * p) {
   return OpenSMOKE_GasProp_HeatCapacity (ts->x);
 }
 
-double opensmoke_gasprop_heatcapacity_species (void * p, int i) {
+trace
+// double opensmoke_gasprop_diff (void * p, int i) {
+//   ThermoState * ts = (ThermoState *)p;
+//   OpenSMOKE_GasProp_SetTemperature (ts->T);
+//   OpenSMOKE_GasProp_SetPressure (ts->P);
+//   return OpenSMOKE_GasProp_Dmix (ts->x, i);
+// }
+
+void opensmoke_gasprop_diff (void * p, double * Dmix) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
   OpenSMOKE_GasProp_SetPressure (ts->P);
-  double Cps[OpenSMOKE_NumberOfSpecies()];
-  OpenSMOKE_GasProp_HeatCapacity_PureSpecies (Cps);
-  return Cps[i];
+  OpenSMOKE_GasProp_Dmix (ts->x, Dmix);
 }
 
-double opensmoke_gasprop_diff (void * p, int i) {
-  ThermoState * ts = (ThermoState *)p;
-  OpenSMOKE_GasProp_SetTemperature (ts->T);
-  OpenSMOKE_GasProp_SetPressure (ts->P);
-  return OpenSMOKE_GasProp_Dmix (ts->x, i);
-}
-
+trace
 double opensmoke_solprop_heatcapacity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_SolProp_SetTemperature (ts->T);
@@ -58,6 +62,8 @@ double opensmoke_solprop_heatcapacity (void * p) {
 */
 
 extern double rhoS;
+
+trace
 double opensmoke_solprop_density (void * p) {
   return rhoS;
 }
@@ -67,6 +73,8 @@ double opensmoke_solprop_density (void * p) {
 */
 
 extern double lambdaS;
+
+trace
 double opensmoke_solprop_thermalconductivity (void * p) {
   return lambdaS;
 }
@@ -87,12 +95,10 @@ event defaults (i = 0) {
   tpS.rhov    = opensmoke_solprop_density;
   tpS.lambdav = opensmoke_solprop_thermalconductivity;
   tpS.cpv     = opensmoke_solprop_heatcapacity;
-  //tpS.cps     = opensmoke_solprop_heatcapacity_species;
 
   tpG.rhov    = opensmoke_gasprop_density;
   tpG.muv     = opensmoke_gasprop_viscosity;
   tpG.lambdav = opensmoke_gasprop_thermalconductivity;
   tpG.cpv     = opensmoke_gasprop_heatcapacity;
   tpG.diff    = opensmoke_gasprop_diff;
-  //tpG.cps     = opensmoke_gasprop_heatcapacity_species;
 }

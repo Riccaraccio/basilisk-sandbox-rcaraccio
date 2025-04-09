@@ -5,13 +5,83 @@ extern scalar T;
 extern scalar porosity;
 
 #ifndef TURN_OFF_REACTIONS
-void OpenSMOKE_ODESolverEXP (odefunction ode, unsigned int neq, double dt, double* y, void* args) {
+void ODESolverEXP (odefunction ode, unsigned int neq, double dt, double* y, void* args) {
 
   double dy[neq];
   ode(y, dt, dy, args);
 
   for (int jj=0; jj<neq; jj++)
     y[jj] += dt*dy[jj];
+}
+
+void RungeKutta45EXP(odefunction ode, unsigned int neq, double dt, double *y, void *args) {
+
+  // Allocate arrays for the k values and temporary y values
+  double k1[neq], k2[neq], k3[neq], k4[neq], k5[neq], k6[neq];
+  double ytmp[neq];
+
+  // Coefficients for the RK45 method
+  const double a2 = 1.0 / 4.0;
+  const double a3 = 3.0 / 8.0;
+  const double a4 = 12.0 / 13.0;
+  const double a6 = 1.0 / 2.0;
+
+  const double b31 = 3.0 / 32.0;
+  const double b32 = 9.0 / 32.0;
+
+  const double b41 = 1932.0 / 2197.0;
+  const double b42 = -7200.0 / 2197.0;
+  const double b43 = 7296.0 / 2197.0;
+
+  const double b51 = 439.0 / 216.0;
+  const double b52 = -8.0;
+  const double b53 = 3680.0 / 513.0;
+  const double b54 = -845.0 / 4104.0;
+
+  const double b61 = -8.0 / 27.0;
+  const double b62 = 2.0;
+  const double b63 = -3544.0 / 2565.0;
+  const double b64 = 1859.0 / 4104.0;
+  const double b65 = -11.0 / 40.0;
+
+  // Coefficients for the 5th order solution
+  const double c1 = 16.0 / 135.0;
+  const double c3 = 6656.0 / 12825.0;
+  const double c4 = 28561.0 / 56430.0;
+  const double c5 = -9.0 / 50.0;
+  const double c6 = 2.0 / 55.0;
+
+  // Step 1: Calculate k1 = f(t, y)
+  ode(y, 0, k1, args);
+
+  // Step 2: Calculate k2 = f(t + a2*dt, y + a2*k1*dt)
+  for (int j = 0; j < neq; j++)
+    ytmp[j] = y[j] + dt * a2 * k1[j];
+  ode(ytmp, a2 * dt, k2, args);
+
+  // Step 3: Calculate k3 = f(t + a3*dt, y + b31*k1*dt + b32*k2*dt)
+  for (int j = 0; j < neq; j++)
+    ytmp[j] = y[j] + dt * (b31 * k1[j] + b32 * k2[j]);
+  ode(ytmp, a3 * dt, k3, args);
+
+  // Step 4: Calculate k4 = f(t + a4*dt, y + b41*k1*dt + b42*k2*dt + b43*k3*dt)
+  for (int j = 0; j < neq; j++)
+    ytmp[j] = y[j] + dt * (b41 * k1[j] + b42 * k2[j] + b43 * k3[j]);
+  ode(ytmp, a4 * dt, k4, args);
+
+  // Step 5: Calculate k5 = f(t + a5*dt, y + b51*k1*dt + b52*k2*dt + b53*k3*dt + b54*k4*dt)
+  for (int j = 0; j < neq; j++)
+    ytmp[j] = y[j] + dt * (b51 * k1[j] + b52 * k2[j] + b53 * k3[j] + b54 * k4[j]);
+  ode(ytmp, dt, k5, args);
+
+  // Step 6: Calculate k6 = f(t + a6*dt, y + b61*k1*dt + b62*k2*dt + b63*k3*dt + b64*k4*dt + b65*k5*dt)
+  for (int j = 0; j < neq; j++)
+    ytmp[j] = y[j] + dt * (b61 * k1[j] + b62 * k2[j] + b63 * k3[j] + b64 * k4[j] + b65 * k5[j]);
+  ode(ytmp, a6 * dt, k6, args);
+
+  // Update y using the 5th order solution
+  for (int j = 0; j < neq; j++)
+    y[j] += dt * (c1 * k1[j] + c3 * k3[j] + c4 * k4[j] + c5 * k5[j] + c6 * k6[j]);
 }
 
 event init (i = 0) {
@@ -95,7 +165,8 @@ event chemistry (i++) {
 #endif
 
 #ifdef EXPLICIT_REACTIONS
-    OpenSMOKE_ODESolverEXP (batch, NEQ, dt, y0ode, &data);
+    // ODESolverEXP (batch, NEQ, dt, y0ode, &data);
+    RungeKutta45EXP (batch, NEQ, dt, y0ode, &data);
 #else //default
     OpenSMOKE_ODESolver (batch, NEQ, dt, y0ode, &data); 
 #endif

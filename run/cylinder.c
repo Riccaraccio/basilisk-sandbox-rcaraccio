@@ -3,10 +3,9 @@
 #define SOLVE_TEMPERATURE 1
 #define CONST_DIFF 2.05e-5
 #define FSOLVE_ABSTOL 1.e-3
-#define RADIATION_INTERFACE n.y+0.25*n.x
-// #define RADIATION_INTERFACE 1
-// #define TURN_OFF_HEAT_OF_REACTION 1
+#define RADIATION_INTERFACE n.y+n.x*0.25
 #define KK_CONDUCTIVITY 1
+#define EXPLICIT_REACTIONS 1
 
 double D0 = 2e-2; //2cm
 double H0 = 3e-2; //3cm
@@ -29,15 +28,15 @@ double H0 = 3e-2; //3cm
 u.n[top]     = dirichlet (0.);
 u.t[top]     = dirichlet (0.);
 p[top]       = neumann (0.);
-// psi[top]     = neumann (0.);
-psi[top]     = dirichlet (0.);
+psi[top]     = neumann (0.);
+// psi[top]     = dirichlet (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 8; int minlevel = 2;
 double tend = 800.; //800s
 
 int main() {
@@ -50,7 +49,7 @@ int main() {
   rhoS = 1200.;
 
   L0 = 1.9*H0;
-  DT = 0.5e-1;
+  DT = 2e-2 ;
 
   zeta_policy = ZETA_REACTION;
   kinfolder = "biomass/Solid-only-2407";
@@ -65,7 +64,6 @@ FILE *fp;
 
 #define rect(x,y)(fabs(x) < 0.5*H0 && fabs(y) < 0.5*D0)
 
-scalar ls[];
 event init (i = 0) {
   mask (y > 6e-3+D0/2 ? top : none);
 
@@ -114,10 +112,8 @@ event init (i = 0) {
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
-      YG[top] = dirichlet (1.);
       YG[right] = dirichlet (1.);
     } else {
-      YG[top] = dirichlet (0.);
       YG[right] = dirichlet (0.);
     }
   }
@@ -146,7 +142,7 @@ event init (i = 0) {
 
 event adapt (i++) {
   adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-2}, maxlevel, minlevel, padding=1);
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, padding=1);
 }
 
 event output (t += 1) {
@@ -199,23 +195,23 @@ set ylabel "M/M_0"
 set yrange [0:1]
 set key top right box width 1
 
-plot  "OutputData-6" u 1:2 w l lw 2 lc "black" t "Mass profile", \
-      "data/mass-exp" u 1:2 w p pt 4 lc "black" t "Exp mass", \
-      "data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Gentile mass"
+plot  "OutputData-7" u 1:2 w l lw 2 lc "black" t "Mass profile"
+      #"data/mass-exp" u 1:2 w p pt 4 lc "black" t "Exp mass", \
+      #"data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Gentile mass"
 ~~~
 
 ~~~gnuplot Shrinking
 reset
 set xlabel "t [s]"
 set ylabel "Shrinking factor"
- u 1:2 set key bottom left box width 1
+set key bottom left box width 1
 set yrange [0.5:1.0]
 
-plot "OutputData-6" u 1:3 w l lw 2 lc "red" t "Radial shrinking - 6", \
-     "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "Axial shrinking - 6",\
-     "data/radial-exp"w p pt 4 lc "red" t "Radial exp", \
-     "data/axial-exp" u 1:2 w p pt 4 lc "web-green" t "Axial exp",\
-     "data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "red" t "Radial Gentile", \
-     "data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "web-green" t "Axial Gentile"
+plot "OutputData-7" u 1:3 w l lw 2 lc "red" t "Radial", \
+     "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "Axial"
+     #"data/radial-exp"w p pt 4 lc "red" t "Radial exp", \
+     #"data/axial-exp" u 1:2 w p pt 4 lc "web-green" t "Axial exp",\
+     #"data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "red" t "Radial Gentile", \
+     #"data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "web-green" t "Axial Gentile"
 ~~~
 */

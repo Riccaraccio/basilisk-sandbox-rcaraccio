@@ -39,11 +39,11 @@ double opensmoke_gasprop_heatcapacity_species (void * p, int i) {
   return Cps[i];
 }
 
-double opensmoke_gasprop_diff (void * p, int i) {
+void opensmoke_gasprop_diff (void * p, double * Dmix) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
   OpenSMOKE_GasProp_SetPressure (ts->P);
-  return OpenSMOKE_GasProp_Dmix (ts->x, i);
+  OpenSMOKE_GasProp_Dmix (ts->x, Dmix);
 }
 
 double opensmoke_solprop_heatcapacity (void * p) {

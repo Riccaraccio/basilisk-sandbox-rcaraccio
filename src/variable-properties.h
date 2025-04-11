@@ -29,7 +29,7 @@ typedef struct {
   double (* lambdav) (void *);
   double (* cpv) (void *);
   // Species properties
-  double (* diff) (void *, int);
+  void (* diff) (void *, double *);
   double (* cps)  (void *, int);
 } ThermoProps;
 

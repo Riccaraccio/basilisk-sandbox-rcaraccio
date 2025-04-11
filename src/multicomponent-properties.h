@@ -259,9 +259,10 @@ void update_properties (void) {
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
-        DmixGv[] = tpG.diff (&tsGh, jj);
         #ifdef CONST_DIFF
         DmixGv[] = CONST_DIFF;
+        #else
+        DmixGv[] = tpG.diff (&tsGh, jj);
         #endif
         DmixGv[] *= pow(porosity[]/f[], 3./2.);
       }
@@ -305,9 +306,10 @@ void update_properties (void) {
 
       for (int jj=0; jj<NGS; jj++) {
         scalar Dmix2v = DmixGList_G[jj];
-        Dmix2v[] = tpG.diff (&tsGh, jj);
 # ifdef CONST_DIFF
         Dmix2v[] = CONST_DIFF;
+# else
+        Dmix2v[] = tpG.diff (&tsGh, jj);
 # endif
       }
       foreach_dimension()

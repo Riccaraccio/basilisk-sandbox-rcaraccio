@@ -115,7 +115,7 @@ event init (i = 0) {
 
 event adapt (i++) {
   adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, padding=1);
+    (double[]){1.e-1, 1.e0, 1.e0, 1e0}, maxlevel, minlevel, padding=1);
 }
 
 event output (t += 1) {
@@ -163,28 +163,47 @@ event stop (t = tend);
 /*
 ~~~gnuplot Mass profile
 reset
+set terminal svg size 400,350
+set output "mass.svg"
 set xlabel "t [s]"
 set ylabel "M/M_0"
 set yrange [0:1]
 set key top right box width 1
+set xrange [0:800]
+set yrange [0:1.0]
+set xtics (0, 200, 400, 600, 800)
+set grid
+err_mass_time_r = 20
+err_mass_time_l = 0.
 
-plot  "OutputData-7" u 1:2 w l lw 2 lc "black" t "Mass profile", \
-      "data/mass-exp" u 1:2 w p pt 4 lc "black" t "Exp mass", \
-      "data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Gentile mass"
+plot  "OutputData-7-2407-Const" u 1:2 w l lw 2 lc "black" t "Mass", \
+      "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 4 lc "black" t "Mass exp"
+      #"data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Mass Gentile"
 ~~~
 
 ~~~gnuplot Shrinking
 reset
+set terminal svg size 400,350
+set output "shrinking.svg"
 set xlabel "t [s]"
 set ylabel "Shrinking factor"
 set key bottom left box width 1
-set yrange [0.2:1.0]
+set yrange [0.5:1.0]
+set xrange [0:800]
+set xtics (0, 200, 400, 600, 800)
+set grid
 
-plot "OutputData-6" u 1:3 w l lw 2 lc "red" t "Radial", \
-     "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "Axial", \
-     "data/radial-exp"w p pt 4 lc "red" t "Radial exp", \
-     "data/axial-exp" u 1:2 w p pt 4 lc "web-green" t "Axial exp",\
-     "data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "red" t "Radial Gentile", \
-     "data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "web-green" t "Axial Gentile"
+err_shrink_time_r = 25
+err_shrink_time_l = 0.
+err_shrink_value_u = 0.
+err_shrink_value_d = 0.05
+err_mass_time = 20
+
+plot "OutputData-7-2407-Const" u 1:3 w l lw 2 lc "dark-green" t "Radial", \
+     "OutputData-7-2407-Const" u 1:4 w l lw 2 lc "black" t "Axial", \
+     "data/radial-exp" u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 4 lw 1.5 lc "dark-green" t "Radial exp", \
+     "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 4 lw 1.5 lc "black" t "Axial exp"
+     #"data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "dark-green" t "Radial Gentile", \
+     #"data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Axial Gentile"
 ~~~
 */

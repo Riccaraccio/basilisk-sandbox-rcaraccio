@@ -135,6 +135,41 @@ event tracer_diffusion (i++) {
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
   }
 
+  //Can be removed for performance
+  //Check the mass fractions
+  foreach() {
+    double sum = 0.;
+    for (scalar YG in YGList_S)
+      sum += YG[];
+
+    for (scalar YG in YGList_S) {
+      YG[] = (sum > 1e-10) ? YG[]/sum : 0.;
+      YG[] = clamp(YG[], 0., 1.);
+    }
+  }
+
+  foreach() {
+    double sum = 0.;
+    for (scalar YG in YGList_G)
+      sum += YG[];
+
+    for (scalar YG in YGList_G) {
+      YG[] = (sum > 1e-10) ? YG[]/sum : 0.;
+      YG[] = clamp(YG[], 0., 1.);
+    }
+  }
+
+  foreach() {
+    double sum = 0.;
+    for (scalar YS in YSList)
+      sum += YS[];
+    
+    for (scalar YS in YSList) {
+      YS[] = (sum > 1e-10) ? YS[]/sum : 0.;
+      YS[] = clamp(YS[], 0., 1.);
+    }
+  }
+
   //Compute face gradients
   face_fraction (fS, fsS);
   face_fraction (fG, fsG);

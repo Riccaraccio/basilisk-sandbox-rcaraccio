@@ -80,8 +80,10 @@ void RungeKutta45EXP(odefunction ode, unsigned int neq, double dt, double *y, vo
   ode(ytmp, a6 * dt, k6, args);
 
   // Update y using the 5th order solution
-  for (int j = 0; j < neq; j++)
+  for (int j = 0; j < neq; j++) {
     y[j] += dt * (c1 * k1[j] + c3 * k3[j] + c4 * k4[j] + c5 * k5[j] + c6 * k6[j]);
+    y[j] = clamp (y[j], 0., 1.);
+  }
 }
 
 event init (i = 0) {
@@ -178,7 +180,7 @@ event chemistry (i++) {
 
       for (int jj=0; jj<NGS; jj++) {
         scalar YG = YGList_S[jj];
-        YG[] = y0ode[jj]/totgasmass*f[];
+        YG[] = (totgasmass < 1e-8) ? [jj]/totgasmass*f[];
       }
 
       double totsolidmass = 0;
@@ -188,7 +190,7 @@ event chemistry (i++) {
 
       for (int jj=0; jj<NSS; jj++) { 
         scalar YS = YSList[jj];
-        YS[] = (totsolidmass < 1e-5) ? 0. : y0ode[jj+NGS]/totsolidmass*f[];
+        YS[] = (totsolidmass < 1e-8) ? 0. : y0ode[jj+NGS]/totsolidmass*f[];
       }
 
       porosity[] = y0ode[NGS+NSS]*f[];

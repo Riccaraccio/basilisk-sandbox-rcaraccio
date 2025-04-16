@@ -144,7 +144,7 @@ event tracer_diffusion (i++) {
   foreach() {
     TInt[] = 0.;
     if (f[] > F_ERR && f[] < 1.-F_ERR)
-      TInt[] = avg_neighbor (point, TS, f);
+      TInt[] = f[]*TS[] + (1.-f[])*TG[];
   }
 
   #ifdef FIXED_INT_TEMP //Force interface temperature = TG0
@@ -170,11 +170,12 @@ event tracer_diffusion (i++) {
   // first guess for species interface concentration
   foreach() {
     for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_S[jj];
+      scalar YG_S = YGList_S[jj];
+      scalar YG_G = YGList_G[jj];
       scalar YGInt = YGList_Int[jj];
       YGInt[] = 0.;
       if (f[] > F_ERR && f[] < 1.-F_ERR)
-        YGInt[] = avg_neighbor (point, YG, f);
+        YGInt[] = f[]*YG_S[] + (1.-f[])*YG_G[];
         YGInt[] = clamp (YGInt[], 0., 1.);
     }
   }

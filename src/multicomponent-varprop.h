@@ -179,7 +179,7 @@ event tracer_diffusion (i++) {
   foreach() {
     TInt[] = 0.;
     if (f[] > F_ERR && f[] < 1.-F_ERR)
-      TInt[] = f[]*TS[] + (1.-f[])*TG[];
+      TInt[] = (TS[] + TG[])/2;
   }
 
   #ifdef FIXED_INT_TEMP //Force interface temperature = TG0
@@ -209,9 +209,10 @@ event tracer_diffusion (i++) {
       scalar YG_G = YGList_G[jj];
       scalar YGInt = YGList_Int[jj];
       YGInt[] = 0.;
-      if (f[] > F_ERR && f[] < 1.-F_ERR)
-        YGInt[] = f[]*YG_S[] + (1.-f[])*YG_G[];
+      if (f[] > F_ERR && f[] < 1.-F_ERR) {
+        YGInt[] = (YG_G[] + YG_S[])/2;
         YGInt[] = clamp (YGInt[], 0., 1.);
+      }
     }
   }
 

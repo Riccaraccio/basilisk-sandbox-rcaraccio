@@ -31,7 +31,8 @@ typedef int (* nls_fun) (const gsl_vector * x, void * params, gsl_vector * f);
 
 void fsolve_gsl (nls_fun fun,
     Array * arrUnk,
-    void * params)
+    void * params,
+    char * name = NULL)
 {
   const gsl_multiroot_fsolver_type * T;
   gsl_multiroot_fsolver * s;
@@ -58,7 +59,7 @@ void fsolve_gsl (nls_fun fun,
     status = gsl_multiroot_fsolver_iterate (s);
 
     if (status)   /* check if solver is stuck */ {
-      fprintf (stderr, "WARNING: Non linear systems solver is stuck.\n");
+      fprintf (stderr, "WARNING: Non linear systems solver is stuck for %s\n", name);
       break;
     }
 
@@ -82,9 +83,10 @@ void fsolve_gsl (nls_fun fun,
 
 void fsolve (nls_fun fun,
     Array * arrUnk,
-    void * params)
+    void * params,
+    char * name = NULL)
 {
-  fsolve_gsl (fun, arrUnk, params);
+  fsolve_gsl (fun, arrUnk, params, name);
 }
 
 #endif // USE_GSL

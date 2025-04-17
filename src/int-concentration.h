@@ -92,7 +92,7 @@ void intConcentration () {
       foreach_dimension()
         data.c.x = o.x;
 
-      fsolve (EqSpeciesGsl, arrUnk, &data);
+      fsolve (EqSpeciesGsl, arrUnk, &data, "EqSpecies");
 
       {
         double* unk = (double*)arrUnk->p;

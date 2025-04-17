@@ -34,10 +34,12 @@ void EqTemperature (const double* xdata, double* fdata, void* params) {
   double gradTSn = ebmgrad(point, TS, fS, fG, fsS, fsG, false, TInti, &success);
 
   coord n = facet_normal(point, fS, fsS);
-  double lambda1vh = lambda1v.x[] * n.x + lambda1v.y[] * n.y;
+  normalize(&n);
+  n.x = fabs(n.x); n.y = fabs(n.y);
+  double lambda1vh = n.x/(n.x+n.y)*lambda1v.x[] + n.y/(n.x+n.y)*lambda1v.y[];
 
   // lambdaG_G is not dipendent on the direction, this is just to treat it the same way as lambdaS
-  double lambda2vh = lambda2v.x[] * n.x + lambda2v.y[] * n.y;
+  double lambda2vh = n.x/(n.x+n.y)*lambda2v.x[] + n.y/(n.x+n.y)*lambda2v.y[];
 
   // Interface energy balance
   fdata[0] = -divq_rad_int(TInti, TG0, RADIATION_INTERFACE) 
@@ -67,7 +69,7 @@ void ijc_CoupledTemperature() {
       foreach_dimension()
         data.c.x = o.x;
 
-      fsolve (EqTemperatureGsl, arrUnk, &data);
+      fsolve (EqTemperatureGsl, arrUnk, &data, "EqTemperature");
 
       {
         double* unk  = (double*)arrUnk->p;

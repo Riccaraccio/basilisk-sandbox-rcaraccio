@@ -1,7 +1,9 @@
-#include "navier-stokes/centered.h"
-#include "fractions.h"
-#define DARCY 1
+#define POROUS_ADVECTION
 #define F_ERR 1e-8
+
+#include "navier-stokes/centered-phasechange.h"
+#include "fractions.h"
+#include "darcy.h"
 
 double uin = 0.8;
 u.n[left] = dirichlet (uin);
@@ -14,16 +16,18 @@ u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 pf[right] = dirichlet (0.);
 
-int maxlevel = 10;
-
+int maxlevel = 8;
 double eps0 = 0.6;
-scalar eps[];
-face vector epsf[];
+scalar porosity[];
+double rhoG, muG;
 
 int main () {
   const face vector muv[] = {1e-1, 1e-1};
   mu = muv;
+  muG = 1e-1;
+  rhoG = 1.;
 
+  Da = 5e-3;
   stokes = true;
   init_grid (1 << maxlevel);
   run();
@@ -38,21 +42,18 @@ event init (i = 0) {
   fraction (f, x > 0.4 && x < 0.6);
 
   foreach()
-    eps[] = f[]*eps0 + (1. - f[]);
-
-  foreach_face()
-    epsf.x[] = face_value (eps, 0);
+    porosity[] = f[]*eps0;
 
   foreach()
     u.x[] = (1. - f[])*uin;
 }
-
-event stability (i++,last) {
-  dt = dtnext (timestep (uf, dtmax));
-}
-
 event endtimestep (i++) {
-  boundary({u});
+
+  scalar eps[];
+
+  foreach()
+    eps[] = (1.-f[]) + porosity[];
+
   foreach()
     foreach_dimension()
       v.x[] = u.x[]/eps[];
@@ -60,47 +61,6 @@ event endtimestep (i++) {
   foreach()
     true_p[] = p[]/eps[];
 }
-
-event advection_term (i++,last) {
-  prediction();
-  mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);
-
-  face vector ufn[];
-  foreach_face()
-    ufn.x[] = uf.x[]/epsf.x[];
-  
-  advection ((scalar *){u}, ufn, dt, (scalar *){g});
-}
-
-#if DARCY
-double Da = 5e-3;
-event defaults (i = 0) {
-  if (is_constant(a.x)) {
-    a = new face vector;
-    foreach_face() {
-      a.x[] = 0.;
-      dimensional (a.x[] == Delta/sq(DT));
-    }
-  }
-}
-
-face vector ef;
-event acceleration (i++){
-  face vector av = a;
-  foreach_face() {
-    double ff = face_value(f,0);
-    if (ff > F_ERR) {
-      double F  = 1.75/pow (150*pow (epsf.x[], 3), 0.5);
-
-      // Darcy contribution
-      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (mu.x[]*epsf.x[]/Da) *uf.x[] *ff; 
-
-      // Forcheimer contribution
-      av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*epsf.x[]*rho[]/pow(Da,0.5)) *fabs(uf.x[])*uf.x[] *ff;
-    }
-  }
-}
-#endif
 
 event logprofile (i = 100) {
   char name[80];
@@ -112,7 +72,7 @@ event logprofile (i = 100) {
   fflush (fp);
 }
 
-event stop (i = 100);
+event stop (i = 10);
 
 /** 
 ~~~gnuplot velocity profile

@@ -1,6 +1,7 @@
 #include "poisson.h"
 extern double rhoG;
 extern scalar porosity;
+extern scalar f;
 
 scalar gasSource[];
 scalar drhodt[];
@@ -103,7 +104,7 @@ event advection_term (i++,last) {
 
   face vector ufn[];
   foreach_face() {
-    double ef = face_value(porosity, 0);
+    double ef = face_value(porosity, 0) + (1. - face_value(f, 0));
     ufn.x[] = uf.x[]/ef;
   }
   

@@ -84,11 +84,12 @@ event tracer_advection (i++) {
     #endif
 
     u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoGvh_S*cpGvh_S)/(rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1.-ef)) : ufsave.x[];
+    // u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoGvh_S*cpGvh_S)/(rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1.-ef))*ff + (1-ff)*ufsave.x[] : ufsave.x[];
   }
 
   advection_div({TS}, u_prime, dt);
 # ifndef TEMPERATURE_PROFILE
-  advection_div({TG}, u_prime, dt);
+  advection_div({TG}, ufsave, dt);
 # endif
 #endif
 

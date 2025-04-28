@@ -89,7 +89,7 @@ event tracer_advection (i++) {
 
   advection_div({TS}, u_prime, dt);
 # ifndef TEMPERATURE_PROFILE
-  advection_div({TG}, ufsave, dt);
+  advection_div({TG}, u_prime, dt);
 # endif
 #endif
 

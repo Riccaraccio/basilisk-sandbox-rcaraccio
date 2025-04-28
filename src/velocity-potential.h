@@ -14,13 +14,13 @@ mgstats project_sv (face vector ubf, scalar psi,
 {
   scalar prod[];
   foreach()
-    prod[] = (omega[]*f[]*zeta[]/rhoS*cm[])/dt; //TODO: variable density
+    prod[] = (omega[]*f[]*zeta[]/rhoS*cm[]);
 
   mgstats mgp = poisson (psi, prod, alpha, 
-      tolerance = TOLERANCE/sq(dt), nrelax = nrelax);
+      tolerance = TOLERANCE, nrelax = nrelax);
 
   foreach_face()
-    ubf.x[] = -dt*alpha.x[]*face_gradient_x (psi, 0);
+    ubf.x[] = -alpha.x[]*face_gradient_x (psi, 0);
 
   return mgp;
 }

@@ -9,7 +9,7 @@ mgstats mgpsf;
 trace
 mgstats project_sv (face vector ubf, scalar psi,
     (const) face vector alpha = unityf,
-    double dt = 1.,
+    double delta = 1.,
     int nrelax = 4)
 {
   scalar prod[];
@@ -17,7 +17,7 @@ mgstats project_sv (face vector ubf, scalar psi,
     prod[] = (omega[]*f[]*zeta[]/rhoS*cm[]);
 
   mgstats mgp = poisson (psi, prod, alpha, 
-      tolerance = TOLERANCE, nrelax = nrelax);
+      tolerance = TOLERANCE*delta, nrelax = nrelax);
 
   foreach_face()
     ubf.x[] = -alpha.x[]*face_gradient_x (psi, 0);
@@ -42,3 +42,10 @@ psi[front]  = neumann (neumann_pressure(ghost));
 psi[back]   = neumann (- neumann_pressure(0));
 #  endif
 #endif // !AXI
+
+event defaults (i = 0) {
+  psi.nodump = true;
+  #if TREE
+  ubf.x.refine = refine_face_solenoidal;
+  #endif
+}

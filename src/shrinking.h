@@ -14,6 +14,7 @@ scalar zeta[];
 scalar levelset[];
 scalar o[];
 
+(const) face vector ccc = unityf;
 extern double TG0, TS0;
 extern scalar TS, T;
 vector gTS[];
@@ -42,7 +43,7 @@ void set_zeta (enum zeta_types zeta_policy) {
   switch (zeta_policy) {
     case ZETA_SHRINK:
       foreach()
-        zeta[] = 1.;//temp
+        zeta[] = 0.5;//temp
       break;
 
     case ZETA_SWELLING:
@@ -95,6 +96,11 @@ void set_zeta (enum zeta_types zeta_policy) {
 event defaults (i=0) {
   f.tracers = list_append (f.tracers, porosity);
   set_zeta (zeta_policy);
+  #if AXI
+    ccc = new face vector;
+    foreach_face()
+      ccc.x[] = fm.x[];
+  #endif
 }
 
 event reset_sources (i++);
@@ -107,18 +113,13 @@ event phasechange (i++) {
     f[] = clamp(f[], 0.,1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
     porosity[] = clamp(porosity[], 0., 1.);
-    porosity[] = (porosity[] > F_ERR) ? porosity[] : 0.;
+    porosity[] = (f[] > F_ERR) ? porosity[] : 0.;
   }
 
   set_zeta (zeta_policy);
 
-  face vector ccc[] = unityf;
-  #if AXI
-    foreach_face()
-      ccc.x[] = fm.x[];
-  #endif
-
-  mgpsf = project_sv (ubf, psi, ccc, dt, mgpsf.nrelax); //TODO: should recive fm instead of alpha
+  double delta = L0/(1 << maxlevel);
+  mgpsf = project_sv (ubf, psi, ccc, delta, mgpsf.nrelax);
 
   foreach() {
     if (f[] > F_ERR) {

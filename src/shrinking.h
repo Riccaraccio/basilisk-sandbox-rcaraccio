@@ -118,8 +118,7 @@ event phasechange (i++) {
 
   set_zeta (zeta_policy);
 
-  double delta = L0/(1 << maxlevel);
-  mgpsf = project_sv (ubf, psi, ccc, delta, mgpsf.nrelax);
+  mgpsf = project_sv (ubf, psi, ccc, mgpsf.nrelax);
 
   foreach() {
     if (f[] > F_ERR) {

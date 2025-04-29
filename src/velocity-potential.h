@@ -5,19 +5,19 @@ extern double rhoS;
 scalar psi[];
 face vector ubf[];
 mgstats mgpsf;
+double TOLERANCE_SOLID = 1e-5;
 
 trace
 mgstats project_sv (face vector ubf, scalar psi,
     (const) face vector alpha = unityf,
-    double delta = 1.,
     int nrelax = 4)
 {
   scalar prod[];
   foreach()
     prod[] = (omega[]*f[]*zeta[]/rhoS*cm[]);
 
-  mgstats mgp = poisson (psi, prod, alpha, 
-      tolerance = TOLERANCE*delta, nrelax = nrelax);
+  mgstats mgp = poisson (psi, prod, alpha,
+      tolerance = TOLERANCE_SOLID, nrelax = nrelax);
 
   foreach_face()
     ubf.x[] = -alpha.x[]*face_gradient_x (psi, 0);

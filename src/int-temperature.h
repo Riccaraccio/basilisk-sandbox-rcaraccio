@@ -23,59 +23,52 @@ double divq_rad_int (double TInti, double Tbulk = 300., double alphacorr = 1.) {
   return alphacorr*5.670373e-8*(pow(Tbulk, 4.) - pow(TInti, 4.));
 }
 
-void EqTemperature (const double* xdata, double* fdata, void* params) {
-  UserDataNls* data = (UserDataNls*) params;
-  Point point = locate(data->c.x, data->c.y, data->c.z);
+int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) {
+  UserDataNls * data = (UserDataNls *)params;
 
-  double TInti = xdata[0];
-  bool success = false;
+  // Point point = locate(data->c.x, data->c.y, data->c.z);
+  foreach_point(data->c.x, data->c.y, data->c.z, serial) {
 
-  double gradTGn = ebmgrad(point, TG, fS, fG, fsS, fsG, true, TInti, &success);
-  double gradTSn = ebmgrad(point, TS, fS, fG, fsS, fsG, false, TInti, &success);
+    double TInti = gsl_vector_get(xdata, 0);
+    bool success = false;
 
-  coord n = facet_normal(point, fS, fsS);
-  normalize(&n);
-  n.x = fabs(n.x); n.y = fabs(n.y);
-  double lambda1vh = n.x/(n.x+n.y)*lambda1v.x[] + n.y/(n.x+n.y)*lambda1v.y[];
+    double gradTGn = ebmgrad(point, TG, fS, fG, fsS, fsG, true,  TInti, &success);
+    double gradTSn = ebmgrad(point, TS, fS, fG, fsS, fsG, false, TInti, &success);
 
-  // lambdaG_G is not dipendent on the direction, this is just to treat it the same way as lambdaS
-  double lambda2vh = n.x/(n.x+n.y)*lambda2v.x[] + n.y/(n.x+n.y)*lambda2v.y[];
+    coord n = facet_normal(point, fS, fsS);
+    normalize(&n);
+    n.x = fabs(n.x); n.y = fabs(n.y);
+    double lambda1vh = n.x/(n.x+n.y)*lambda1v.x[] + n.y/(n.x+n.y)*lambda1v.y[];
 
-  // Interface energy balance
-  fdata[0] = -divq_rad_int(TInti, TG0, RADIATION_INTERFACE) 
-             + lambda1vh*gradTSn 
-             + lambda2vh*gradTGn;
-}
+    // lambdaG_G is not dipendent on the direction, this is just to treat it the same way as lambdaS
+    double lambda2vh = n.x/(n.x+n.y)*lambda2v.x[] + n.y/(n.x+n.y)*lambda2v.y[];
 
-int EqTemperatureGsl (const gsl_vector* x, void* params, gsl_vector* f) {
-  double* xdata = x->data;
-  double* fdata = f->data;
-
-  EqTemperature (xdata, fdata, params);
+    gsl_vector_set(fdata, 0,
+      -divq_rad_int (TInti, TG0, RADIATION_INTERFACE) 
+      + lambda1vh*gradTSn 
+      + lambda2vh*gradTGn
+      + 1e-10
+    );
+  }
   return GSL_SUCCESS;
 }
 
 void ijc_CoupledTemperature() {
+  gsl_vector *unk = gsl_vector_alloc(1);
+
   foreach() {
     if (f[]>F_ERR && f[] < 1.-F_ERR) {
-      Array * arrUnk = array_new();
-      {
-        double vali = TInt[];
-        array_append (arrUnk, &vali, sizeof(double));
-      }
+      gsl_vector_set(unk, 0, TInt[]);
 
       UserDataNls data;
       coord o = {x,y,z};
       foreach_dimension()
         data.c.x = o.x;
 
-      fsolve (EqTemperatureGsl, arrUnk, &data, "EqTemperature");
+      fsolve (EqTemperature, unk, &data, "EqTemperature");
 
-      {
-        double* unk  = (double*)arrUnk->p;
-        TInt[] = unk[0];
-      }
-      array_free (arrUnk);
+      TInt[] = gsl_vector_get(unk, 0);
     }
   }
+  gsl_vector_free(unk);
 }

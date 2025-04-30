@@ -19,7 +19,7 @@ typedef struct {
 } UserDataNls;
 #endif
 
-void EqSpecies(const double *xdata, double *fdata, void *params) {
+int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
   UserDataNls *data = (UserDataNls *)params;
 
   double YGInti[NGS];
@@ -28,62 +28,58 @@ void EqSpecies(const double *xdata, double *fdata, void *params) {
   double jG_G[NGS];
   bool success = false;
 
-  Point point = locate(data->c.x, data->c.y, data->c.z);
-  for (int jj = 0; jj < NGS; jj++)
-    YGInti[jj] = xdata[jj];
+  // Point point = locate(data->c.x, data->c.y, data->c.z);
+  foreach_point(data->c.x, data->c.y, data->c.z, serial) {
 
-  for (int jj = 0; jj < NGS; jj++) {
-    scalar YG = YGList_G[jj];
-    scalar DmixG = DmixGList_G[jj];
-    double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, YGInti[jj], &success);
+    for (int jj = 0; jj < NGS; jj++)
+      YGInti[jj] = gsl_vector_get(xdata, jj);
 
-    double rhoGvh_G;
+    for (int jj = 0; jj < NGS; jj++)
+    {
+      scalar YG = YGList_G[jj];
+      scalar DmixG = DmixGList_G[jj];
+      double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, YGInti[jj], &success);
+
+      double rhoGvh_G;
 #ifdef VARPROP
-    rhoGvh_G = rhoGv_G[];
+      rhoGvh_G = rhoGv_G[];
 #else
-    rhoGvh_G = rhoG;
+      rhoGvh_G = rhoG;
 #endif
 
-    jG_G[jj] = rhoGvh_G*DmixG[]*gtrgrad;
-  }
+      jG_G[jj] = rhoGvh_G * DmixG[] * gtrgrad;
+    }
 
-  for (int jj = 0; jj < NGS; jj++) {
-    scalar YG = YGList_S[jj];
-    scalar DmixG = DmixGList_S[jj];
-    double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, false, YGInti[jj], &success);
+    for (int jj = 0; jj < NGS; jj++)
+    {
+      scalar YG = YGList_S[jj];
+      scalar DmixG = DmixGList_S[jj];
+      double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, false, YGInti[jj], &success);
 
-    double rhoGvh_S;
+      double rhoGvh_S;
 #ifdef VARPROP
-    rhoGvh_S = rhoGv_S[];
+      rhoGvh_S = rhoGv_S[];
 #else
-    rhoGvh_S = rhoG;
+      rhoGvh_S = rhoG;
 #endif
 
-    jG_S[jj] = rhoGvh_S * DmixG[] * gtrgrad;
+      jG_S[jj] = rhoGvh_S * DmixG[] * gtrgrad;
+    }
+
+    for (int jj = 0; jj < NGS; jj++)
+      gsl_vector_set(fdata, jj, jG_S[jj] + jG_G[jj] + 1e-10);
   }
-
-  for (int jj = 0; jj < NGS; jj++)
-    fdata[jj] = jG_G[jj] + jG_S[jj];
-}
-
-int EqSpeciesGsl (const gsl_vector* x, void* params, gsl_vector*f) {
-  double* xdata = x->data;
-  double* fdata = f->data;
-
-  EqSpecies (xdata, fdata, params);
   return GSL_SUCCESS;
 }
 
 void intConcentration () {
+  gsl_vector* unk = gsl_vector_alloc(NGS);
   foreach() {
     if (f[]>F_ERR && f[]<1.-F_ERR) {
 
-      Array* arrUnk = array_new();
-
       for (int jj=0; jj<NGS; jj++) {
         scalar YGInt = YGList_Int[jj];
-        double vali = YGInt[];
-        array_append (arrUnk, &vali, sizeof(double));
+        gsl_vector_set(unk, jj, YGInt[]);
       }
 
       UserDataNls data;
@@ -92,18 +88,13 @@ void intConcentration () {
       foreach_dimension()
         data.c.x = o.x;
 
-      fsolve (EqSpeciesGsl, arrUnk, &data, "EqSpecies");
+      fsolve (EqSpecies, unk, &data, "EqSpecies");
 
-      {
-        double* unk = (double*)arrUnk->p;
-        for (int jj=0; jj<NGS; jj++) {
-          scalar YGInt = YGList_Int[jj];
-          YGInt[] = unk[jj];
-          YGInt[] = clamp(YGInt[], 0., 1.);
-        }
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YGInt = YGList_Int[jj];
+        YGInt[] = gsl_vector_get(unk, jj);
       }
-
-      array_free (arrUnk);
     }
   }
+  gsl_vector_free(unk);
 }

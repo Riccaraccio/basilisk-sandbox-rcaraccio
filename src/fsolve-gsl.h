@@ -30,25 +30,21 @@ equations. */
 typedef int (* nls_fun) (const gsl_vector * x, void * params, gsl_vector * f);
 
 void fsolve_gsl (nls_fun fun,
-    Array * arrUnk,
+    gsl_vector * unk,
     void * params,
     char * name = NULL)
 {
   const gsl_multiroot_fsolver_type * T;
   gsl_multiroot_fsolver * s;
 
-  int status, iter = 0.;
+  int status, iter = 0;
 
-  int size = arrUnk->len / sizeof(double);
-  const size_t n = (size_t)(size);
+  const size_t n = unk->size;
 
   gsl_multiroot_function f = {fun, n, params};
 
-  double * x_init = (double *)arrUnk->p;
   gsl_vector * x = gsl_vector_alloc (n);
-
-  for (unsigned int i=0; i<size; i++)
-    gsl_vector_set (x, i, x_init[i]);
+  gsl_vector_memcpy (x, unk);
 
   T = gsl_multiroot_fsolver_hybrids;
   s = gsl_multiroot_fsolver_alloc (T, n);
@@ -56,7 +52,9 @@ void fsolve_gsl (nls_fun fun,
 
   do {
     iter++;
-    status = gsl_multiroot_fsolver_iterate (s);
+    // fprintf (stderr, "x = %g\n", gsl_vector_get (s->x, 0));
+
+    status = gsl_multiroot_fsolver_iterate (s); //si pianta qua se s->f=0 e non si include DISPLAY=-1
 
     if (status)   /* check if solver is stuck */ {
       fprintf (stderr, "WARNING: Non linear systems solver is stuck for %s\n", name);
@@ -73,20 +71,19 @@ void fsolve_gsl (nls_fun fun,
   }
   while (status == GSL_CONTINUE && iter < 1000);
 
-  double * res = (double *)arrUnk->p;
-  for (unsigned int i=0; i<size; i++)
-    res[i] = gsl_vector_get (s->x, i);
+  for (unsigned int i=0; i<n; i++)
+    gsl_vector_set(unk, i ,gsl_vector_get (s->x, i));
 
   gsl_multiroot_fsolver_free (s);
   gsl_vector_free (x);
 }
 
 void fsolve (nls_fun fun,
-    Array * arrUnk,
+    gsl_vector * unk,
     void * params,
     char * name = NULL)
 {
-  fsolve_gsl (fun, arrUnk, params, name);
+  fsolve_gsl (fun, unk, params, name);
 }
 
 #endif // USE_GSL

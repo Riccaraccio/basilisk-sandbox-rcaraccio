@@ -67,7 +67,7 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
     }
 
     for (int jj = 0; jj < NGS; jj++)
-      gsl_vector_set(fdata, jj, jG_S[jj] + jG_G[jj] + 1e-10);
+      gsl_vector_set(fdata, jj, jG_S[jj] + jG_G[jj]);
   }
   return GSL_SUCCESS;
 }

@@ -36,7 +36,6 @@ void fsolve_gsl (nls_fun fun,
 {
   const gsl_multiroot_fsolver_type * T;
   gsl_multiroot_fsolver * s;
-
   int status, iter = 0;
 
   const size_t n = unk->size;
@@ -50,11 +49,12 @@ void fsolve_gsl (nls_fun fun,
   s = gsl_multiroot_fsolver_alloc (T, n);
   gsl_multiroot_fsolver_set (s, &f, x);
 
-  do {
+  status = gsl_multiroot_test_residual (s->f, FSOLVE_ABSTOL);
+  
+  while (status == GSL_CONTINUE && iter < 1000) {
     iter++;
-    // fprintf (stderr, "x = %g\n", gsl_vector_get (s->x, 0));
 
-    status = gsl_multiroot_fsolver_iterate (s); //si pianta qua se s->f=0 e non si include DISPLAY=-1
+    status = gsl_multiroot_fsolver_iterate (s);
 
     if (status)   /* check if solver is stuck */ {
       fprintf (stderr, "WARNING: Non linear systems solver is stuck for %s\n", name);
@@ -67,9 +67,7 @@ void fsolve_gsl (nls_fun fun,
     else
       status =
         gsl_multiroot_test_residual (s->f, FSOLVE_ABSTOL);
-
   }
-  while (status == GSL_CONTINUE && iter < 1000);
 
   for (unsigned int i=0; i<n; i++)
     gsl_vector_set(unk, i ,gsl_vector_get (s->x, i));

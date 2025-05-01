@@ -46,9 +46,7 @@ int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) 
     gsl_vector_set(fdata, 0,
       -divq_rad_int (TInti, TG0, RADIATION_INTERFACE) 
       + lambda1vh*gradTSn 
-      + lambda2vh*gradTGn
-      + 1e-10
-    );
+      + lambda2vh*gradTGn);
   }
   return GSL_SUCCESS;
 }

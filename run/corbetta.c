@@ -1,17 +1,14 @@
 #define NO_ADVECTION_DIV    1
-#define FSOLVE_ABSTOL       1.e-3
 #define SOLVE_TEMPERATURE   1
-//#define NO_1D_COMPRESSION   1
-// #define CONST_DIFF          1
-//#define EXPLICIT_REACTIONS  1
-//#define EXPLICIT_DIFFUSION  1
-//#define FIXED_INT_TEMP    1
+#define NO_EXPANSION       1
+// #define FIXED_INT_TEMP    1
 #define CONST_DIFF 2.05e-5
 
-// #include "temperature-profile.h"
+#include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
+// #include "const-prop.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
@@ -21,11 +18,13 @@
 u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
 p[top]        = dirichlet (0.);
+pf[top]       = dirichlet (0.);
 psi[top]      = dirichlet (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
+pf[right]     = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
 int maxlevel = 6; int minlevel = 2;
@@ -48,19 +47,16 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  Da = 1e-4;
+  // Da = 1e-10;
   
-  L0 = 3.5*D0;
+  L0 = 2.5*D0;
 
-#ifdef EXPLICIT_DIFFUSION
-  fprintf(stderr, "Using EXPLICIT_DIFFUSION\n");
-  DT = 1e-1;
-#else
-  fprintf(stderr, "Using IMPLICIT_DIFFUSION\n");
-  DT = 1e-1;
-#endif
+  zeta_policy = ZETA_SHRINK;
 
-  // kinfolder = "biomass/Solid-only-2003";
+  shift_prod = true;
+  DT = 1e-1;
+
+  // kinfolder = "biomass/dummy-solid";
   kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
@@ -80,18 +76,13 @@ event init(i=0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0214;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0086;
 
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+
   foreach()
     porosity[] = eps0*f[];
 
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
-
-  //0: SHRINK, 
-  //1: SWELLING, 
-  //2: SMOOTH, 
-  //3: SHARP, 
-  //4: LEVELSET
-  zeta_policy = 0;
 
 #ifdef SOLVE_TEMPERATURE
 #ifndef TEMPERATURE_PROFILE
@@ -153,7 +144,7 @@ event output (t+=1) {
 
 event adapt (i++) {
   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+    (double[]){1.e-1, 1.e-1, 1.e-1}, maxlevel, minlevel, 2);
 }
 
 // event movie(t+=1) {
@@ -173,18 +164,18 @@ event adapt (i++) {
 //   save ("LVG.mp4");
 // }
 
-event movie(t+=5) {
-  clear();
-  box();
-  view (ty=-0.5, width = 1400.);
-  draw_vof("f", lw=2);
-  squares ("T", min=300, max=800, linear=true);
-  mirror ({1.,0.}) {
-    draw_vof ("f", lw=2);
-    squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
-    // vectors ("u", scale=1);
- }
- save ("movie.mp4");
+// event movie(t+=5) {
+//   clear();
+//   box();
+//   view (ty=-0.5, width = 1400.);
+//   draw_vof("f", lw=2);
+//   squares ("T", min=300, max=800, linear=true);
+//   mirror ({1.,0.}) {
+//     draw_vof ("f", lw=2);
+//     squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
+//     // vectors ("u", scale=1);
+//  }
+//  save ("movie.mp4");
 
   // clear ();
   // box ();
@@ -200,7 +191,7 @@ event movie(t+=5) {
   //   vectors ("u", scale = 1e-2);
   // }
   // save("movie2.mp4");
-}
+// }
 
 #if DUMP
 int count = 0;

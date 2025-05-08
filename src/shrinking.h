@@ -43,7 +43,7 @@ void set_zeta (enum zeta_types zeta_policy) {
   switch (zeta_policy) {
     case ZETA_SHRINK:
       foreach()
-        zeta[] = 0.5;//temp
+        zeta[] = 1;//temp
       break;
 
     case ZETA_SWELLING:

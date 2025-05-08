@@ -76,8 +76,6 @@ static void diffusion_boundary (Point point, int bid) {
     if (ff < 1.-F_ERR) {
       scalar YG = YGList_G[jj];
       double gradYG = face_gradient_bid (point, YG, bid);
-      // if (jj == OpenSMOKE_IndexOfSpecies("TAR"))
-      //   fprintf(stderr,"YG=%g, gradYG = %f\n", YG[], gradYG);
       scalar Dmix2  = Dmix2List_G[jj];
       double Dmix2v = Dmix2[];
   #if AXI

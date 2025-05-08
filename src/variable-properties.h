@@ -46,28 +46,19 @@ extern scalar sf;
 
 event properties (i++) {
 
-  foreach_face() {
-    double ff = (sf[] + sf[-1])/2.;
-
-    double rhoGvh_S = 0.5*(rhoGv_S[] + rhoGv_S[-1]);
-    double rhoGvh_G = 0.5*(rhoGv_G[] + rhoGv_G[-1]);
-    
-    alphav.x[] = fm.x[]/aavg (ff, rhoGvh_S, rhoGvh_G);
-
-    {
-      face vector muv = mu;
-      double mu1vh = 0.5*(muGv_S[] + muGv_S[-1]);
-      double mu2vh = 0.5*(muGv_G[] + muGv_G[-1]);
-
-      muv.x[] = fm.x[]*aavg (ff, mu1vh, mu2vh);
-    }
+  scalar alphacenter[], mucenter[];
+  foreach() {
+    alphacenter[] = 1./(rhoGv_G[]*(1.-f[]) + rhoGv_S[]*f[]);
+    mucenter[] = (muGv_G[]*(1.-f[]) + muGv_S[]*f[]);
+    rhov[] = cm[]*(rhoGv_G[]*(1.-f[]) + rhoGv_S[]*f[]);
   }
 
-  foreach() {
-    double rho1vh = rhoGv_S[];
-    double rho2vh = rhoGv_G[];
-
-    rhov[] = cm[]*aavg (sf[], rho1vh, rho2vh);
+  foreach_face() {
+    alphav.x[] = fm.x[]*face_value(alphacenter, 0);
+    {
+      face vector muv = mu;
+      muv.x[] = fm.x[]*face_value(mucenter, 0);
+    }
   }
 }
 

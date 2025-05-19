@@ -190,9 +190,21 @@ for (int jj=0; jj<NGS; jj++) {
   for (scalar s in YSList)
     s.inverse = false;
 
-  f.tracers = list_concat (f.tracers, YGList_S);
-  f.tracers = list_concat (f.tracers, YGList_G);
-  f.tracers = list_concat (f.tracers, YSList);
+  scalar *temp;
+  temp = list_concat(f.tracers, YGList_S);
+  if (f.tracers)
+    free(f.tracers);
+  f.tracers = temp;
+
+  temp = list_concat(f.tracers, YGList_G);
+  if (f.tracers)
+    free(f.tracers);
+  f.tracers = temp;
+
+  temp = list_concat(f.tracers, YSList);
+  if (f.tracers)
+    free(f.tracers);
+  f.tracers = temp;
 
   fS.nodump = true;
   fG.nodump =true;

@@ -20,24 +20,24 @@ typedef struct {
 #endif
 
 int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
+  double YGInti[NGS];
+  for (int jj = 0; jj < NGS; jj++)
+    YGInti[jj] = gsl_vector_get(xdata, jj);
+  
   UserDataNls *data = (UserDataNls *)params;
 
-  double YGInti[NGS];
   // double XGInti[NGS];
   double jG_S[NGS];
   double jG_G[NGS];
   bool success = false;
 
-  // Point point = locate(data->c.x, data->c.y, data->c.z);
+  //Point point = locate(data->c.x, data->c.y, data->c.z);
   foreach_point(data->c.x, data->c.y, data->c.z, serial) {
 
-    for (int jj = 0; jj < NGS; jj++)
-      YGInti[jj] = gsl_vector_get(xdata, jj);
-
-    for (int jj = 0; jj < NGS; jj++)
-    {
+    for (int jj = 0; jj < NGS; jj++) {
       scalar YG = YGList_G[jj];
       scalar DmixG = DmixGList_G[jj];
+      fprintf (stderr, "YGInti[jj] = %g\n", YGInti[jj]);
       double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, YGInti[jj], &success);
 
       double rhoGvh_G;
@@ -50,8 +50,7 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
       jG_G[jj] = rhoGvh_G * DmixG[] * gtrgrad;
     }
 
-    for (int jj = 0; jj < NGS; jj++)
-    {
+    for (int jj = 0; jj < NGS; jj++) {
       scalar YG = YGList_S[jj];
       scalar DmixG = DmixGList_S[jj];
       double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, false, YGInti[jj], &success);
@@ -65,10 +64,11 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
 
       jG_S[jj] = rhoGvh_S * DmixG[] * gtrgrad;
     }
-
-    for (int jj = 0; jj < NGS; jj++)
-      gsl_vector_set(fdata, jj, jG_S[jj] + jG_G[jj]);
   }
+
+  for (int jj = 0; jj < NGS; jj++)
+    gsl_vector_set(fdata, jj, jG_S[jj] + jG_G[jj]);
+
   return GSL_SUCCESS;
 }
 
@@ -87,8 +87,10 @@ void intConcentration () {
       coord o = {x,y,z};
       foreach_dimension()
         data.c.x = o.x;
-
+    
+      fprintf (stderr, "before fsolve, f=%g\n",f[]);
       fsolve (EqSpecies, unk, &data, "EqSpecies");
+      fprintf (stderr, "after fsolve\n");
 
       for (int jj = 0; jj < NGS; jj++) {
         scalar YGInt = YGList_Int[jj];

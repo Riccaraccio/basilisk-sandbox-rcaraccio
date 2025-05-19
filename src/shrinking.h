@@ -118,7 +118,8 @@ event phasechange (i++) {
 
   set_zeta (zeta_policy);
 
-  mgpsf = project_sv (ubf, psi, ccc, mgpsf.nrelax);
+  //mgpsf = project_sv (ubf, psi, ccc, mgpsf.nrelax);
+  mgpsf = project_sv (ubf, psi, alpha, mgpsf.nrelax);
 
   foreach() {
     if (f[] > F_ERR) {

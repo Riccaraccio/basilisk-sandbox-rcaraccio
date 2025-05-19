@@ -50,14 +50,24 @@ void fsolve_gsl (nls_fun fun,
   gsl_multiroot_fsolver_set (s, &f, x);
 
   status = gsl_multiroot_test_residual (s->f, FSOLVE_ABSTOL);
-  
+
   while (status == GSL_CONTINUE && iter < 1000) {
     iter++;
 
+    fprintf (stderr, "before iterating\n");
+    for (int jj = 0; jj < n; jj++) {
+      fprintf (stderr, "Species %s: x=%g, f=%g, dx=%g\n", 
+          OpenSMOKE_NamesOfSpecies(jj),
+          gsl_vector_get (gsl_multiroot_fsolver_root(s), jj),
+          gsl_vector_get (gsl_multiroot_fsolver_f(s), jj),
+          gsl_vector_get (s->dx, jj));
+    }
+ 
     status = gsl_multiroot_fsolver_iterate (s);
+    fprintf (stderr, "after iterating\n");
 
     if (status)   /* check if solver is stuck */ {
-      fprintf (stderr, "WARNING: Non linear systems solver is stuck for %s\n", name);
+      fprintf (stderr, "WARNING: Non linear systems solver is stuck for %s with code:%s\n", name, gsl_strerror (status));
       break;
     }
 

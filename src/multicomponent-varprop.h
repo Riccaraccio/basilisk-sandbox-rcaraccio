@@ -119,7 +119,7 @@ event tracer_advection (i++) {
 event tracer_diffusion (i++) {
 
   update_properties();
-
+  
   foreach() {
     f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
@@ -204,22 +204,33 @@ event tracer_diffusion (i++) {
 #endif
 
   // first guess for species interface concentration
+  double sum = 0.;
   foreach() {
+    sum = 0;
     for (int jj=0; jj<NGS; jj++) {
-      scalar YG_S = YGList_S[jj];
-      scalar YG_G = YGList_G[jj];
       scalar YGInt = YGList_Int[jj];
       YGInt[] = 0.;
+   
       if (f[] > F_ERR && f[] < 1.-F_ERR) {
+        scalar YG_S = YGList_S[jj];
+        scalar YG_G = YGList_G[jj];
+        
         YGInt[] = (YG_G[] + YG_S[])/2;
         YGInt[] = clamp (YGInt[], 0., 1.);
+        
+        sum += YGInt[];
       }
+
     }
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
+      fprintf (stderr, "Sum = %g\n", sum);
   }
 
   //find the interface concentration foreach species
+  fprintf (stderr, "Interface Concentrations, iteration = %d\n", i);
   intConcentration();
 
+  fprintf (stderr, "Done interface conc\n");
   //Calculate the source therm
   foreach() {
     if (f[] > F_ERR && f[] < 1.-F_ERR) {

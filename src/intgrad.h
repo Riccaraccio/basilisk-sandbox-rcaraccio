@@ -86,7 +86,7 @@ static inline double concentration_gradient_x (Point point, scalar s, scalar cs,
   /**
   For non-degenerate cases, the gradient can be  obtained using
   second-order, third-order or vof-averaged estimates. */
- 
+
   if (v[1] != nodata && third) { // third-order gradient
     return (d[1]*(bc - v[0])/d[0] - d[0]*(bc - v[1])/d[1])/((d[1] - d[0])*Delta);
   }
@@ -101,8 +101,9 @@ double concentration_gradient (Point point, scalar s, scalar cs, face vector fs,
 {
 #if dimension == 2
   foreach_dimension()
-    if (fabs(n.x) >= fabs(n.y))
+    if (fabs(n.x) >= fabs(n.y)) {
       return concentration_gradient_x (point, s, cs, fs, n, p, bc, third);
+    }
 #else // dimension == 3
   if (fabs(n.x) >= fabs(n.y)) {
     if (fabs(n.x) >= fabs(n.z))

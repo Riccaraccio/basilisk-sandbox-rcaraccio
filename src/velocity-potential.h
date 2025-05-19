@@ -69,7 +69,7 @@ psi[left]  = neumann (- neumann_pressure(0));
 #if AXI
 ubf.n[bottom] = 0.;
 ubf.t[bottom] = dirichlet(0);
-psi[top]    = neumann (neumann_pressure(ghost));
+psi[top]    = neumann (neumann_pressure(0));
 #else // !AXI
 #  if dimension > 1
 psi[top]    = neumann (0);
@@ -80,3 +80,10 @@ psi[front]  = neumann (0);
 psi[back]   = neumann (0);
 #  endif
 #endif // !AXI
+
+event defaults (i=0) {
+  psi.nodump = true;
+  #if TREE
+  ubf.x.refine = refine_face_solenoidal;
+  #endif
+}

@@ -65,10 +65,11 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
 
       jG_S[jj] = rhoGvh_S * DmixG[] * gtrgrad;
     }
-
-    for (int jj = 0; jj < NGS; jj++)
-      gsl_vector_set(fdata, jj, jG_S[jj] + jG_G[jj]);
   }
+
+  for (int jj = 0; jj < NGS; jj++)
+    gsl_vector_set(fdata, jj, jG_S[jj] + jG_G[jj]);
+
   return GSL_SUCCESS;
 }
 

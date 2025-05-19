@@ -19,6 +19,7 @@
 #include "int-temperature.h"
 #include "int-concentration.h"
 
+// function to check the variables and dump the simulation if they are out of range
 void check_variables() {
   bool status = true;
 
@@ -213,7 +214,39 @@ event tracer_advection (i++) {
 }
 #endif
 
+void check_and_correct_fractions (scalar* YList, int n, bool inverse) { //YList in tracer form
+  foreach() {
+    double sum = 0.;
+
+    for (int jj = 0; jj < n; jj++) {
+      scalar Y = YList[jj];
+      if (!inverse) {
+        Y[] = (f[] > F_ERR) ? Y[]/f[] : 0.;
+      } else {
+        Y[] = ((1.-f[]) > F_ERR) ? Y[]/(1. - f[]) : 0.;
+      }
+      if (Y[] < 1e-10) Y[] = 0.;
+      sum += Y[];
+    }
+
+    for (int jj = 0; jj < n; jj++) {
+      scalar Y = YList[jj];
+      Y[] = (sum > 1e-10) ? Y[]/sum : 0.;
+      if (!inverse) {
+        Y[] = (f[] > F_ERR) ? Y[]*f[] : 0.;
+      } else {
+        Y[] = ((1. - f[]) > F_ERR) ? Y[]*(1. - f[]) : 0.;
+      }
+    }
+  }
+}
+
 event tracer_diffusion (i++) {
+  
+  //Check the mass fractions Can be removed for performance
+  check_and_correct_fractions (YGList_S, NGS, false);
+  check_and_correct_fractions (YGList_G, NGS, true);
+  check_and_correct_fractions (YSList, NSS, false);
 
 #ifdef VARPROP
   update_properties();
@@ -234,41 +267,6 @@ event tracer_diffusion (i++) {
     for (scalar YG in YGList_G)
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
   }
-
-  // //Can be removed for performance
-  // //Check the mass fractions
-  // foreach() {
-  //   double sum = 0.;
-  //   for (scalar YG in YGList_S)
-  //     sum += YG[];
-
-  //   for (scalar YG in YGList_S) {
-  //     YG[] = (sum > 1e-10) ? YG[]/sum : 0.;
-  //     YG[] = clamp(YG[], 0., 1.);
-  //   }
-  // }
-
-  // foreach() {
-  //   double sum = 0.;
-  //   for (scalar YG in YGList_G)
-  //     sum += YG[];
-
-  //   for (scalar YG in YGList_G) {
-  //     YG[] = (sum > 1e-10) ? YG[]/sum : 0.;
-  //     YG[] = clamp(YG[], 0., 1.);
-  //   }
-  // }
-
-  // foreach() {
-  //   double sum = 0.;
-  //   for (scalar YS in YSList)
-  //     sum += YS[];
-    
-  //   for (scalar YS in YSList) {
-  //     YS[] = (sum > 1e-10) ? YS[]/sum : 0.;
-  //     YS[] = clamp(YS[], 0., 1.);
-  //   }
-  // }
 
   //Compute face gradients
   face_fraction (fS, fsS);
@@ -312,11 +310,11 @@ event tracer_diffusion (i++) {
   // first guess for species interface concentration
   foreach() {
     for (int jj=0; jj<NGS; jj++) {
-      scalar YG_S = YGList_S[jj];
-      scalar YG_G = YGList_G[jj];
       scalar YGInt = YGList_Int[jj];
       YGInt[] = 0.;
       if (f[] > F_ERR && f[] < 1.-F_ERR) {
+        scalar YG_S = YGList_S[jj];
+        scalar YG_G = YGList_G[jj];
         YGInt[] = (YG_G[] + YG_S[])/2;
         YGInt[] = clamp (YGInt[], 0., 1.);
       }

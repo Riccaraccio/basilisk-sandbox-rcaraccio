@@ -30,7 +30,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 6; int minlevel = 2;
 double tend = 800.; //800s
 
 int main() {
@@ -43,7 +43,7 @@ int main() {
   rhoS = 1200.;
 
   L0 = 1.9*H0;
-  DT = 2e-2; 
+  DT = 1e-1; 
 
   zeta_policy = ZETA_REACTION;
   kinfolder = "biomass/Solid-only-2407";
@@ -67,6 +67,7 @@ event init (i = 0) {
     porosity[] = eps0*f[];
   
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 1.;
 
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4169;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.3147;
@@ -163,7 +164,7 @@ event stop (t = tend);
 /*
 ~~~gnuplot Mass profile
 reset
-set terminal svg size 400,350
+set terminal svg size 490,415
 set output "mass.svg"
 set xlabel "t [s]"
 set ylabel "M/M_0"
@@ -177,13 +178,13 @@ err_mass_time_r = 20
 err_mass_time_l = 0.
 
 plot  "OutputData-7-2407-Const" u 1:2 w l lw 2 lc "black" t "Mass", \
-      "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 4 lc "black" t "Mass exp"
-      #"data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Mass Gentile"
+      "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 4 lc "black" t "Mass exp", \
+      "data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Mass Gentile"
 ~~~
 
 ~~~gnuplot Shrinking
 reset
-set terminal svg size 400,350
+set terminal svg size 490,415
 set output "shrinking.svg"
 set xlabel "t [s]"
 set ylabel "Shrinking factor"
@@ -202,8 +203,8 @@ err_mass_time = 20
 plot "OutputData-7-2407-Const" u 1:3 w l lw 2 lc "dark-green" t "Radial", \
      "OutputData-7-2407-Const" u 1:4 w l lw 2 lc "black" t "Axial", \
      "data/radial-exp" u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 4 lw 1.5 lc "dark-green" t "Radial exp", \
-     "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 4 lw 1.5 lc "black" t "Axial exp"
-     #"data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "dark-green" t "Radial Gentile", \
-     #"data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Axial Gentile"
+     "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 4 lw 1.5 lc "black" t "Axial exp", \
+     "data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "dark-green" t "Radial Gentile", \
+     "data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Axial Gentile"
 ~~~
 */

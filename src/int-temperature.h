@@ -25,11 +25,11 @@ double divq_rad_int (double TInti, double Tbulk = 300., double alphacorr = 1.) {
 
 int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) {
   UserDataNls * data = (UserDataNls *)params;
-
+  double TInti = gsl_vector_get(xdata, 0);
+  
   // Point point = locate(data->c.x, data->c.y, data->c.z);
   foreach_point(data->c.x, data->c.y, data->c.z, serial) {
 
-    double TInti = gsl_vector_get(xdata, 0);
     bool success = false;
 
     double gradTGn = ebmgrad(point, TG, fS, fG, fsS, fsG, true,  TInti, &success);

@@ -1,10 +1,10 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
 #define NO_EXPANSION       1
-// #define FIXED_INT_TEMP    1
+#define FIXED_INT_TEMP    1
 #define CONST_DIFF 2.05e-5
 
-#include "temperature-profile.h"
+//#include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -47,13 +47,13 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  Da = 1e-10;
+  // Da = 1e-10;
   
   L0 = 2.5*D0;
 
-  zeta_policy = ZETA_REACTION;
+  zeta_policy = ZETA_SHRINK;
 
-  // shift_prod = true;
+  //shift_prod = true;
   DT = 1e-1;
 
   // kinfolder = "biomass/dummy-solid";
@@ -214,25 +214,24 @@ event snapshots (t += 1) {
 }
 #endif
 
-event stop (t = 1000);
+event stop (t = 2);
 
 /** 
 ~~~gnuplot temperature profiles
 reset
-set terminal svg size 450,400
-set xlabel "Time [s]"
-set ylabel "Temperature [K]"
+set xlabel "t [s]"
+set ylabel "temperature [K]"
 set key bottom right box width 1
 set xrange [0:1000]
 set yrange [300:800]
 set grid
 
-plot  "OutputData-6" u 1:3 w l lw 2 lc "dark-green" t "Core", \
-      "OutputData-6" u 1:4 w l lw 2 lc "blue" t "R/2", \
-      "OutputData-6" u 1:5 w l lw 2 lc "black" t "Surface", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 4 lc "dark-green" t "Corbetta core", \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 4 lc "blue" t "Corbetta R/2", \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 4 lc "black" t "Corbetta surface"
+plot  "OutputData-6" u 1:3 w l lw 2 lc "red" t "Core", \
+      "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "R/2", \
+      "OutputData-6" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
+      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
+      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
+      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface"
 ~~~
 
 ~~~gnuplot temperature profiles

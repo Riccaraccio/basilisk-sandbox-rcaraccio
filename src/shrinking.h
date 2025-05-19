@@ -53,8 +53,8 @@ void set_zeta (enum zeta_types zeta_policy) {
 
     case ZETA_SMOOTH:
       foreach()
-          //zeta[] = 1 / (1 + exp(32*radius - 40*sqrt(sq(x)+sq(y)+sq(z))));
-          zeta[] = 1 / (1 + exp(-(sqrt(sq(x)+sq(y)+sq(z))-radius/2)/pow(radius, 4./3.)));
+          zeta[] = 1 / (1 + exp(32*radius - 40*sqrt(sq(x)+sq(y)+sq(z))));
+          // zeta[] = 1 / (1 + exp(-(sqrt(sq(x)+sq(y)+sq(z))-radius/2)/pow(radius, 4./3.)));
       break;
 
     case ZETA_SHARP:
@@ -118,7 +118,8 @@ event phasechange (i++) {
 
   set_zeta (zeta_policy);
 
-  mgpsf = project_sv (ubf, psi, ccc, mgpsf.nrelax);
+  // mgpsf = project_sv (ubf, psi, ccc, mgpsf.nrelax); // does not work IDK why
+  mgpsf = project_sv (ubf, psi, alpha, mgpsf.nrelax);
 
   foreach() {
     if (f[] > F_ERR) {

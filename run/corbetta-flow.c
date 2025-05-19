@@ -1,46 +1,45 @@
-#define NO_ADVECTION_DIV    1
-#define SOLVE_TEMPERATURE   1
-#define NO_EXPANSION       1
-// #define FIXED_INT_TEMP    1
+#define NO_ADVECTION_DIV 1
+#define NO_EXPANSION 1
+#define SOLVE_TEMPERATURE 1
 #define CONST_DIFF 2.05e-5
+#define FSOLVE_ABSTOL 1.e-3
+#define RADIATION_INTERFACE 1
 
-#include "temperature-profile.h"
+// #include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
-// #include "const-prop.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "view.h"
 
-u.n[top]      = neumann (0.);
-u.t[top]      = neumann (0.);
-p[top]        = dirichlet (0.);
-pf[top]       = dirichlet (0.);
-psi[top]      = dirichlet (0.);
+double Uin = 16.4; //inlet velocity, 300 NL/min over 8.04e-4 m^2 area
+
+u.n[left]    = dirichlet (Uin);
+u.t[left]    = dirichlet (0.);
+p[left]      = neumann (0.);
+psi[left]    = neumann (0.);
+
+u.n[top]      = dirichlet (0.);
+u.t[top]      = dirichlet (0.);
+p[top]        = neumann (0.);
+psi[top]      = neumann (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
-pf[right]     = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 2;
-double D0 = 2*1.27e-2;
+int maxlevel = 7; int minlevel = 2;
+double D0 = 2.54e-2;
 double solid_mass0 = 0.;
 
 int main() {
-  lambdaS = 0.1987; lambdaG = 0.076;
-  cpS = 1600; cpG = 1167;
-#ifdef TEMPERATURE_PROFILE
-  TS0 = 300.; TG0 = 300.;
-#else
+  lambdaS = 0.1987;
   TS0 = 300.; TG0 = 750.;
-#endif
-  rhoS = 850; rhoG = 0.674;
-  muG = 3.53e-5;
+  rhoS = 850;
   eps0 = 0.4;
 
   //dummy properties
@@ -48,16 +47,14 @@ int main() {
   mu1 = 1., mu2 = 1.;
 
   Da = 1e-10;
+  zeta_policy = ZETA_SWELLING;
   
-  L0 = 2.5*D0;
+  L0 = 6*D0;
+  origin (-L0/3, 0);
 
-  zeta_policy = ZETA_REACTION;
-
-  // shift_prod = true;
   DT = 1e-1;
 
-  // kinfolder = "biomass/dummy-solid";
-  kinfolder = "biomass/Solid-only-2407";
+  kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
   run();
 }
@@ -65,18 +62,18 @@ int main() {
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
 event init(i=0) {
+  mask (y > 5.25e-2/2 ? top : none); //5.25 cm diameter of tube
   fraction (f, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4807;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.2611;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1325;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0957;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0214;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0086;
-
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4807;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.2611;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1325;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0957;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0214;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0086;
 
   foreach()
     porosity[] = eps0*f[];
@@ -84,67 +81,54 @@ event init(i=0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-#ifdef SOLVE_TEMPERATURE
-#ifndef TEMPERATURE_PROFILE
-  TG[top] = dirichlet (TG0);
+  TG[left] = dirichlet (TG0);
   TG[right] = dirichlet (TG0);
-#endif
-#endif
+  TG[top] = dirichlet (TG0);
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
-      YG[top] = dirichlet (1.);
-      YG[right] = dirichlet (1.);
+      YG[left] = dirichlet (1.);
     } else {
-      YG[top] = dirichlet (0.);
-      YG[right] = dirichlet (0.);
+      YG[left] = dirichlet (0.);
     }
   }
 
-#ifdef TEMPERATURE_PROFILE
-  double timeprofile[] = {0, 1, 2, 3, 4, 5, 13.8996139, 41.6988417, 88.03088803, 166.7953668, 
-    254.8262548, 342.8571429, 454.0540541, 574.5173745, 694.980695, 806.1776062, 
-    917.3745174, 1037.837838, 1200};
-  double temperatureprofile[] = {300, 309.492891, 366.8388626, 424.1848341, 486.7440758, 559.7298578, 
-    611.8625592, 656.1753555, 697.8815166, 723.9478673, 736.9810427, 752.6208531, 
-    750.014218, 752.6208531, 752.6208531, 750.014218, 750.014218, 750.014218, 750.014218};
-  
-  TemperatureProfile_Set(timeprofile, temperatureprofile, sizeof(timeprofile)/sizeof(double));
-#endif
+  foreach()
+    u.x[] = f[] > F_ERR ? 0. : Uin; 
 }
 
 event output (t+=1) {
   fprintf (stderr, "%g\n", t);
 
-  char name[80];
-  sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
+  // char name[80];
+  // sprintf(name, "OutputData-%d", maxlevel);
+  // static FILE * fp = fopen (name, "w");
 
-  //log mass profile
-  double solid_mass = 0.;
-  foreach (reduction(+:solid_mass))
-    solid_mass += (f[]-porosity[])*rhoS*dv();
+  // //log mass profile
+  // double solid_mass = 0.;
+  // foreach (reduction(+:solid_mass))
+  //   solid_mass += (f[]-porosity[])*rhoS*dv();
 
-  //calculate radius
-  double radius = pow (3.*statsf(f).sum, 1./3.);
+  // //calculate radius
+  // double radius = pow (3.*statsf(f).sum, 1./3.);
 
-  //save temperature profile
-  double Tcore  = interpolate (T, 0., 0.);
-  double Tr2    = interpolate (T, radius/2., 0.);
-  double Tsurf  = interpolate (T, radius, 0.);
+  // //save temperature profile
+  // double Tcore  = interpolate (T, 0., 0.);
+  // double Tr2    = interpolate (T, radius/2., 0.);
+  // double Tsurf  = interpolate (T, radius, 0.);
 
-  #ifdef TEMPERATURE_PROFILE
-    Tsurf = TemperatureProfile_GetT(t);
-  #endif
+  // #ifdef TEMPERATURE_PROFILE
+  //   Tsurf = TemperatureProfile_GetT(t);
+  // #endif
 
-  fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
-  fflush(fp);
+  // fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
+  // fflush(fp);
 }
 
-event adapt (i++) {
+event adapt (i>10; i++) {
   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1}, maxlevel, minlevel, 2);
+    (double[]){1.e-1, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
 }
 
 // event movie(t+=1) {
@@ -193,46 +177,45 @@ event adapt (i++) {
   // save("movie2.mp4");
 // }
 
-#if DUMP
-int count = 0;
-event snapshots (t += 1) {
-  // we keep overwriting the last two snapshots
-  if (count == 0) {
-    dump ("snapshot-0");
-    count++;
-  } else {
-    dump ("snapshot-1");
-    count = 0;
-  }
-}
-#endif
+// #if DUMP
+// int count = 0;
+// event snapshots (t += 1) {
+//   // we keep overwriting the last two snapshots
+//   if (count == 0) {
+//     dump ("snapshot-0");
+//     count++;
+//   } else {
+//     dump ("snapshot-1");
+//     count = 0;
+//   }
+// }
+// #endif
 
-#if TRACE > 1
-  event profiling (i += 20) {
-  static FILE * fp = fopen ("profiling", "w");
-  trace_print (fp, 1);
-}
-#endif
+// #if TRACE > 1
+//   event profiling (i += 20) {
+//   static FILE * fp = fopen ("profiling", "w");
+//   trace_print (fp, 1);
+// }
+// #endif
 
 event stop (t = 1000);
 
 /** 
 ~~~gnuplot temperature profiles
 reset
-set terminal svg size 450,400
-set xlabel "Time [s]"
-set ylabel "Temperature [K]"
+set xlabel "t [s]"
+set ylabel "temperature [K]"
 set key bottom right box width 1
 set xrange [0:1000]
 set yrange [300:800]
 set grid
 
-plot  "OutputData-6" u 1:3 w l lw 2 lc "dark-green" t "Core", \
-      "OutputData-6" u 1:4 w l lw 2 lc "blue" t "R/2", \
-      "OutputData-6" u 1:5 w l lw 2 lc "black" t "Surface", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 4 lc "dark-green" t "Corbetta core", \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 4 lc "blue" t "Corbetta R/2", \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 4 lc "black" t "Corbetta surface"
+plot  "OutputData-6" u 1:3 w l lw 2 lc "red" t "Core", \
+      "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "R/2", \
+      "OutputData-6" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
+      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
+      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
+      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface"
 ~~~
 
 ~~~gnuplot temperature profiles

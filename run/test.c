@@ -1,216 +1,153 @@
-double D0 = 2e-2;
-
 #define NO_ADVECTION_DIV 1
-#define NO_EXPANSION 1
-#define SOLVE_TEMPERATURE 1
-#define CONST_DIFF 2.05e-5
-#define FSOLVE_ABSTOL 1.e-3
-#define RADIATION_INTERFACE 1
-#define MULTICOMPONENT 1
 
-#include "axi.h"
+// #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "const-prop.h"
-// #include "opensmoke-properties.h"
 #include "two-phase.h"
 #include "shrinking.h"
-#include "multicomponent-varprop.h"
 #include "view.h"
-#include "superquadric.h"
 
 u.n[top] = neumann(0.);
 u.t[top] = neumann(0.);
 p[top] = dirichlet(0.);
+pf[top] = dirichlet(0.);
 psi[top] = dirichlet(0.);
 
 u.n[right] = neumann(0.);
 u.t[right] = neumann(0.);
 p[right] = dirichlet(0.);
+pf[right] = dirichlet(0.);
 psi[right] = dirichlet(0.);
 
-int maxlevel = 6, minlevel = 2;
-double tend = 500.; //800s
+scalar fS[]; // not used
+face vector fsS[];
+
+int maxlevel = 7, minlevel = 4;
+double D0 = 1;
+scalar omega[];
 
 int main() {
   eps0 = 0.4;
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
-  
-  lambdaS = 0.6; lambdaG = 0.04;
-  cpS = 1800; cpG = 1000.;
-  TS0 = 300.; TG0 = 723.;
   muG = 1.e-3;
-  L0 = 2.5*D0;
-  DT = 1e-2;
+  L0 = 1.5*D0;
+  DT = 1e-1;
 
-  rhoS = 1000.;
+  rhoS = 100.;
   rhoG = 1.;
 
-  zeta_policy = ZETA_REACTION;
-
-  kinfolder = "biomass/dummy-solid";
-  for (maxlevel = 6; maxlevel <= 8; maxlevel++) {
-    fprintf(stderr, "maxlevel = %d\n", maxlevel);
+  zeta_policy = ZETA_SMOOTH;
+  for (maxlevel=5; maxlevel<=7; maxlevel++) {
     init_grid(1 << maxlevel);
     run();
   }
 }
 
-double r0, h0, solid_mass0;
+#define circle(x, y, R) (sq(R) - sq(x) - sq(y))
+double solid_mass0, radius0;
+
 event init(i = 0) {
-  fraction (f, superquadric(x, y, 20, 0.5*D0, 0.5*D0));
+  fraction (f, circle(x, y, 0.5*D0));
 
   foreach()
     porosity[] = eps0*f[];
 
-  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
-
-  TG[top] = dirichlet (TG0);
-  TG[right] = dirichlet (TG0);
-
-  for (int jj=0; jj<NGS; jj++) {
-    scalar YG = YGList_G[jj];
-    if (jj != OpenSMOKE_IndexOfSpecies ("N2")) {
-      YG[top] = dirichlet (0.);
-      YG[right] = dirichlet (0.);
-    }
-  }  
-  
   solid_mass0 = 0.;
-  foreach (reduction(+:solid_mass0))
+  foreach()
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
-
-  //radial shrinking
-  r0 = -HUGE;
-  foreach_boundary (left, reduction(max:r0)) 
-    if (f[] < 1.-F_ERR && f[] > F_ERR)
-      r0 = y + Delta*(f[] - 0.5);
-
-  //axial shrinking
-  h0 = -HUGE.;
-  foreach_boundary (bottom, reduction(max:h0)) 
-    if (f[] < 1.-F_ERR && f[] > F_ERR)
-      h0 = x + Delta*(f[] - 0.5);
 }
 
-event output (t += 1) {
-  fprintf (stderr, "%g\n", t);
-
-  scalar of[];
+//update the porosity field
+event chemistry(i++) {  
+  foreach()
+    omega[] = 10.;
   foreach() {
-    of[] = f[] > F_ERR ? omega[]*f[] : 0.;
+    if (f[] > F_ERR) {
+      porosity[] = porosity[]/f[];
+      porosity[] += (omega[]*(1.-porosity[])*(1.-zeta[])/rhoS)*dt;
+      porosity[] *= f[];
+    }
   }
+}
 
-  //log mass profile
+event adapt (i++) {
+    adapt_wavelet_leave_interface({porosity, u.x, u.y}, {f}, 
+      (double[]){1e-2, 1e-2, 1e-2}, maxlevel, minlevel);
+}
+
+event log (t+=0.1) {
+  fprintf(stderr, "%g\n", t);
+
   double solid_mass = 0.;
   foreach (reduction(+:solid_mass))
-    solid_mass += (f[]-porosity[])*rhoS*dv();
+    solid_mass += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
   
-  //radial shrinking
-  double r = -HUGE;
-  foreach_boundary (left, reduction(max:r)) 
-    if (f[] < 1.-F_ERR && f[] > F_ERR)
-      r = y + Delta*(f[] - 0.5);
-
-  //axial shrinking
-  double h = -HUGE;
-  foreach_boundary (bottom, reduction(max:h))
-    if (f[] < 1.-F_ERR && f[] > F_ERR)
-      h = x + Delta*(f[] - 0.5);
+  double radius = sqrt (statsf(f).sum/pi)*2;
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
   static FILE * fp = fopen (name, "w");
-
-  fprintf (fp, "%g %g %g %g %g %g\n", t, statsf(omega).max, statsf(of).max,
-                                      solid_mass/solid_mass0, r/r0, h/h0);
-  fflush (fp);
+  fprintf (fp, "%g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2));
+  fflush(fp);
 }
 
-event movie(t += 5) {
+event movie (t += 0.1) {
+  if (maxlevel == 7) {
+    scalar eps[];
+    foreach()
+      eps[] = porosity[] + (1-f[]);
 
-  scalar of[];
-  foreach()
-    of[] = f[] > F_ERR ? omega[]*f[] : 0.;
-
-  scalar ze[];
-  foreach() {
-    ze[] = omega[]*f[] == statsf(of).max ? 1. : 0.;
-    // ze[] = f[] > F_ERR ? omega[]/statsf(of).max : 0.;
-    ze[] = clamp(ze[], 0., 1.);
+    view(tx=-0.5, ty=-0.5);
+    clear();
+    cells();
+    squares("eps", min=eps0, max=1);
+    draw_vof("f", lw=2);
+    save ("movie.mp4");
   }
-
-  clear();
-  box();
-  view (ty=-0.5, width = 1400.);
-  draw_vof("f", lw=2);
-  squares ("T", min=300, max=800);
-  mirror ({1.,0.}) {
-    draw_vof ("f", lw=2);
-    squares ("ze", min=0., max=1);
-  }
-
-  char name[80];
-  sprintf (name, "movie-%d.mp4", maxlevel);
-  save (name);
 }
 
-event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, padding=1);
-}
+event stop (t = 10);
 
-event stop (t = tend);
-
-/*
-~~~gnuplot ReactionRate
-reset
-set title "Sphere"
-set xlabel "t [s]"
-set ylabel "max(Omega)"
-set xrange [0:500]
-set key top right box width 1
-
-plot  "OutputData-6" u 1:3 w l lw 2 dt 1 lc "red"       t "LVL 6", \
-      "OutputData-7" u 1:3 w l lw 2 dt 1 lc "web-green" t "LVL 7", \
-      "OutputData-8" u 1:3 w l lw 2 dt 1 lc "web-blue"  t "LVL 8
-
+/** 
 ~~~gnuplot Mass profile
 reset
-set title "Sphere"
+set terminal svg size 400,350
+set output "mass.svg"
 set xlabel "t [s]"
 set ylabel "M/M_0"
-set yrange [0:1]
-set key top right box width 1
-
-plot  "OutputData-6" u 1:4 w l lw 2 dt 1 lc "red"       t "LVL 6", \
-      "OutputData-7" u 1:4 w l lw 2 dt 1 lc "web-green" t "LVL 7", \
-      "OutputData-8" u 1:4 w l lw 2 dt 1 lc "web-blue"  t "LVL 8
-~~~
-
-~~~gnuplot Shrinking
-reset
-set title "Sphere-radial"
-set xlabel "t [s]"
-set ylabel "Shrinking factor"
 set key bottom left box width 1
-set yrange [0.5:1.0]
+set xrange [0:10]
+set yrange [0:1.1]
+set grid
 
-plot  "OutputData-6" u 1:5 w l lw 2 dt 1 lc "red"       t "LVL 6", \
-      "OutputData-7" u 1:5 w l lw 2 dt 1 lc "web-green" t "LVL 7", \
-      "OutputData-8" u 1:5 w l lw 2 dt 1 lc "web-blue"  t "LVL 8"
+analytical(x) = exp(-x/10)
+set samples 20
+
+plot  "OutputData-5" u 1:2 w l lw 2 lc "blue" t "level 5", \
+      "OutputData-6" u 1:2 w l lw 2 lc "black" t "level 6", \
+      "OutputData-7" u 1:2 w l lw 2 lc "dark-green" t "level 7", \
+      analytical(x) w p pt 4 lc "black" t "analytical"
 ~~~
-~~~gnuplot Shrinking
+
+~~~gnuplot Radius profile
 reset
-set title "Sphere-axial"
+set terminal svg size 400,350
+set output "radius.svg"
 set xlabel "t [s]"
-set ylabel "Shrinking factor"
+set ylabel "R/R_0"
 set key bottom left box width 1
-set yrange [0.5:1.0]
+set xrange [0:10]
+set yrange [0:1.1]
+set grid
 
-plot  "OutputData-6" u 1:6 w l lw 2 dt 1 lc "red"       t "LVL 6", \
-      "OutputData-7" u 1:6 w l lw 2 dt 1 lc "web-green" t "LVL 7", \
-      "OutputData-8" u 1:6 w l lw 2 dt 1 lc "web-blue"  t "LVL 8"
+analytical(x) = exp(-x/20) #if pure shrinking
+#analytical(x) = 1 #if pure swelling
+set samples 20 
+
+plot  "OutputData-5" u 1:3 w l lw 2 lc "blue" t "level 5", \
+      "OutputData-6" u 1:3 w l lw 2 lc "black" t "level 6", \
+      "OutputData-7" u 1:3 w l lw 2 lc "dark-green" t "level 7", \
+      analytical(x) w p pt 4 lc "black" t "analytical"
 ~~~
-*/
+**/

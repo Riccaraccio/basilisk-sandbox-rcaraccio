@@ -19,6 +19,103 @@
 #include "int-temperature.h"
 #include "int-concentration.h"
 
+void check_variables() {
+  bool status = true;
+
+  //check f
+  foreach()
+    if (f[] < 0. || f[] > 1.) {
+      fprintf(stderr, "f out of range: %g\n", f[]);
+      status = false;
+    }
+
+  //check solid temperature
+  if (status) {
+    foreach() {
+      if (f[] > F_ERR) {
+        if (TS[] < 100. || TS[] > 1000.) {
+          fprintf(stderr, "Solid temperature out of range: %g\n", TS[]);
+          status = false;
+        }
+      }
+    }
+  }
+    
+  //check gas temperature
+  if (status) {
+    foreach() {
+      if (f[] < 1.- F_ERR) {
+        if (TG[] < 100. || TG[] > 1000.) {
+          fprintf(stderr, "Gas temperature out of range: %g\n", TG[]);
+          status = false;
+        }
+      }
+    }
+  }
+
+  //check solid mass fractions
+  if (status) {
+    foreach() {
+      if (f[] > F_ERR) {
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG_S = YGList_S[jj];
+          if (YG_S[] < 0. || YG_S[] > 1.) {
+            fprintf(stderr, "Solid mass fraction out of range: %g\n", YG_S[]);
+            status = false;
+          }
+        }
+      }
+    }
+  }
+
+  //check external gas mass fractions
+  if (status) {
+    foreach() {
+      if (f[] < 1.- F_ERR) {
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG_G = YGList_G[jj];
+          if (YG_G[] < 0. || YG_G[] > 1.) {
+            fprintf(stderr, "Gas mass fraction out of range: %g\n", YG_G[]);
+            status = false;
+          }
+        }
+      }
+    }
+  }
+
+  //check internal gas mass fractions
+  if (status) {
+    foreach() {
+      if (f[] > F_ERR) {
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG= YGList_S[jj];
+          if (YG[] < 0. || YG[] > 1.) {
+            fprintf(stderr, "Gas mass fraction out of range: %g\n", YG[]);
+            status = false;
+          }
+        }
+      }
+    }
+  }
+ 
+  //check porosity
+  if (status) {
+    foreach() {
+      if (f[] > F_ERR) {
+        if (porosity[] < 0. || porosity[] > 1.) {
+          fprintf(stderr, "Porosity out of range: %g\n", porosity[]);
+          status = false;
+        }
+      }
+    }
+  }
+  
+  if (!status) {
+    dump();
+    exit(1);
+  }
+}
+
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
@@ -118,7 +215,9 @@ event tracer_advection (i++) {
 
 event tracer_diffusion (i++) {
 
+#ifdef VARPROP
   update_properties();
+#endif
 
   foreach() {
     f[] = clamp (f[], 0., 1.);
@@ -136,44 +235,51 @@ event tracer_diffusion (i++) {
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
   }
 
-  //Can be removed for performance
-  //Check the mass fractions
-  foreach() {
-    double sum = 0.;
-    for (scalar YG in YGList_S)
-      sum += YG[];
+  // //Can be removed for performance
+  // //Check the mass fractions
+  // foreach() {
+  //   double sum = 0.;
+  //   for (scalar YG in YGList_S)
+  //     sum += YG[];
 
-    for (scalar YG in YGList_S) {
-      YG[] = (sum > 1e-10) ? YG[]/sum : 0.;
-      YG[] = clamp(YG[], 0., 1.);
-    }
-  }
+  //   for (scalar YG in YGList_S) {
+  //     YG[] = (sum > 1e-10) ? YG[]/sum : 0.;
+  //     YG[] = clamp(YG[], 0., 1.);
+  //   }
+  // }
 
-  foreach() {
-    double sum = 0.;
-    for (scalar YG in YGList_G)
-      sum += YG[];
+  // foreach() {
+  //   double sum = 0.;
+  //   for (scalar YG in YGList_G)
+  //     sum += YG[];
 
-    for (scalar YG in YGList_G) {
-      YG[] = (sum > 1e-10) ? YG[]/sum : 0.;
-      YG[] = clamp(YG[], 0., 1.);
-    }
-  }
+  //   for (scalar YG in YGList_G) {
+  //     YG[] = (sum > 1e-10) ? YG[]/sum : 0.;
+  //     YG[] = clamp(YG[], 0., 1.);
+  //   }
+  // }
 
-  foreach() {
-    double sum = 0.;
-    for (scalar YS in YSList)
-      sum += YS[];
+  // foreach() {
+  //   double sum = 0.;
+  //   for (scalar YS in YSList)
+  //     sum += YS[];
     
-    for (scalar YS in YSList) {
-      YS[] = (sum > 1e-10) ? YS[]/sum : 0.;
-      YS[] = clamp(YS[], 0., 1.);
-    }
-  }
+  //   for (scalar YS in YSList) {
+  //     YS[] = (sum > 1e-10) ? YS[]/sum : 0.;
+  //     YS[] = clamp(YS[], 0., 1.);
+  //   }
+  // }
 
   //Compute face gradients
   face_fraction (fS, fsS);
   face_fraction (fG, fsG);
+
+  // if (i == 5) {
+  //   foreach()
+  //     TS[] = -1;
+  // }
+
+  // check_variables();
 
 #ifdef SOLVE_TEMPERATURE
   //interface temperature first guess
@@ -401,7 +507,9 @@ event tracer_diffusion (i++) {
     diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);
 # else
     diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
+#  ifndef TEMPERATURE_PROFILE
     diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
+#  endif
 # endif
 #endif
 

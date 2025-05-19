@@ -234,6 +234,9 @@ void update_properties (void) {
       lambda1v.y[] = theta_const*leff_par + (1.-theta_const)*leff_per;
       
       #else //!KK_CONDUCTIVITY, std case
+      // double char_cond = 0.1405;
+      // scalar charfield = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+      // lambdaSv[] = tpS.lambdav (&tsSh)*(1.-charfield[]/f_val) + charfield[]/f_val*char_cond;
       lambdaSv[] = tpS.lambdav (&tsSh);
       foreach_dimension()
         lambda1v.x[] = one_minus_porosity*lambdaSv[] + porosity_val*lambdaGv_S[];

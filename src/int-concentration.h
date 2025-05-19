@@ -23,6 +23,9 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
   UserDataNls *data = (UserDataNls *)params;
 
   double YGInti[NGS];
+  for (int jj = 0; jj < NGS; jj++)
+    YGInti[jj] = gsl_vector_get(xdata, jj);
+
   // double XGInti[NGS];
   double jG_S[NGS];
   double jG_G[NGS];
@@ -30,9 +33,6 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
 
   // Point point = locate(data->c.x, data->c.y, data->c.z);
   foreach_point(data->c.x, data->c.y, data->c.z, serial) {
-
-    for (int jj = 0; jj < NGS; jj++)
-      YGInti[jj] = gsl_vector_get(xdata, jj);
 
     for (int jj = 0; jj < NGS; jj++)
     {

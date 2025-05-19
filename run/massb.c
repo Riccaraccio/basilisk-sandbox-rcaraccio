@@ -24,6 +24,9 @@ int maxlevel = 7, minlevel = 4;
 double D0 = 1;
 scalar omega[];
 
+scalar fS[];
+face vector fsS[];
+
 int zetamodel = 0;
 
 int main() {
@@ -37,20 +40,20 @@ int main() {
   rhoS = 100.;
   rhoG = 1.;
 
-  zeta_policy = zetamodel;
-  for (maxlevel=5; maxlevel<=7; maxlevel++) {
-    for (zetamodel=0; zetamodel <= 1; zetamodel++) {
-          fprintf(stderr, "Running maxlevel %d zetamodel %d\n",
-            maxlevel, zetamodel);
-          init_grid(1 << maxlevel);
-          run();
-    }
-  }
+  // zeta_policy = zetamodel;
+  // for (maxlevel=5; maxlevel<=7; maxlevel++) {
+  //   for (zetamodel=0; zetamodel <= 1; zetamodel++) {
+  //         fprintf(stderr, "Running maxlevel %d zetamodel %d\n",
+  //           maxlevel, zetamodel);
+  //         init_grid(1 << maxlevel);
+  //         run();
+  //   }
+  // }
 
-  // maxlevel = 6;
-  // zetamodel = 1;
-  // init_grid(1 << maxlevel); 
-  // run();
+  maxlevel = 6;
+  zetamodel = 1;
+  init_grid(1 << maxlevel); 
+  run();
 }
 
 #define circle(x, y, R) (sq(R) - sq(x) - sq(y))

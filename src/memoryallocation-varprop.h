@@ -190,9 +190,21 @@ for (int jj=0; jj<NGS; jj++) {
   for (scalar s in YSList)
     s.inverse = false;
 
-  f.tracers = list_concat (f.tracers, YGList_S);
-  f.tracers = list_concat (f.tracers, YGList_G);
-  f.tracers = list_concat (f.tracers, YSList);
+  scalar *temp;
+  temp = list_concat(f.tracers, YGList_S);
+  if (f.tracers)
+    free(f.tracers);
+  f.tracers = temp;
+
+  temp = list_concat(f.tracers, YGList_G);
+  if (f.tracers)
+    free(f.tracers);
+  f.tracers = temp;
+
+  temp = list_concat(f.tracers, YSList);
+  if (f.tracers)
+    free(f.tracers);
+  f.tracers = temp;
 
   fS.nodump = true;
   fG.nodump =true;
@@ -359,20 +371,14 @@ event init (i = 0) {
 }
 
 event cleanup (t = end) {
-  //delete(f.tracers),  free(f.tracers),   f.tracers = NULL;
   delete (YSList),      free (YSList),      YSList = NULL;
   delete (YGList_S),    free (YGList_S),    YGList_S = NULL;
   delete (YGList_G),    free (YGList_G),    YGList_G = NULL;
   delete (YGList_Int),  free (YGList_Int),  YGList_Int = NULL;
   delete (sSexpList),   free (sSexpList),   sSexpList = NULL;
   delete (sGexpList),   free (sGexpList),   sGexpList = NULL;
-#ifdef VARPROP
   delete (DmixGList_S), free (DmixGList_S), DmixGList_S = NULL;
   delete (DmixGList_G), free (DmixGList_G), DmixGList_G = NULL;
-  // delete (CpGList_S),   free (CpGList_S),   CpGList_S = NULL;
-  // delete (CpGList_G),   free (CpGList_G),   CpGList_G = NULL;
-  // delete (CpSList),     free (CpSList),     CpSList = NULL;
-#endif
   free(gas_start),  gas_start = NULL;
   free(sol_start),  sol_start = NULL;
   free(gas_MWs),    gas_MWs = NULL;
@@ -380,6 +386,7 @@ event cleanup (t = end) {
 #ifdef SOLVE_TEMPERATURE
   delete ({TS,TG});
 #endif
+  delete(f.tracers),  free(f.tracers),   f.tracers = NULL;
 
 #ifdef TEMPERATURE_PROFILE
   TemperatureProfile_Free();

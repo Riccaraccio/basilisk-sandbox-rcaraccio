@@ -151,5 +151,5 @@ event stability (i++, last) {
 }
 
 event cleanup (t = end) {
-  free(f.tracers), f.tracers = NULL;
+  delete (f.tracers), free(f.tracers), f.tracers = NULL;
 }

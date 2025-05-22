@@ -187,7 +187,7 @@ event tracer_advection (i++) {
 
   advection_div({TS}, u_prime, dt);
 # ifndef TEMPERATURE_PROFILE
-  advection_div({TG}, u_prime, dt);
+  advection_div({TG}, ufsave, dt);
 # endif
 #endif
 
@@ -246,7 +246,7 @@ event tracer_diffusion (i++) {
   //Check the mass fractions Can be removed for performance
   check_and_correct_fractions (YGList_S, NGS, false);
   check_and_correct_fractions (YGList_G, NGS, true);
-  check_and_correct_fractions (YSList, NSS, false);
+  check_and_correct_fractions (YSList,   NSS, false);
 
 #ifdef VARPROP
   update_properties();
@@ -511,36 +511,25 @@ event tracer_diffusion (i++) {
 # endif
 #endif
 
-  //check mass and recover tracer form
+  //recover tracer form
   foreach() {
-    double totmassgas = 0.;
     for (scalar YG in YGList_S)
-      totmassgas += YG[];
+      YG[] = (f[] > F_ERR) ? YG[]*f[] : 0.;
 
-    for (scalar YG in YGList_S) {
-      YG[] = (totmassgas > 0.) ? YG[]/totmassgas : 0.;
-      YG[] = clamp(YG[], 0., 1.);
-      YG[] = (YG[] > 1e-10) ? YG[]*f[] : 0.;
-    }
-  }
-
-  foreach() {
-    double totmassgas = 0.;
     for (scalar YG in YGList_G)
-      totmassgas += YG[];
+      YG[] = ((1. - f[]) > F_ERR) ? YG[]*(1. - f[]) : 0.;
+    
+    for (scalar YS in YSList)
+      YS[] = (f[] > F_ERR) ? YS[]*f[] : 0.;
 
-    for (scalar YG in YGList_G) {
-      YG[] = (totmassgas > 0.) ? YG[]/totmassgas : 0.;
-      YG[] = clamp(YG[], 0., 1.);
-      YG[] = (YG[] > 1e-10) ? YG[]*(1.-f[]) : 0.;
-    }
-  }
-
-  foreach() {
 #ifdef SOLVE_TEMPERATURE
-    TS[] *= f[];
-    TG[] *= (1. - f[]);
+    TS[] = (f[] > F_ERR) ? TS[]*f[] : 0.;
+    TG[] = ((1. - f[]) > F_ERR) ? TG[]*(1. - f[]) : 0.;
     T[] = TS[] + TG[];
 #endif
   }
+
+  check_and_correct_fractions (YGList_S, NGS, false);
+  check_and_correct_fractions (YGList_G, NGS, true);
+  check_and_correct_fractions (YSList,   NSS, false);
 }

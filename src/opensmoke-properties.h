@@ -1,7 +1,6 @@
 #include "opensmoke.h"
 #include "variable-properties.h"
 
-trace
 double opensmoke_gasprop_density (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -10,7 +9,6 @@ double opensmoke_gasprop_density (void * p) {
   return OpenSMOKE_GasProp_Density_IdealGas (ts->T, ts->P, MWmix);
 }
 
-trace
 double opensmoke_gasprop_viscosity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -18,7 +16,6 @@ double opensmoke_gasprop_viscosity (void * p) {
   return OpenSMOKE_GasProp_DynamicViscosity (ts->x);
 }
 
-trace
 double opensmoke_gasprop_thermalconductivity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -26,7 +23,6 @@ double opensmoke_gasprop_thermalconductivity (void * p) {
   return OpenSMOKE_GasProp_ThermalConductivity (ts->x);
 }
 
-trace
 double opensmoke_gasprop_heatcapacity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -34,7 +30,6 @@ double opensmoke_gasprop_heatcapacity (void * p) {
   return OpenSMOKE_GasProp_HeatCapacity (ts->x);
 }
 
-trace
 // double opensmoke_gasprop_diff (void * p, int i) {
 //   ThermoState * ts = (ThermoState *)p;
 //   OpenSMOKE_GasProp_SetTemperature (ts->T);
@@ -49,7 +44,6 @@ void opensmoke_gasprop_diff (void * p, double * Dmix) {
   OpenSMOKE_GasProp_Dmix (ts->x, Dmix);
 }
 
-trace
 double opensmoke_solprop_heatcapacity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_SolProp_SetTemperature (ts->T);
@@ -74,9 +68,20 @@ double opensmoke_solprop_density (void * p) {
 
 extern double lambdaS;
 
-trace
 double opensmoke_solprop_thermalconductivity (void * p) {
-  return lambdaS;
+  ThermoState * ts = (ThermoState *)p;
+  
+  // Corbetta wood conductivity model
+  // double char_cond = 0.1405;
+  // double bio_cond  = 0.1937;
+
+  // Anca Couce wood conductivity model
+  double char_cond = 0.125;
+  double bio_cond = 0.056 + 2.6*1e-4*ts->T;
+
+  double char_fraction = ts->x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+  return char_cond*char_fraction + bio_cond*(1.-char_fraction);
+  // return lambdaS; //const case
 }
 
 /**

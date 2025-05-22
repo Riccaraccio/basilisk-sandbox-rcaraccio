@@ -1,14 +1,12 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
 #define NO_EXPANSION       1
-// #define FIXED_INT_TEMP    1
 #define CONST_DIFF 2.05e-5
 
 #include "temperature-profile.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
-// #include "const-prop.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
@@ -33,6 +31,7 @@ double solid_mass0 = 0.;
 
 int main() {
   lambdaS = 0.1987; lambdaG = 0.076;
+  lambdaSmodel = L_CORBETTA;
   cpS = 1600; cpG = 1167;
 #ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
@@ -51,9 +50,9 @@ int main() {
   
   L0 = 2.5*D0;
 
+  shift_prod = true;
   zeta_policy = ZETA_REACTION;
 
-  // shift_prod = true;
   DT = 1e-1;
 
   // kinfolder = "biomass/dummy-solid";
@@ -204,13 +203,6 @@ event snapshots (t += 1) {
     dump ("snapshot-1");
     count = 0;
   }
-}
-#endif
-
-#if TRACE > 1
-  event profiling (i += 20) {
-  static FILE * fp = fopen ("profiling", "w");
-  trace_print (fp, 1);
 }
 #endif
 

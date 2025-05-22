@@ -14,9 +14,16 @@ describe low Mach compressibility effects. */
 
 #ifdef VARPROP
 
+enum solid_thermal_conductivity_model {
+  L_CONST,
+  L_CORBETTA,
+  L_ANCACOUCE,
+  L_KK
+};
+
+enum solid_thermal_conductivity_model lambdaSmodel;
+
 #ifdef KK_CONDUCTIVITY
-double lS_per = 0.430;
-double lS_par = 0.766;
 #endif
 
 extern scalar porosity;
@@ -111,20 +118,46 @@ void update_properties_initial (void) {
       rhoSv[] = tpS.rhov (&tsSh);
       cpSv[] = tpS.cpv (&tsSh);
 
-      #ifdef KK_CONDUCTIVITY //anisotropic conductivity
-      double leff_per = 1 / ((1.-porosity[]/f[])/lS_per + porosity[]/f[]/lambdaGv_S[]);
-      double leff_par = (1.-porosity[]/f[])*lS_par + porosity[]/f[]*lambdaGv_S[];
+      switch (lambdaSmodel) {
+        case L_CONST:
+          foreach_dimension()
+            lambda1v.x[] = (1. - porosity[] / f[]) * lambdaS + porosity[] / f[] * lambdaGv_S[];
+          break;
 
-      //longitudinal direction theta = 1.0
-      lambda1v.x[] = leff_par;
-      // trasversal direction theta = 0.58
-      lambda1v.y[] = 0.58*leff_par + (1.-0.58)*leff_per;
-      
-      #else //!KK_CONDUCTIVITY, std case
-      lambdaSv[] = tpS.lambdav (&tsSh);
-      foreach_dimension()
-        lambda1v.x[] = (1.-porosity[]/f[])*lambdaSv[] + porosity[]/f[]*lambdaGv_S[];
-      #endif
+        case L_CORBETTA: {
+          double char_cond = 0.1405;
+          double bio_cond = 0.1937;
+          double char_fraction = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          foreach_dimension()
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
+          break;
+        }
+
+        case L_ANCACOUCE: {
+          double char_cond_ancacouce = 0.125;
+          double bio_cond_ancacouce = 0.056 + 2.6e-4 * tsSh.T;
+          double char_fraction_ancacouce = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          foreach_dimension()
+              lambda1v.x[] = char_cond_ancacouce * char_fraction_ancacouce + bio_cond_ancacouce * (1. - char_fraction_ancacouce);
+          break;
+        }
+
+        case L_KK: {
+          double lS_per = 0.430;
+          double lS_par = 0.766;
+          double leff_per = 1 / ((1. - porosity[] / f[]) / lS_per + porosity[] / f[] / lambdaGv_S[]);
+          double leff_par = (1. - porosity[] / f[]) * lS_par + porosity[] / f[] * lambdaGv_S[];
+          // longitudinal direction theta = 1.0
+          lambda1v.x[] = leff_par;
+          // transversal direction theta = 0.58
+          lambda1v.y[] = 0.58 * leff_par + (1. - 0.58) * leff_per;
+          break;
+        }
+
+        default:
+          fprintf(stderr, "WARNING: Unknown solid thermal conductivity model\n");
+          break;
+      }
     }
     
     if (f[] < 1. - T_PROP) {
@@ -219,28 +252,46 @@ void update_properties (void) {
       rhoSv[] = tpS.rhov (&tsSh);
       cpSv[] = tpS.cpv (&tsSh);
     
-      double one_minus_porosity = 1. - porosity_val;
-      #ifdef KK_CONDUCTIVITY //anisotropic conductivity
-      
-      //possible optimization: double lambdag_s = lambdaGv_S[];
-      double leff_per = 1 / (one_minus_porosity/lS_per + porosity_val/lambdaGv_S[]);
-      double leff_par = one_minus_porosity*lS_par + porosity_val*lambdaGv_S[];
+      switch (lambdaSmodel) {
+        case L_CONST:
+          foreach_dimension()
+              lambda1v.x[] = (1. - porosity[] / f[]) * lambdaS + porosity[] / f[] * lambdaGv_S[];
+          break;
 
-      //longitudinal direction theta = 1.0
-      lambda1v.x[] = leff_par;
+        case L_CORBETTA: {
+          double char_cond = 0.1405;
+          double bio_cond = 0.1937;
+          double char_fraction = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          foreach_dimension()
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
+          break;
+        }
 
-      // trasversal direction theta = 0.58
-      const double theta_const = 0.58;
-      lambda1v.y[] = theta_const*leff_par + (1.-theta_const)*leff_per;
-      
-      #else //!KK_CONDUCTIVITY, std case
-      // double char_cond = 0.1405;
-      // scalar charfield = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-      // lambdaSv[] = tpS.lambdav (&tsSh)*(1.-charfield[]/f_val) + charfield[]/f_val*char_cond;
-      lambdaSv[] = tpS.lambdav (&tsSh);
-      foreach_dimension()
-        lambda1v.x[] = one_minus_porosity*lambdaSv[] + porosity_val*lambdaGv_S[];
-      #endif
+        case L_ANCACOUCE: {
+          double char_cond_ancacouce = 0.125;
+          double bio_cond_ancacouce = 0.056 + 2.6e-4 * tsSh.T;
+          double char_fraction_ancacouce = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          foreach_dimension()
+              lambda1v.x[] = char_cond_ancacouce * char_fraction_ancacouce + bio_cond_ancacouce * (1. - char_fraction_ancacouce);
+          break;
+        }
+
+        case L_KK: {
+          double lS_per = 0.430;
+          double lS_par = 0.766;
+          double leff_per = 1 / ((1. - porosity[] / f[]) / lS_per + porosity[] / f[] / lambdaGv_S[]);
+          double leff_par = (1. - porosity[] / f[]) * lS_par + porosity[] / f[] * lambdaGv_S[];
+          // longitudinal direction theta = 1.0
+          lambda1v.x[] = leff_par;
+          // transversal direction theta = 0.58
+          lambda1v.y[] = 0.58 * leff_par + (1. - 0.58) * leff_per;
+          break;
+        }
+
+        default:
+          fprintf(stderr, "WARNING: Unknown solid thermal conductivity model\n");
+          break;
+      }
     }
 
     if (one_minus_f > T_PROP) {

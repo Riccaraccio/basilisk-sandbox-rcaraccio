@@ -2,9 +2,7 @@
 #define NO_EXPANSION 1
 #define SOLVE_TEMPERATURE 1
 #define CONST_DIFF 2.05e-5
-// #define FSOLVE_ABSTOL 1.e-3
 #define RADIATION_INTERFACE 1
-#define KK_CONDUCTIVITY 1
 
 double D0 = 2e-2; //2cm
 double H0 = 3e-2; //3cm
@@ -54,9 +52,8 @@ int main() {
   mu1 = 1., mu2 = 1.;
 
   TS0 = 300; TG0 = 723.;
-  // TS0 = 650; TG0 = 650.;
   rhoS = 1200.;
-  // TOLERANCE = 1e-5;
+  lambdaSmodel = L_KK;
 
   L0 = 3.5*H0;
   DT = 1e-1;
@@ -64,8 +61,7 @@ int main() {
   Da = 1e-10;
 
   zeta_policy = ZETA_SHRINK;
-  // kinfolder = "biomass/Solid-only-2407";
-  kinfolder = "biomass/dummy-solid";
+  kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
 }
@@ -87,17 +83,15 @@ event init (i = 0) {
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
 
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4169;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.3147;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1039;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0595;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0005;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")] = 0.0616;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]  = 0.0349;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0080;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4169;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.3147;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1039;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0595;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0005;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")] = 0.0616;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]  = 0.0349;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0080;
   
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")]= 1.0000;
-
   TG[top] = dirichlet (TG0);
   TG[left] = dirichlet (TG0);
 
@@ -138,21 +132,11 @@ event init (i = 0) {
   }
 }
 
-// event endtimestep (i++) {
-//   foreach() {
-//     if (y > 1.6e-2) {
-//       foreach_dimension()
-//         u.x[] = 0.;
-//       TG[] = TG0;
-//     }
-//   }
-// }
-
-// event adapt (t=0.1; i++) {
-//   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
-//   adapt_wavelet_leave_interface ({T, u.x, u.y, porosity, inert}, {f},
-//     (double[]){1.e-2, 1.e-2, 1.e-2, 1e0, 1e-1}, maxlevel, minlevel, padding=1);
-// }
+event adapt (i++) {
+  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
+  adapt_wavelet_leave_interface ({T, u.x, u.y, porosity, inert}, {f},
+    (double[]){1.e-2, 1.e-2, 1.e-2, 1e0, 1e-1}, maxlevel, minlevel, padding=1);
+}
 
 event output (i++) {
   if (pid() == 0)
@@ -199,20 +183,6 @@ event output (i++) {
 // }
 
 event stop (t = tend); 
-
-#if DUMP
-int count = 0;
-event snapshots (t += 1) {
-  // we keep overwriting the last two snapshots
-  if (count == 0) {
-    dump ("snapshot-0");
-    count++;
-  } else {
-    dump ("snapshot-1");
-    count = 0;
-  }
-}
-#endif 
 
 /*
 ~~~gnuplot Mass profile

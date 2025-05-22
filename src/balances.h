@@ -76,24 +76,40 @@ static void diffusion_boundary (Point point, int bid) {
     if (ff < 1.-F_ERR) {
       scalar YG = YGList_G[jj];
       double gradYG = face_gradient_bid (point, YG, bid);
-      scalar Dmix2  = Dmix2List_G[jj];
+      scalar Dmix2  = DmixGList_G[jj];
       double Dmix2v = Dmix2[];
-  #if AXI
-      mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt*y;
+      
+      double rhoGh;
+  #ifdef VARPROP
+      rhoGh = face_value(rhoGv_G, 0);
   #else
-      mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt;
+      rhoGh = rhoG;
+  #endif
+
+  #if AXI
+      mb.gas_mass_bdnow[jj] -= rhoGh*Dmix2v*gradYG*Delta*dt*y;
+  #else
+      mb.gas_mass_bdnow[jj] -= rhoGh*Dmix2v*gradYG*Delta*dt;
   #endif
     }
     
     if (ff > F_ERR) {
       scalar YG = YGList_S[jj];
       double gradYG = face_gradient_bid (point, YG, bid);
-      scalar Dmix2  = Dmix2List_S[jj];
+      scalar Dmix2  = DmixGList_S[jj];
       double Dmix2v = Dmix2[];
-  #if AXI
-      mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt*y*ff;
+
+      double rhoGh;
+  #ifdef VARPROP
+      rhoGh = face_value(rhoGv_S, 0);
   #else
-      mb.gas_mass_bdnow[jj] -= rhoG*Dmix2v*gradYG*Delta*dt*ff;
+      rhoGh = rhoG;
+  #endif
+
+  #if AXI
+      mb.gas_mass_bdnow[jj] -= rhoGh*Dmix2v*gradYG*Delta*dt*y*ff;
+  #else
+      mb.gas_mass_bdnow[jj] -= rhoGh*Dmix2v*gradYG*Delta*dt*ff;
   #endif
     }
   }
@@ -107,17 +123,40 @@ static void advection_boundary (Point point, int bid) {
   foreach_elem (YGList_G, jj) {
     scalar YG = YGList_G[jj];
     double fluxYG = face_flux_bid (point, YG, bid);
-    mb.gas_mass_bdnow[jj] += rhoG*fluxYG*dt;
+
+    double rhoGh;
+#ifdef VARPROP
+    rhoGh = face_value(rhoGv_G, 0);
+#else
+    rhoGh = rhoG;
+#endif
+
+    mb.gas_mass_bdnow[jj] += rhoGh*fluxYG*dt;
   }
   foreach_elem (YGList_S, jj) {
     scalar YG = YGList_S[jj];
     double fluxYG = face_flux_bid (point, YG, bid);
-    mb.gas_mass_bdnow[jj] += rhoG*fluxYG*dt;
+    double rhoGh;
+#ifdef VARPROP
+    rhoGh = face_value(rhoGv_S, 0);
+#else
+    rhoGh = rhoG;
+#endif
+
+    mb.gas_mass_bdnow[jj] += rhoGh*fluxYG*dt;
   }
 #endif
   //double ff = face_value_bid (point, f, bid);
   //mb.totmass2bdnow += rhoG*face_flux_bid (point, U, bid, unity=true)*(1. - ff)*dt;
-  mb.tot_gas_mass_bdnow += rhoG*face_flux_bid (point, U, bid, unity=true)*dt;
+
+  double rhoGh;
+#ifdef VARPROP
+  rhoGh = face_value(rhoGv_G, 0);
+#else
+  rhoGh = rhoG;
+#endif
+
+  mb.tot_gas_mass_bdnow += rhoGh*face_flux_bid (point, U, bid, unity=true)*dt; //careful about the flux in the pseudophase
 }
 
 static void write_balances(void) {
@@ -145,7 +184,14 @@ static void compute_initial_state (void) {
   if (!mb.tot_gas_mass_start && !mb.tot_sol_mass_start) {
     foreach (serial) {
         mb.tot_sol_mass_start += (f[] - porosity[])*rhoS*dv();
-        mb.tot_gas_mass_start += (1-f[] + porosity[])*rhoG*dv();
+
+        double rhoGh;
+        #ifdef VARPROP
+        rhoGh = rhoGv_G[];
+        #else
+        rhoGh = rhoG;
+        #endif
+        mb.tot_gas_mass_start += (1-f[] + porosity[])*rhoGh*dv();
     }
 
     mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
@@ -180,17 +226,37 @@ static void compute_balances(void) {
   foreach (serial) {
     //compute total mass
     mb.tot_sol_mass += (f[] - porosity[])*rhoS*dv(); //(f-ef)
-    mb.tot_gas_mass += (1-f[] + porosity[])*rhoG*dv(); //(1-f + ef)
+    
+    double rhoGh;
+    #ifdef VARPROP
+    rhoGh = rhoGv_G[];
+    #else
+    rhoGh = rhoG;
+    #endif
+    mb.tot_gas_mass += (1-f[] + porosity[])*rhoGh*dv(); //(1-f + ef)
 
 #ifdef MULTICOMPONENT
     foreach_elem (YGList_S, jj) {
       scalar YG_G = YGList_G[jj];
       scalar YG_S = YGList_S[jj];
 
-      if (f[] > F_ERR)
-        mb.gas_mass[jj] += porosity[]*rhoG*(YG_S[]/f[])*dv(); //ef/f*(YG*f) = ef*YG
+      if (f[] > F_ERR) {
+        double rhoGh;
+        #ifdef VARPROP
+        rhoGh = rhoGv_S[];
+        #else
+        rhoGh = rhoG;
+        #endif
+        mb.gas_mass[jj] += porosity[]*rhoGh*(YG_S[]/f[])*dv(); //ef/f*(YG*f) = ef*YG
+      }
       
-      mb.gas_mass[jj] += YG_G[]*rhoG*dv(); //(1-f)*YG/(1-f)
+      double rhoGh;
+      #ifdef VARPROP
+      rhoGh = rhoGv_G[];
+      #else
+      rhoGh = rhoG;
+      #endif
+      mb.gas_mass[jj] += YG_G[]*rhoGh*dv(); //(1-f)*YG/(1-f)
     }
 
     //compute individual solid species mass
@@ -276,8 +342,8 @@ event defaults (i = 0) {
 }
 
 event init(i = 0) {
-  // if (mb.fb == NULL)
-  //   sprintf(mb.name, "balances-%d", maxlevel);
+  if (mb.fb == NULL)
+    sprintf(mb.name, "balances-%d", maxlevel);
   
   mb.fb = fopen(mb.name, "w");
   //total mass header

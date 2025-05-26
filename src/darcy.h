@@ -15,7 +15,7 @@ before the viscous term is computed.
 extern scalar porosity;
 extern scalar f;
 extern double rhoG, muG;
-double Da = 5e-3; //to be chaged to coord Da
+coord Da = {5e-3, 5e-3};
 
 event viscous_term (i++) {
   correction (dt);
@@ -26,8 +26,8 @@ event viscous_term (i++) {
       double Umag = sqrt(sq(u.x[]) + sq(u.y[]));
 
       foreach_dimension() {
-        double A = alpha.x[]/(fm.x[] + SEPS)*(muG*e/Da)*f[]; 
-        double B = alpha.x[]/(fm.x[] + SEPS)*(F*e*rhoG/pow(Da,0.5))*Umag*f[];
+        double A = alpha.x[]/(fm.x[] + SEPS)*(muG*e/Da.x)*f[]; 
+        double B = alpha.x[]/(fm.x[] + SEPS)*(F*e*rhoG/pow(Da.x,0.5))*Umag*f[];
 
         u.x[] /= (1. + (A+B)*dt);
       }

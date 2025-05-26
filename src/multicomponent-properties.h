@@ -261,7 +261,7 @@ void update_properties (void) {
         case L_CORBETTA: {
           double char_cond = 0.1405;
           double bio_cond = 0.1937;
-          double char_fraction = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")]/f[];
           foreach_dimension()
               lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
           break;
@@ -270,7 +270,7 @@ void update_properties (void) {
         case L_ANCACOUCE: {
           double char_cond_ancacouce = 0.125;
           double bio_cond_ancacouce = 0.056 + 2.6e-4 * tsSh.T;
-          double char_fraction_ancacouce = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction_ancacouce = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")]/f[];
           foreach_dimension()
               lambda1v.x[] = char_cond_ancacouce * char_fraction_ancacouce + bio_cond_ancacouce * (1. - char_fraction_ancacouce);
           break;
@@ -335,6 +335,8 @@ void update_properties (void) {
 
 event init (i = 0) //Should be done in the default event but is executed before OS++ initialization otherwise
 {
+  update_properties_initial();
+  
   DYDtG_G = NULL;
   DYDtG_S = NULL;
 
@@ -359,11 +361,6 @@ event init (i = 0) //Should be done in the default event but is executed before 
     DYDtG_S = list_append (DYDtG_S, a);
   }
   reset (DYDtG_S, 0.);
-}
-
-event init (i = 0)
-{
-  update_properties_initial();
 
   MWmixG_G.dirty = true;
   MWmixG_S.dirty = true;
@@ -425,9 +422,8 @@ void update_divergence (void) {
 
   face vector lambdagradTS[], lambdagradTG[];
   foreach_face() {
-    double ef = face_value(porosity, 0);
-    double lambda1vh = ef*face_value(lambdaGv_S, 0) + (1. - ef)*face_value(lambdaSv, 0);
-    double lambda2vh = face_value(lambdaGv_G, 0);
+    double lambda1vh = face_value(lambda1v.x, 0);
+    double lambda2vh = face_value(lambda2v.x, 0);
     lambdagradTS.x[] = lambda1vh*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
     lambdagradTG.x[] = lambda2vh*face_gradient_x (TG, 0)*fm.x[]*fsG.x[];
   }
@@ -626,7 +622,7 @@ void update_divergence (void) {
       scalar DYDtGjj = DYDtG_S[jj];
       divu1species += 1./gas_MWs[jj]*DYDtGjj[];
     }
-    divu1 += (rhoGv_S[] > 0.) ? MWmixG_S[]/rhoGv_S[]*divu1species : 0.;
+    // divu1 += (rhoGv_S[] > 0.) ? MWmixG_S[]/rhoGv_S[]*divu1species : 0.; //TODO
 
     // Add external gas chemical species contribution
     double divu2species = 0.;
@@ -634,7 +630,7 @@ void update_divergence (void) {
       scalar DYDtGjj = DYDtG_G[jj];
       divu2species += 1./gas_MWs[jj]*DYDtGjj[];
     }
-    divu2 += (rhoGv_G[] > 0.) ? MWmixG_G[]/rhoGv_G[]*divu2species : 0.;
+    // divu2 += (rhoGv_G[] > 0.) ? MWmixG_G[]/rhoGv_G[]*divu2species : 0.; //TODO
     
     // Volume averaged contributions
     drhodt[] = divu1*f[] + divu2*(1. - f[]);

@@ -19,7 +19,7 @@ p[right] = dirichlet(0.);
 pf[right] = dirichlet(0.);
 psi[right] = dirichlet(0.);
 
-scalar fS[]; // not used
+scalar fS[];
 face vector fsS[];
 
 int maxlevel = 7, minlevel = 4;
@@ -56,6 +56,11 @@ event init(i = 0) {
   solid_mass0 = 0.;
   foreach()
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
+  
+    foreach()
+    fS[] = f[];
+
+  face_fraction (fS, fsS);
 }
 
 //update the porosity field
@@ -69,6 +74,11 @@ event chemistry(i++) {
       porosity[] *= f[];
     }
   }
+
+  foreach()
+    fS[] = f[];
+
+  face_fraction (fS, fsS);
 }
 
 event adapt (i++) {

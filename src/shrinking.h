@@ -25,6 +25,7 @@ scalar ls[];
 enum zeta_types {
   ZETA_SHRINK,
   ZETA_SWELLING,
+  ZETA_CONST,
   ZETA_SMOOTH,
   ZETA_SHARP,
   ZETA_LEVELSET,
@@ -43,12 +44,17 @@ void set_zeta (enum zeta_types zeta_policy) {
   switch (zeta_policy) {
     case ZETA_SHRINK:
       foreach()
-        zeta[] = 1;//temp
+        zeta[] = 1.;
       break;
 
     case ZETA_SWELLING:
       foreach()
         zeta[] = 0.;
+      break;
+
+    case ZETA_CONST:
+      foreach()
+        zeta[] = 0.5;
       break;
 
     case ZETA_SMOOTH:

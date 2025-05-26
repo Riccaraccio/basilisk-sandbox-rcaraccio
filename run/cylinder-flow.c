@@ -58,10 +58,11 @@ int main() {
   L0 = 3.5*H0;
   DT = 1e-1;
   origin(-L0/3, 0.);
-  Da = 1e-10;
+  Da = (coord){1e-10, 1e-12};
 
-  zeta_policy = ZETA_SHRINK;
+  zeta_policy = ZETA_CONST;
   kinfolder = "biomass/Solid-only-2407";
+  // kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
   run();
 }
@@ -71,7 +72,7 @@ double r0, h0;
 FILE *fp;
 
 event init (i = 0) {
-  // mask (y > 6e-3+D0/2 ? top : none);
+  mask (y > 6e-3+D0/2 ? top : none);
 
   fraction (f, superquadric(x, y, 20, 0.5*H0, 0.5*D0));
 
@@ -91,7 +92,9 @@ event init (i = 0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")] = 0.0616;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]  = 0.0349;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0080;
-  
+
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+
   TG[top] = dirichlet (TG0);
   TG[left] = dirichlet (TG0);
 
@@ -138,7 +141,7 @@ event adapt (i++) {
     (double[]){1.e-2, 1.e-2, 1.e-2, 1e0, 1e-1}, maxlevel, minlevel, padding=1);
 }
 
-event output (i++) {
+event output (t += 1) {
   if (pid() == 0)
     fprintf (stderr, "%g\n", t);
 
@@ -168,21 +171,21 @@ event output (i++) {
   }
 }
 
-// event movie (t += 10) {
-//   clear();
-//   // box();
-//   view (width=1000., height=900.);
-//   draw_vof ("f");
-//   squares("T", min=300, max=750, linear=true, spread=-1);
-//   mirror ({0, 1}) {
-//     draw_vof("f");
-//     // squares("zeta", min=0, max=1, linear=true, spread=-1);
-//     vectors ("u", scale=5e-4);
-//   }
-//   save ("movie.mp4");
-// }
+event movie (t += 5) {
+  clear();
+  // box();
+  view (width=1000., height=900.);
+  draw_vof ("f");
+  squares("T", min=300, max=750, linear=true, spread=-1);
+  mirror ({0, 1}) {
+    draw_vof("f");
+    squares("LVG_G+LVG_S", min=0, max=1, linear=true, spread=-1);
+    // vectors ("u", scale=5e-4);
+  }
+  save ("movie.mp4");
+}
 
-event stop (t = tend); 
+event stop (t = tend);
 
 /*
 ~~~gnuplot Mass profile

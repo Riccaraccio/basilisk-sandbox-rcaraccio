@@ -330,7 +330,7 @@ event init (i = 0) {
   foreach() {
     for (int jj=0; jj<NGS; jj++) {
       scalar YGInt = YGList_Int[jj];
-      YGInt[] = 0.;
+      YGInt[] = gas_start[jj];
     }
   }
 

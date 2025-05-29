@@ -66,18 +66,14 @@ event properties (i++) {
   double Dmixv =  2.05e-5; //Diff of CO in N2 at 500K, 1 atm
 
   foreach() {
-    if (f[] < 1.-F_ERR) {
-    //set the same for all species
-      for (int jj=0; jj<NGS; jj++) {
-        scalar Dmix2 = DmixGList_G[jj];
-        Dmix2[] = Dmixv;
-      }
-    } 
-    if (f[] > F_ERR) {
-      for (int jj=0; jj<NGS; jj++) {
-        scalar Dmix2 = DmixGList_S[jj];
-        Dmix2[] = Dmixv*pow(porosity[], 3./2.); //effect of solid, to be revised
-      }
+    // set the same for all species
+    for (int jj = 0; jj < NGS; jj++) {
+      scalar Dmix2 = DmixGList_G[jj];
+      Dmix2[] = f[] < 1. - F_ERR ? Dmixv : 0.;
+    }
+    for (int jj = 0; jj < NGS; jj++) {
+      scalar Dmix2 = DmixGList_S[jj];
+      Dmix2[] = f[] > F_ERR ? Dmixv * pow(porosity[], 3. / 2.) : 0.; // effect of solid, to be revised
     }
   }
 #endif

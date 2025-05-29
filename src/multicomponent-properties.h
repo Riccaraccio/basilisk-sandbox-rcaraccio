@@ -127,18 +127,21 @@ void update_properties_initial (void) {
         case L_CORBETTA: {
           double char_cond = 0.1405;
           double bio_cond = 0.1937;
-          double char_fraction = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction = char_field[] / f[];
           foreach_dimension()
               lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
           break;
         }
 
         case L_ANCACOUCE: {
-          double char_cond_ancacouce = 0.125;
-          double bio_cond_ancacouce = 0.056 + 2.6e-4 * tsSh.T;
-          double char_fraction_ancacouce = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_cond= 0.125;
+          double bio_cond = 0.056 + 2.6e-4 * tsSh.T;
+          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction = char_field[] / f[];
+
           foreach_dimension()
-              lambda1v.x[] = char_cond_ancacouce * char_fraction_ancacouce + bio_cond_ancacouce * (1. - char_fraction_ancacouce);
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
           break;
         }
 
@@ -261,18 +264,20 @@ void update_properties (void) {
         case L_CORBETTA: {
           double char_cond = 0.1405;
           double bio_cond = 0.1937;
-          double char_fraction = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")]/f[];
+          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction = char_field[] / f[];
           foreach_dimension()
               lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
           break;
         }
 
         case L_ANCACOUCE: {
-          double char_cond_ancacouce = 0.125;
-          double bio_cond_ancacouce = 0.056 + 2.6e-4 * tsSh.T;
-          double char_fraction_ancacouce = tsSh.x[OpenSMOKE_IndexOfSolidSpecies("CHAR")]/f[];
+          double char_cond = 0.125;
+          double bio_cond = 0.056 + 2.6e-4 * tsSh.T;
+          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction = char_field[] / f[];
           foreach_dimension()
-              lambda1v.x[] = char_cond_ancacouce * char_fraction_ancacouce + bio_cond_ancacouce * (1. - char_fraction_ancacouce);
+              lambda1v.x[] = char_cond* char_fraction + bio_cond * (1. - char_fraction);
           break;
         }
 

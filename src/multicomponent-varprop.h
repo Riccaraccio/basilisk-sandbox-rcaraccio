@@ -125,14 +125,8 @@ event reset_sources (i++) {
   }
 #endif
 
-  foreach() {
-    for (int jj=0; jj<NGS; jj++) {
-      scalar sSexp = sSexpList[jj];
-      scalar sGexp = sGexpList[jj];
-      sSexp[] = 0.;
-      sGexp[] = 0.;
-    }
-  }
+  reset (sGexpList, 0.);
+  reset (sSexpList, 0.);
 }
 
 extern face vector ufsave;

@@ -208,7 +208,8 @@ event tracer_advection (i++) {
 }
 #endif
 
-void check_and_correct_fractions (scalar* YList, int n, bool inverse) { //YList in tracer form
+void check_and_correct_fractions (scalar* YList, int n, bool inverse, char* name) { //YList in tracer form
+  bool warning = false;
   foreach() {
     double sum = 0.;
 
@@ -221,6 +222,20 @@ void check_and_correct_fractions (scalar* YList, int n, bool inverse) { //YList 
       }
       if (Y[] < 1e-10) Y[] = 0.;
       sum += Y[];
+    }
+
+    if ((fabs(sum - 1.) > 1.e-1) && !warning && (sum > 1e-10)) {
+      fprintf(stderr, "Warning: sum of mass fractions is not equal to 1 for %s: %g\n", name, sum);
+
+      for (int jj = 0; jj < n; jj++) {
+        scalar Y = YList[jj];
+        fprintf(stderr, "Y[%d] = %g\n", jj, Y[]);
+      }
+      fprintf(stderr, "f = %g\n", f[]);
+      fprintf(stderr, "Inverse = %d\n", inverse);
+      fprintf(stderr, "Point: (%g, %g, %g)\n", x, y, z);
+
+      // warning = true; // set a flag to avoid multiple warnings
     }
 
     for (int jj = 0; jj < n; jj++) {
@@ -238,9 +253,9 @@ void check_and_correct_fractions (scalar* YList, int n, bool inverse) { //YList 
 event tracer_diffusion (i++) {
   
   //Check the mass fractions Can be removed for performance
-  check_and_correct_fractions (YGList_S, NGS, false);
-  check_and_correct_fractions (YGList_G, NGS, true);
-  check_and_correct_fractions (YSList,   NSS, false);
+  check_and_correct_fractions (YGList_S, NGS, false, "YGList_S-1");
+  check_and_correct_fractions (YGList_G, NGS, true,  "YGList_G-1");
+  check_and_correct_fractions (YSList,   NSS, false, "YSList-1");
 
 #ifdef VARPROP
   update_properties();
@@ -265,13 +280,6 @@ event tracer_diffusion (i++) {
   //Compute face gradients
   face_fraction (fS, fsS);
   face_fraction (fG, fsG);
-
-  // if (i == 5) {
-  //   foreach()
-  //     TS[] = -1;
-  // }
-
-  // check_variables();
 
 #ifdef SOLVE_TEMPERATURE
   //interface temperature first guess
@@ -401,7 +409,7 @@ event tracer_diffusion (i++) {
   }
 
 #if defined VARPROP && !defined NO_EXPANSION
-  update_divergence();
+  update_divergence_density();
 #endif
 
   scalar theta1[], theta2[];
@@ -429,9 +437,9 @@ event tracer_diffusion (i++) {
 
     foreach() {
 #ifdef VARPROP
-      theta1[] = cm[]*max(fS[]*rhoGv_S[], F_ERR);
+      theta1[] = cm[]*max(fS[]*rhoGv_S[]*porosity[], F_ERR);
 #else
-      theta1[] = cm[]*max(fS[]*rhoG, F_ERR);
+      theta1[] = cm[]*max(fS[]*rhoG*porosity[], F_ERR);
 #endif
     }
 
@@ -513,9 +521,6 @@ event tracer_diffusion (i++) {
     for (scalar YG in YGList_G)
       YG[] = ((1. - f[]) > F_ERR) ? YG[]*(1. - f[]) : 0.;
     
-    for (scalar YS in YSList)
-      YS[] = (f[] > F_ERR) ? YS[]*f[] : 0.;
-
 #ifdef SOLVE_TEMPERATURE
     TS[] = (f[] > F_ERR) ? TS[]*f[] : 0.;
     TG[] = ((1. - f[]) > F_ERR) ? TG[]*(1. - f[]) : 0.;
@@ -523,7 +528,7 @@ event tracer_diffusion (i++) {
 #endif
   }
 
-  check_and_correct_fractions (YGList_S, NGS, false);
-  check_and_correct_fractions (YGList_G, NGS, true);
-  check_and_correct_fractions (YSList,   NSS, false);
+  check_and_correct_fractions (YGList_S, NGS, false, "YGList_S-2");
+  check_and_correct_fractions (YGList_G, NGS, true,  "YGList_G-2");
+  check_and_correct_fractions (YSList,   NSS, false, "YSList-2");
 }

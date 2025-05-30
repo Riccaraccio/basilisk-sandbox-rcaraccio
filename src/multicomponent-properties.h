@@ -32,7 +32,6 @@ scalar * DYDtG_G = NULL;    // [NSS]
 scalar * DYDtG_S = NULL;    // [NGS]
 
 scalar Hcheck[];
-scalar betaexpG_G[], betaexpG_S[];
 //scalar rhoSvInt[], rhoGvInt_G[], rhoGvInt_S[];
 
 /*
@@ -178,7 +177,6 @@ void update_properties_initial (void) {
       muGv_G[] = tpG.muv (&tsGh);
       cpGv_G[] = tpG.cpv (&tsGh);
       lambdaGv_G[] = tpG.lambdav (&tsGh);
-      betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
 
       for(int jj=0; jj<NGS; jj++) {
@@ -206,8 +204,7 @@ void update_properties (void) {
   reset ({rhoGv_S, rhoGv_G, rhoSv,
           muGv_S, muGv_G,
           lambdaGv_S, lambdaGv_G, lambdaSv,
-          cpGv_S, cpGv_G, cpSv,
-          betaexpG_S, betaexpG_G}, 0.);
+          cpGv_S, cpGv_G, cpSv}, 0.);
   reset (DmixGList_S, 0.);
   reset (DmixGList_G, 0.);
   reset ({MWmixG_S, MWmixG_G}, 0.);
@@ -246,7 +243,6 @@ void update_properties (void) {
       lambdaGv_S[] = tpG.lambdav (&tsGh);
       muGv_S[] = tpG.muv (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
-      betaexpG_S[] = gasprop_thermal_expansion (&tsGh);
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
@@ -337,7 +333,6 @@ void update_properties (void) {
       cpGv_G[] = tpG.cpv (&tsGh);
       lambdaGv_G[] = tpG.lambdav (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
-      betaexpG_G[] = gasprop_thermal_expansion (&tsGh);
 
       for (int jj=0; jj<NGS; jj++) {
         scalar Dmix2v = DmixGList_G[jj];
@@ -353,16 +348,6 @@ void update_properties (void) {
         lambda2v.x[] = lambda_g;
     }
   }
-
-  // Update the boundary conditions for the properties
-  // boundary ({rhoGv_S, rhoGv_G, rhoSv,
-  //            muGv_S, muGv_G,
-  //            lambdaGv_S, lambdaGv_G, lambdaSv,
-  //            cpGv_S, cpGv_G, cpSv,
-  //            betaexpG_S, betaexpG_G});
-  // boundary (DmixGList_S);
-  // boundary (DmixGList_G);
-  // boundary ({MWmixG_S, MWmixG_G});
 }
 
 event init (i = 0) //Should be done in the default event but is executed before OS++ initialization otherwise

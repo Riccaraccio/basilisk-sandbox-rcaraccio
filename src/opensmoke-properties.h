@@ -30,13 +30,6 @@ double opensmoke_gasprop_heatcapacity (void * p) {
   return OpenSMOKE_GasProp_HeatCapacity (ts->x);
 }
 
-// double opensmoke_gasprop_diff (void * p, int i) {
-//   ThermoState * ts = (ThermoState *)p;
-//   OpenSMOKE_GasProp_SetTemperature (ts->T);
-//   OpenSMOKE_GasProp_SetPressure (ts->P);
-//   return OpenSMOKE_GasProp_Dmix (ts->x, i);
-// }
-
 void opensmoke_gasprop_diff (void * p, double * Dmix) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);

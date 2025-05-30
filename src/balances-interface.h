@@ -8,6 +8,15 @@
 extern int maxlevel;
 extern scalar f, porosity;
 
+double Ptest;
+vector u_i[];
+
+// ---- NOTES ----
+// 1) use padding=1 in adapt_wavelet_leave_interface to avoid problems with the interface
+// 2) adapt seems to cause some problems with the diffusive fluxes at the first iterations
+// 3) total mass conservation is better than it seems, sum over the non inert species to 
+//    reconstruct the total gas mass produced
+
 struct MassBalances 
 {
   //total mass variables
@@ -39,16 +48,7 @@ struct MassBalances
 
 struct MassBalances mb = {0};
 
-static void diffusion_interface (Point point) {
-  #ifdef MULTICOMPONENT
-  for (int jj=0; jj<NGS; jj++) {
-    scalar sGexp = sGexpList[jj];
-    mb.gas_mass_intnow[jj] += sGexp[]*Delta*Delta*dt; //Unsure on this
-  }
-  #endif
-}
-
-static void advection_interface (Point point) {
+static void interface_fluxes (Point point) {
 
   // Calculate interfacial area and normal vector
   coord n = facet_normal (point, fS, fsS), p;
@@ -59,35 +59,59 @@ static void advection_interface (Point point) {
   // Calculate interfacial density
   double rhoGInt;
   #ifdef VARPROP
-  double xG[NGS], yG[NGS];
-  double MWmixG;
-  for (int jj=0; jj<NGS; jj++) {
-    scalar YGInt = YGList_Int[jj];
-    yG[jj] = YGInt[];
-  }
-  OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+  // double xG[NGS], yG[NGS];
+  // double MWmixG;
+  // for (int jj=0; jj<NGS; jj++) {
+  //   scalar YGInt = YGList_Int[jj];
+  //   yG[jj] = YGInt[];
+  // }
+  // OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
 
-  ThermoState tsGh;
-  tsGh.T = TInt[];
-  tsGh.P = Pref+p[];
-  tsGh.x = xG;
-  rhoGInt = tpG.rhov (&tsGh);
+  // ThermoState tsGh;
+  // tsGh.T = TInt[];
+  // tsGh.P = Ptest ? Ptest+101325 : 101325;
+  // tsGh.x = xG;
+  // rhoGInt = tpG.rhov (&tsGh);
+  rhoGInt = rhov[]/cm[]; // use rhoGv_G for the gas phase at the interface
   #else
   rhoGInt = rhoG;
   #endif
 
+  // CONVECTIVE FLUXES
+  // Calculate velocity at the interface
+  coord ui = {interpolate (uf.x, x+p.x*Delta, y+p.y*Delta),
+              interpolate (uf.y, x+p.y*Delta, y+p.y*Delta)};
+  coord us = {interpolate (ubf.x, x+p.x*Delta, y+p.y*Delta),
+              interpolate (ubf.y, x+p.x*Delta, y+p.y*Delta)};
+
   foreach_dimension() {
-    #if AXI
-    mb.tot_gas_mass_intnow += rhoGInt*u.x[]*n.x*area*Delta*(y + p.y*Delta)/y*cm[]*dt;
-    #else
-    mb.tot_gas_mass_intnow += rhoGInt*u.x[]*n.x*area*Delta*cm[]*dt;
-    #endif
+    mb.tot_gas_mass_intnow += rhoGInt*ui.x*n.x*area*Delta*dt;
+    mb.tot_gas_mass_intnow += -rhoGInt*us.x*n.x*area*Delta*cm[]*dt; // gas phase left out due to the interface movement
+    // mb.tot_gas_mass_intnow += rhoGInt*u.x[]*n.x*area*Delta*cm[]*dt;
   }
 
   #ifdef MULTICOMPONENT
   for (int jj=0; jj<NGS; jj++) {
     scalar YGInt = YGList_Int[jj];
-    mb.gas_mass_intnow[jj] += mb.tot_gas_mass_intnow*YGInt[];
+    foreach_dimension() {
+      mb.gas_mass_intnow[jj] += -rhoGInt*us.x*n.x*area*Delta*cm[]*YGInt[]*dt; // gas phase left out due to the interface movement
+      mb.gas_mass_intnow[jj] += rhoGInt*u.x[]*n.x*area*Delta*cm[]*YGInt[]*dt;
+    }
+  }
+  
+  // DIFFUSIVE FLUXES
+  // We need to recalculate the fluxes since sGexp gets modified
+  // by the diffusion solver
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YGInt = YGList_Int[jj];
+    scalar YG = YGList_G[jj];
+    scalar DmixG = DmixGList_G[jj];
+
+    double bc = YGInt[];
+    double Gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, bc, &success);
+
+    double jG = rhoGInt * DmixG[] * Gtrgrad;
+    mb.gas_mass_intnow[jj] += jG*area*Delta*cm[]*dt; 
   }
   #endif
 }
@@ -107,10 +131,9 @@ static void compute_initial_state (void) {
       #else
       rhoGh = rhoG;
       #endif
-      mb.tot_gas_mass_start += porosity[]*rhoGh*dv(); //ef //should neglect inert
+      mb.tot_gas_mass_start += porosity[]*rhoGh*dv(); //ef
     }
   }
-
 
   #ifdef MULTICOMPONENT
   for (int jj=0; jj<NGS; jj++)
@@ -136,6 +159,21 @@ static void compute_balances(void) {
     mb.sol_mass[jj] = 0.;
 #endif
 
+  foreach()
+    fS[] = f[];
+
+  face_fraction (fS, fsS);
+
+  #ifdef MULTICOMPONENT
+  // We need to lose tracer form for YGList_G as it is used for the diffusive fluxes
+  foreach() {
+    for (int jj = 0; jj < NGS; jj++) {
+      scalar YG_G = YGList_G[jj];
+      YG_G[] = (f[] < 1.-F_ERR) ? YG_G[]/(1. - f[]) : 0.; // gas phase
+    }
+  }
+  #endif
+
   foreach() {
     if (f[] > F_ERR) {
       mb.tot_sol_mass += (f[] - porosity[])*rhoS*dv(); //(f-ef)
@@ -149,8 +187,8 @@ static void compute_balances(void) {
 
       //gas
       if (f[] < 1.-F_ERR) { //&& f[] > F_ERR
-        advection_interface(point);
-        diffusion_interface(point);
+        Ptest = p[]; // for debugging purposes, to check pressure at the interface
+        interface_fluxes (point);
       }
 
       double rhoGh;
@@ -162,9 +200,6 @@ static void compute_balances(void) {
       mb.tot_gas_mass += porosity[]*rhoGh*dv(); //ef
 
       #ifdef MULTICOMPONENT
-      for (int jj=0; jj<NGS; jj++)
-        mb.gas_mass_int[jj] += mb.gas_mass_intnow[jj];
-
       for (int jj=0; jj<NGS; jj++) {
         scalar YG_S = YGList_S[jj];
         mb.gas_mass[jj] += porosity[]*rhoGh*(YG_S[]/f[])*dv(); //ef/f*(YG*f) = ef*YG
@@ -176,11 +211,22 @@ static void compute_balances(void) {
   mb.tot_gas_mass_int += mb.tot_gas_mass_intnow;
 
 #ifdef MULTICOMPONENT
-  for (int jj = 0; jj < NGS; jj++)
+  for (int jj = 0; jj < NGS; jj++) {
+    mb.gas_mass_int[jj] += mb.gas_mass_intnow[jj];
     mb.gas_mass[jj] = ((mb.gas_mass[jj] + mb.gas_mass_int[jj]) - mb.gas_mass_start[jj]) / mb.tot_sol_mass_start;
+  }
 
   for (int jj = 0; jj < NSS; jj++)
     mb.sol_mass[jj] = mb.sol_mass[jj] / mb.tot_sol_mass_start;
+
+  // Recover tracer form for YGList_G
+  foreach() {
+    for (int jj = 0; jj < NGS; jj++) {
+      scalar YG_G = YGList_G[jj];
+      YG_G[] = YG_G[]*(1. - f[]);
+    }
+  }
+
 #endif
 
   mb.tot_gas_mass = ((mb.tot_gas_mass + mb.tot_gas_mass_int) - mb.tot_gas_mass_start) / mb.tot_sol_mass_start;
@@ -279,6 +325,7 @@ event init (i = 0) {
 }
 
 event cleanup (t = end) {
+  write_balances();
   fclose(mb.fb);
   free(mb.gas_mass_start);
   free(mb.gas_mass_int);
@@ -288,7 +335,7 @@ event cleanup (t = end) {
   free(mb.sol_mass);
 }
 
-event chemistry (i++) {
+event reset_sources (i++) {
   // Compute initial state if not already done
   if (mb.tot_gas_mass_start == 0. && mb.tot_sol_mass_start == 0.)
     compute_initial_state();

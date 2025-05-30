@@ -139,7 +139,7 @@ event chemistry (i++) {
 #ifdef SOLVE_TEMPERATURE
 # ifdef VARPROP
       data.cps = cpSv[];
-      data.cpg = cpGv_G[];
+      data.cpg = cpGv_S[];
 # else
       data.cps = cpS;
       data.cpg = cpG;
@@ -149,9 +149,16 @@ event chemistry (i++) {
       data.sources = sources;
 
       double gasmass[NGS];
+      double rhoGvh;
+      #ifdef VARPROP
+      rhoGvh = rhoGv_S[];
+      #else
+      rhoGvh = rhoG;
+      #endif
+
       for (int jj=0; jj<NGS; jj++) {
         scalar YG = YGList_S[jj];
-        gasmass[jj] = YG[]*rhoG*porosity[];
+        gasmass[jj] = YG[]*rhoGvh*porosity[];
         y0ode[jj] = gasmass[jj];
       }
 

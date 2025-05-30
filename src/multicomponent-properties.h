@@ -195,6 +195,23 @@ void update_properties_initial (void) {
 
 trace
 void update_properties (void) {
+
+  foreach() {
+    // rhoGv_S0[] = rhoGv_S[];
+    // rhoGv_G0[] = rhoGv_G[];
+    rhoGv_S0[] = rhoGv_S[]*f[] + (1.-f[])*rhoGv_G[]; //field looks nicer done in one field
+  }
+
+  // Reset all the properties fields
+  reset ({rhoGv_S, rhoGv_G, rhoSv,
+          muGv_S, muGv_G,
+          lambdaGv_S, lambdaGv_G, lambdaSv,
+          cpGv_S, cpGv_G, cpSv,
+          betaexpG_S, betaexpG_G}, 0.);
+  reset (DmixGList_S, 0.);
+  reset (DmixGList_G, 0.);
+  reset ({MWmixG_S, MWmixG_G}, 0.);
+  
   const double Pref_const = 1.01325e5; // Pa
   foreach() {
 
@@ -336,6 +353,16 @@ void update_properties (void) {
         lambda2v.x[] = lambda_g;
     }
   }
+
+  // Update the boundary conditions for the properties
+  // boundary ({rhoGv_S, rhoGv_G, rhoSv,
+  //            muGv_S, muGv_G,
+  //            lambdaGv_S, lambdaGv_G, lambdaSv,
+  //            cpGv_S, cpGv_G, cpSv,
+  //            betaexpG_S, betaexpG_G});
+  // boundary (DmixGList_S);
+  // boundary (DmixGList_G);
+  // boundary ({MWmixG_S, MWmixG_G});
 }
 
 event init (i = 0) //Should be done in the default event but is executed before OS++ initialization otherwise
@@ -410,7 +437,7 @@ event reset_sources (i++)
 //   update_properties();
 // }
 
-void update_divergence (void) {
+void update_divergence (void) { // Unused, but kept for reference
 
   //TODO ENSURE THAT THE TRACER FORM IS LOST
   /**
@@ -427,20 +454,18 @@ void update_divergence (void) {
 
   face vector lambdagradTS[], lambdagradTG[];
   foreach_face() {
-    double lambda1vh = face_value(lambda1v.x, 0);
-    double lambda2vh = face_value(lambda2v.x, 0);
-    lambdagradTS.x[] = lambda1vh*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
-    lambdagradTG.x[] = lambda2vh*face_gradient_x (TG, 0)*fm.x[]*fsG.x[];
+    lambdagradTS.x[] = face_value(lambdaGv_S, 0)*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
+    lambdagradTG.x[] = face_value(lambdaGv_G, 0)*face_gradient_x (TG, 0)*fm.x[]*fsG.x[];
   }
 
   foreach() {
     foreach_dimension()
       DTDtS[] += (lambdagradTS.x[1] - lambdagradTS.x[])/Delta;
-    DTDtS[] += sST[];
+    // DTDtS[] += sST[];
 
     foreach_dimension()
       DTDtG[] += (lambdagradTG.x[1] - lambdagradTG.x[])/Delta;
-    DTDtG[] += sGT[];
+    // DTDtG[] += sGT[];
   }
 
   //EXTERNAL GAS PHASE
@@ -645,35 +670,75 @@ void update_divergence (void) {
   }
 }
 
-// void update_divergence_density (void) { //TODO
-//   vector grho1[], grho2[];
-//   gradients ({rho1v, rho2v}, {grho1, grho2});
+void update_divergence_density (void) {
+  
+  // vector grhoG[], grhoS[];
+  // gradients ({rhoGv_S, rhoGv_G}, {grhoS, grhoG});
 
-//   scalar DrhoDt1[], DrhoDt2[];
-//   foreach() {
-//     DrhoDt1[] = (rho1v[] - rho1v0[])/dt;
-//     DrhoDt2[] = (rho2v[] - rho2v0[])/dt;
+  // scalar DrhoDtS[], DrhoDtG[];
+  // foreach() {
+  //   DrhoDtS[] = (rhoGv_S[] - rhoGv_S0[])/dt;
+  //   DrhoDtG[] = (rhoGv_G[] - rhoGv_G0[])/dt;
+  // } 
 
-//     foreach_dimension() {
-// #ifdef VELOCITY_JUMP
-//       DrhoDt1[] += u1.x[]*grho1.x[];
-//       DrhoDt2[] += u2.x[]*grho2.x[];
-// #else
-//       DrhoDt1[] += uext.x[]*grho1.x[];
-//       DrhoDt2[] += u.x[]*grho2.x[];
-// #endif
-//     }
+  // // face vector rhoG_Sflux[], rhoG_Gflux[];
+  // // tracer_fluxes (rhoGv_S, uf, rhoG_Sflux, dt, zeroc);
+  // // tracer_fluxes (rhoGv_G, uf, rhoG_Gflux, dt, zeroc);
 
-//     DrhoDt1[] = DrhoDt1[]*cm[];
-//     DrhoDt2[] = DrhoDt2[]*cm[];
+  // // foreach() {
+  // //   foreach_dimension() {
+  // //     DrhoDtS[] += (rhoG_Sflux.x[] - rhoG_Sflux.x[1] - rhoGv_S[]*(uf.x[] - uf.x[1]))/Delta;
+  // //     DrhoDtG[] += (rhoG_Gflux.x[] - rhoG_Gflux.x[1] - rhoGv_G[]*(uf.x[] - uf.x[1]))/Delta;
+  // //   }
+  // // }
 
-//     double one_over_rho1 = (rho1v[] > 0.) ? 1./rho1v[] : 0.;
-//     double one_over_rho2 = (rho2v[] > 0.) ? 1./rho2v[] : 0.;
+  // foreach() {
+  //   foreach_dimension()
+  //     DrhoDtS[] += u.x[]*grhoS.x[];
+  //     DrhoDtG[] += u.x[]*grhoG.x[];
+  // }
 
-//     if (iter > 1) {
-//       drhodt[] = (one_over_rho1*DrhoDt1[]*f[] + one_over_rho2*DrhoDt2[]*(1. - f[]));
-//       drhodtext[] = one_over_rho1*DrhoDt1[]*f[];
-//     }
-//   }
-// }
+  // foreach() {
+  //   DrhoDtS[] = DrhoDtS[]*cm[];
+  //   DrhoDtG[] = DrhoDtG[]*cm[];
+
+  //   double one_over_rhoS = (rhoGv_S[] > 0.) ? 1./rhoGv_S[] : 0.;
+  //   double one_over_rhoG = (rhoGv_G[] > 0.) ? 1./rhoGv_G[] : 0.;
+
+  //   if (iter > 1) {
+  //     drhodt[] = (one_over_rhoS*DrhoDtS[]*f[] + one_over_rhoG*DrhoDtG[]*(1. - f[]));
+  //   }
+  // }
+  
+  scalar rhot[];
+  foreach()
+    rhot[] = rhoGv_S[]*f[] + rhoGv_G[]*(1. - f[]);
+  
+  vector grho[];
+  gradients ({rhot}, {grho});
+  
+  scalar DrhoDt[];
+  foreach() {
+    DrhoDt[] = (rhot[] - rhoGv_S0[])/dt;
+
+  // //This does not work, idk why
+  // face vector rhoGflux[];
+  // tracer_fluxes (rhot, uf, rhoGflux, dt, zeroc);
+
+  // foreach()
+  //   foreach_dimension()
+  //     DrhoDt[] += (rhoGflux.x[] - rhoGflux.x[1] - rhot[]*(uf.x[] - uf.x[1]))/Delta;
+
+    foreach_dimension()
+      DrhoDt[] += u.x[]*grho.x[];
+
+    DrhoDt[] = DrhoDt[]*cm[];
+
+    double one_over_rho = (rhot[] > 0.) ? 1./rhot[] : 0.;
+
+    if (iter > 1) {
+      drhodt[] = DrhoDt[]*one_over_rho;
+    }
+  }
+}
 #endif

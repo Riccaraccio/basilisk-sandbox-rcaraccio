@@ -1,5 +1,5 @@
 #define NO_ADVECTION_DIV 1
-#define NO_EXPANSION 1
+// #define NO_EXPANSION 1
 #define SOLVE_TEMPERATURE 1
 #define CONST_DIFF 2.05e-5
 #define FSOLVE_ABSTOL 1.e-3
@@ -10,14 +10,15 @@ double H0 = 19e-3; //3cm
 
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
-#include "opensmoke-properties.h"
+// #include "opensmoke-properties.h"
+#include "const-prop.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "view.h"
 #include "superquadric.h"
-// #include "balances.h"
+#include "balances-interface.h"
 
 u.n[top]     = dirichlet (0.);
 u.t[top]     = dirichlet (0.);
@@ -45,13 +46,18 @@ int main() {
   TS0 = 300.; TG0 = 823.;
   rhoS = 1500.;
 
+  // lambdaG = 0.076;
+  // cpS = 1600; cpG = 1167;
+  // muG = 3.53e-5;
+
   L0 = 3.*H0;
   DT = 1e-2; 
-  Da = 1e-10;
+  Da = (coord){1e-10, 1e-10};
 
-  zeta_policy = ZETA_SWELLING;
+  zeta_policy = ZETA_CONST;
   // kinfolder = "biomass/Solid-only-2407";
   kinfolder = "biomass/dummy-solid";
+
   init_grid(1 << maxlevel);
   run();
 }
@@ -71,15 +77,17 @@ event init (i = 0) {
   
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
 
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.3990;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.2001;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1077;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0917;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0236;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")] = 0.0112;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]  = 0.0436;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0800;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4168;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.2090;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1125;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0958;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0247;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")] = 0.0117;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]  = 0.0455;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0040;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]= 0.0800;
   
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 1.;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")]= 1.0000;
 
   TG[top] = dirichlet (TG0);
@@ -116,12 +124,14 @@ event init (i = 0) {
     sprintf (name, "OutputData-%d", maxlevel);
     fp = fopen(name, "w");
   }
+
+  mb.print_iter = 100;
 }
 
-event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
-    (double[]){1.e-1, 1.e0, 1.e0, 1e0}, maxlevel, minlevel, padding=1);
-}
+// event adapt (i++) {
+//   adapt_wavelet_leave_interface ({T, u.x, u.y, porosity}, {f},
+//     (double[]){1.e-1, 1.e0, 1.e0, 1e0}, maxlevel, minlevel, padding=1);
+// }
 
 event output (t += 1) {
   if (pid() == 0)

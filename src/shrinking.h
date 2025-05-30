@@ -109,7 +109,9 @@ event defaults (i=0) {
   #endif
 }
 
-event reset_sources (i++);
+event reset_sources (i++) {
+  reset ({gasSource}, 0.);
+}
 
 event chemistry (i++);
 

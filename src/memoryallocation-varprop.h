@@ -57,7 +57,7 @@ face vector fsS[], fsG[];
 
 #ifdef VARPROP //TODO: check if necessary
 scalar dummy[];
-scalar rhoSv0[], rhoGv0_G[], rhoGv0_S[];
+scalar rhoSv0[], rhoGv_G0[], rhoGv_S0[];
 #endif
 
 event defaults (i = 0) {

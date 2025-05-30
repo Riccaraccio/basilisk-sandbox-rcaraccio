@@ -1,11 +1,15 @@
 #define NO_ADVECTION_DIV 1
 
-// #include "axi.h"
+scalar fS[];
+face vector fsS[];
+
+#include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "const-prop.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "view.h"
+#include "balances-interface.h"
 
 u.n[top] = neumann(0.);
 u.t[top] = neumann(0.);
@@ -19,8 +23,6 @@ p[right] = dirichlet(0.);
 pf[right] = dirichlet(0.);
 psi[right] = dirichlet(0.);
 
-scalar fS[];
-face vector fsS[];
 
 int maxlevel = 7, minlevel = 4;
 double D0 = 1;
@@ -32,16 +34,19 @@ int main() {
   mu1 = 1., mu2 = 1.;
   muG = 1.e-3;
   L0 = 1.5*D0;
-  DT = 1e-1;
+  DT = 1e-2;
 
   rhoS = 100.;
   rhoG = 1.;
 
-  zeta_policy = ZETA_SMOOTH;
-  for (maxlevel=5; maxlevel<=7; maxlevel++) {
-    init_grid(1 << maxlevel);
-    run();
-  }
+  zeta_policy = ZETA_SWELLING;
+  // for (maxlevel=8; maxlevel<=8; maxlevel++) {
+  //   init_grid(1 << maxlevel);
+  //   run();
+  // }
+
+  init_grid(1 << maxlevel);
+  run();
 }
 
 #define circle(x, y, R) (sq(R) - sq(x) - sq(y))
@@ -57,16 +62,19 @@ event init(i = 0) {
   foreach()
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
   
-    foreach()
-    fS[] = f[];
 
-  face_fraction (fS, fsS);
+  double gas_mass0 = 0.;
+  foreach() {
+    if (f[] > F_ERR) {
+      gas_mass0 += porosity[]*rhoG*dv(); //(1-f)
+    }
+  }
 }
 
 //update the porosity field
 event chemistry(i++) {  
   foreach()
-    omega[] = 10.;
+    omega[] = rhoS/10;
   foreach() {
     if (f[] > F_ERR) {
       porosity[] = porosity[]/f[];
@@ -74,16 +82,11 @@ event chemistry(i++) {
       porosity[] *= f[];
     }
   }
-
-  foreach()
-    fS[] = f[];
-
-  face_fraction (fS, fsS);
 }
 
 event adapt (i++) {
     adapt_wavelet_leave_interface({porosity, u.x, u.y}, {f}, 
-      (double[]){1e-2, 1e-2, 1e-2}, maxlevel, minlevel);
+      (double[]){1e-2, 1e-2, 1e-2}, maxlevel, minlevel, 1);
 }
 
 event log (t+=0.1) {
@@ -102,20 +105,20 @@ event log (t+=0.1) {
   fflush(fp);
 }
 
-event movie (t += 0.1) {
-  if (maxlevel == 7) {
-    scalar eps[];
-    foreach()
-      eps[] = porosity[] + (1-f[]);
+// event movie (t += 0.1) {
+//   if (maxlevel == 7) {
+//     scalar eps[];
+//     foreach()
+//       eps[] = porosity[] + (1-f[]);
 
-    view(tx=-0.5, ty=-0.5);
-    clear();
-    cells();
-    squares("eps", min=eps0, max=1);
-    draw_vof("f", lw=2);
-    save ("movie.mp4");
-  }
-}
+//     view(tx=-0.5, ty=-0.5);
+//     clear();
+//     cells();
+//     squares("eps", min=eps0, max=1);
+//     draw_vof("f", lw=2);
+//     save ("movie.mp4");
+//   }
+// }
 
 event stop (t = 10);
 

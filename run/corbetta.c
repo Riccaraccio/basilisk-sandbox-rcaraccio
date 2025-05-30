@@ -1,10 +1,9 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
-#define NO_EXPANSION       1
 #define CONST_DIFF 2.05e-5
 
 #include "temperature-profile.h"
-#include "axi.h" 
+#include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
@@ -12,6 +11,7 @@
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "view.h"
+#include "balances-interface.h"
 
 u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
@@ -25,7 +25,7 @@ p[right]      = dirichlet (0.);
 pf[right]     = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 
@@ -46,14 +46,14 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  Da = 1e-10;
+  // Da = (coord){1e-10, 1e-10};
   
   L0 = 2.5*D0;
 
   shift_prod = true;
-  zeta_policy = ZETA_REACTION;
+  zeta_policy = ZETA_SWELLING;
 
-  DT = 1e-1;
+  DT = 1.e-1;
 
   // kinfolder = "biomass/dummy-solid";
   kinfolder = "biomass/Solid-only-2407";
@@ -143,54 +143,22 @@ event output (t+=1) {
 
 event adapt (i++) {
   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1}, maxlevel, minlevel, 2);
+    (double[]){1.e-2, 1.e-2, 1.e-2}, maxlevel, minlevel, 1);
 }
 
-// event movie(t+=1) {
-//   clear();
-//   box();
-//   view (ty=-0.5, tx=-0.5);
-//   squares("T", max=TG0,  min=TS0);
-//   draw_vof("f");
-//   //cells();
-//   save ("temperature.mp4");
-//
-//   clear();
-//   box();
-//   view (ty=-0.5, tx=-0.5);
-//   squares("C6H10O5", max=1,  min=0);
-//   draw_vof("f");
-//   save ("LVG.mp4");
-// }
-
-// event movie(t+=5) {
-//   clear();
-//   box();
-//   view (ty=-0.5, width = 1400.);
-//   draw_vof("f", lw=2);
-//   squares ("T", min=300, max=800, linear=true);
-//   mirror ({1.,0.}) {
-//     draw_vof ("f", lw=2);
-//     squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
-//     // vectors ("u", scale=1);
-//  }
-//  save ("movie.mp4");
-
-  // clear ();
-  // box ();
-  // view (ty = -0.5, width = 1400.);
-  // draw_vof ("f", lw = 2);
-  // scalar epsi[];
-  // foreach()
-  //   epsi[] = f[]>F_ERR ? porosity[]/f[] : 1.;
-  // squares ("epsi", min = 0., max = 1., linear = true);
-  // mirror ({1., 0.}) {
-  //   draw_vof ("f", lw = 2);
-  //   cells();
-  //   vectors ("u", scale = 1e-2);
-  // }
-  // save("movie2.mp4");
-// }
+event movie(t+=5) {
+  clear();
+  box();
+  view (ty=-0.5, width = 1400.);
+  draw_vof("f", lw=2);
+  squares ("T", min=300, max=800, linear=true);
+  mirror ({1.,0.}) {
+    draw_vof ("f", lw=2);
+    squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
+    // vectors ("u", scale=1);
+ }
+ save ("movie.mp4");
+}
 
 #if DUMP
 int count = 0;

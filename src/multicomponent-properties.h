@@ -201,13 +201,13 @@ void update_properties (void) {
   }
 
   // Reset all the properties fields
-  reset ({rhoGv_S, rhoGv_G, rhoSv,
-          muGv_S, muGv_G,
-          lambdaGv_S, lambdaGv_G, lambdaSv,
-          cpGv_S, cpGv_G, cpSv}, 0.);
-  reset (DmixGList_S, 0.);
-  reset (DmixGList_G, 0.);
-  reset ({MWmixG_S, MWmixG_G}, 0.);
+  // reset ({rhoGv_S, rhoGv_G, rhoSv,
+  //         muGv_S, muGv_G,
+  //         lambdaGv_S, lambdaGv_G, lambdaSv,
+  //         cpGv_S, cpGv_G, cpSv}, 0.);
+  // reset (DmixGList_S, 0.);
+  // reset (DmixGList_G, 0.);
+  // reset ({MWmixG_S, MWmixG_G}, 0.);
   
   const double Pref_const = 1.01325e5; // Pa
   foreach() {

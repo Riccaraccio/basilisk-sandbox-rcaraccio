@@ -437,9 +437,9 @@ event tracer_diffusion (i++) {
 
     foreach() {
 #ifdef VARPROP
-      theta1[] = cm[]*max(fS[]*rhoGv_S[]*porosity[], F_ERR);
+      theta1[] = cm[]*max(fS[]*rhoGv_S[]*(porosity[]/f[]), F_ERR);
 #else
-      theta1[] = cm[]*max(fS[]*rhoG*porosity[], F_ERR);
+      theta1[] = cm[]*max(fS[]*rhoG*(porosity[]/f[]), F_ERR);
 #endif
     }
 

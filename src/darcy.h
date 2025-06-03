@@ -14,8 +14,14 @@ before the viscous term is computed.
 
 extern scalar porosity;
 extern scalar f;
+
+#ifdef VARPROP
+extern scalar rhoGv_S, muGv_S;
+#else
 extern double rhoG, muG;
-coord Da = {5e-3, 5e-3};
+#endif
+
+coord Da = {1e-10, 1e-10};
 
 event viscous_term (i++) {
   correction (dt);
@@ -25,10 +31,18 @@ event viscous_term (i++) {
       double F = 1.75/pow (150*pow (e, 3), 0.5);
       double Umag = sqrt(sq(u.x[]) + sq(u.y[]));
 
-      foreach_dimension() {
-        double A = alpha.x[]/(fm.x[] + SEPS)*(muG*e/Da.x)*f[]; 
-        double B = alpha.x[]/(fm.x[] + SEPS)*(F*e*rhoG/pow(Da.x,0.5))*Umag*f[];
+      double muGh, rhoGh;
+      #ifdef VARPROP
+      muGh = muGv_S[];
+      rhoGh = rhoGv_S[];
+      #else
+      muGh = muG;
+      rhoGh = rhoG;
+      #endif
 
+      foreach_dimension() {
+        double A = (1./rhoGh)*(muGh*e/Da.x)*f[]; 
+        double B = (F*e/pow(Da.x,0.5))*Umag*f[];
         u.x[] /= (1. + (A+B)*dt);
       }
     }

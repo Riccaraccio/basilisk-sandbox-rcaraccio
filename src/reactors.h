@@ -199,10 +199,6 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   dy[NGS+NSS] = -totsolidreaction*(1-epsilon)*(1-z)/rhos;
   sources[NGS+NSS] = -totsolidreaction;
 
-#ifdef VARPROP
-  cps = OpenSMOKE_SolProp_HeatCapacity (solmassfracs);
-#endif
-
   /**
   Get the heat of reaction and compute the equation for the
   temperature. We add non-linear contributions such as the

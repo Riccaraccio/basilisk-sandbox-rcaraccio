@@ -132,8 +132,10 @@ event chemistry (i++) {
       data.T = TS[]/f[];
 #ifdef VARPROP
       data.rhos = rhoSv[];
+      data.rhog = rhoGv_S[];
 #else
       data.rhos = rhoS;
+      data.rhog = rhoG;
 #endif
       data.zeta = zeta[];
 #ifdef SOLVE_TEMPERATURE

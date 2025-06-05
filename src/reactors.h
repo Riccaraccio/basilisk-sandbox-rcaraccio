@@ -11,6 +11,7 @@ The system of ODEs is solved using the *batch* method.
 
 typedef struct {
   double rhos;
+  double rhog;
   double cps;
   double cpg;
   double P;
@@ -117,6 +118,7 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
 
   UserDataODE data = *(UserDataODE *)args;
   double rhos = data.rhos;
+  double rhog = data.rhog;
   double cps = data.cps;
   double cpg = data.cpg;
   double Pressure = data.P;
@@ -130,13 +132,12 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
 
   OpenSMOKE_SolProp_SetTemperature (Temperature);
   OpenSMOKE_SolProp_SetPressure (Pressure);
-
-  //////////////////////////////////////////////////////////////////////////
+  OpenSMOKE_GasProp_SetTemperature (Temperature);
+  OpenSMOKE_GasProp_SetPressure (Pressure);
 
   double gasmass[NGS]; double totgasmass = 0.;
   for (int jj=0; jj<NGS; jj++) {
-    gasmass[jj] = y[jj];
-    gasmass[jj] = (gasmass[jj] < 0.) ? 0. : gasmass[jj];
+    gasmass[jj] = y[jj] < 0. ? 0. : y[jj];
     totgasmass += gasmass[jj];
   }
 
@@ -148,38 +149,40 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   double MWMix; 
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWMix, gasmassfracs);
 
-  double ctot = Pressure/R_GAS/Temperature; //ideal gases
+  double ctot = Pressure/(R_GAS*1000)/Temperature; // kmol/m3
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
+    rgas[jj] = 0.;
   }
 #ifdef VARPROP
-  double rhog = ctot*MWMix;
+  rhog = ctot*MWMix;
   cpg = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
-#else
-  double rhog = rhoG;
 #endif
-
-  //////////////////////////////////////////////////////////////////////////
 
   double solidmass[NSS]; double totsolidmass = 0.;
   for (int jj=0; jj<NSS; jj++) {
-    solidmass[jj] = y[jj+NGS];
-    solidmass[jj] = (solidmass[jj] < 0.) ? 0. : solidmass[jj];
+    solidmass[jj] = y[jj+NGS] < 0. ? 0. : y[jj+NGS];
     totsolidmass += solidmass[jj];
   }
 
   double solmassfracs[NSS];
   double csolid[NSS], rsolid[NSS];
   for (int jj=0; jj<NSS; jj++) {
-    solmassfracs[jj] = (totsolidmass < F_ERR) ? 0. : solidmass[jj]/totsolidmass;
+    solmassfracs[jj] = solidmass[jj]/totsolidmass;
     csolid[jj] = rhos*solmassfracs[jj]/sol_MWs[jj];
+    rsolid[jj] = 0.;
   }
-  //////////////////////////////////////////////////////////////////////////
+
+  #ifdef VARPROP
+  double solmolefracs[NSS], MWsolidMix;
+  OpenSMOKE_SolidMoleFractions_From_SolidMassFractions(solmolefracs, &MWsolidMix, solmassfracs);
+  cps = OpenSMOKE_SolProp_HeatCapacity (solmolefracs);
+  #endif
 
   OpenSMOKE_SolProp_KineticConstants ();
   OpenSMOKE_SolProp_ReactionRates (cgas,csolid);
-  OpenSMOKE_SolProp_FormationRates (rgas, rsolid); //rates are given per m3 of solid
+  OpenSMOKE_SolProp_FormationRates (rgas, rsolid); //[kmol/m3_solid/s]
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]*rgas[jj]*(1-epsilon);
@@ -199,17 +202,11 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   dy[NGS+NSS] = -totsolidreaction*(1-epsilon)*(1-z)/rhos;
   sources[NGS+NSS] = -totsolidreaction;
 
-  /**
-  Get the heat of reaction and compute the equation for the
-  temperature. We add non-linear contributions such as the
-  heat dissipated for radiation */
-
-  //OpenSMOKE_GasProp_SetTemperature(Temperature);
-  //OpenSMOKE_GasProp_SetPressure(Pressure);
-  //double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas); //should be 0 for now
+  //Temperature equation
+  // double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas); //should be 0 for now
   double QRsol = OpenSMOKE_SolProp_HeatRelease (rgas, rsolid);
 
-  //dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
+  // dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
   dy[NGS+NSS+1] = (QRsol*(1-epsilon))/((rhog*cpg*epsilon) + rhos*cps*(1-epsilon));
   sources[NGS+NSS+1] = dy[NGS+NSS+1]*(rhog*cpg*epsilon + rhos*cps*(1-epsilon));
 #ifdef TURN_OFF_HEAT_OF_REACTION

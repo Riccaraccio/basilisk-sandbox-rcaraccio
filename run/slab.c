@@ -2,9 +2,16 @@
 #define SOLVE_TEMPERATURE   1
 #define CONST_DIFF 2.05e-5
 
+#ifndef TSTEEL
+  #define TSTEEL 500 //C
+#endif
+
+#ifndef HBLOCK
+  #define HBLOCK 400 // W/m^2/K
+#endif
+
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
-// #include "constant-properties.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
@@ -16,8 +23,6 @@ p[top]        = dirichlet (0.);
 pf[top]       = dirichlet (0.);
 psi[top]      = dirichlet (0.);
 
-double hblock = 400.; // W/m^2/K
-double TSteel = 700 + 273.15; // K
 int maxlevel = 6; int minlevel = 2;
 double H0 = 1e-3;
 
@@ -41,24 +46,22 @@ int main() {
 
   DT = 5e-4;
 
-  kinfolder = "biomass/dummy-solid";
-  // kinfolder = "biomass/Solid-only-2407";
+  // kinfolder = "biomass/dummy-solid";
+  kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
 
-  double Tarray[4] = {500, 550, 600, 700};
-  double harray[4] = {400, 400, 400, 400}; // Paulsen
+  // double Tarray[4] = {500, 550, 600, 700};
+  // double harray[4] = {400, 400, 400, 400}; // Paulsen
   // double harray[4] = {550, 650, 850, 950}; // Gentile
   // for (int i=0; i<4; i++) {
   //   TSteel = Tarray[i] + 273.15;
   //   hblock = harray[i];
   //   run();
   // }
-  
+
+  fprintf(stderr, "Running for TSteel = %d C, hblock = %d W/m^2/K\n", TSTEEL, HBLOCK);
   run();
 }
-
-#define circle(x,y,R)(sq(R) - sq(x) - sq(y))
-
 
 double solid_mass0, h0;
 event init(i=0) {
@@ -66,9 +69,16 @@ event init(i=0) {
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
 
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4169;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4176;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.2102;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.0782;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.1264;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.1053;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")] = 0.0184;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]  = 0.0415;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0024;
 
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
   foreach()
     porosity[] = eps0*f[];
@@ -78,7 +88,7 @@ event init(i=0) {
   TG[bottom] = dirichlet (0.);
 
   TS[top] = dirichlet (0.);
-  TS[bottom] = neumann (hblock*(TSteel - TS[])/lambda1v.y[]);
+  TS[bottom] = lambda1v.y[] > 0. ? neumann (HBLOCK*(TSTEEL + 273.15 - TS[])/lambda1v.y[]) : neumann (0.);
 #endif
 
   for (int jj=0; jj<NGS; jj++) {
@@ -106,8 +116,7 @@ event output (t+=0.01) {
   fprintf (stderr, "%g\n", t);
 
   char name[80];
-  int tempc = (int)(TSteel - 273.15);
-  sprintf(name, "OutputData-%d-%d", maxlevel, tempc);
+  sprintf(name, "OutputData-%d-%d", maxlevel, TSTEEL);
   static FILE * fp = fopen (name, "w");
 
   double solid_mass = 0.;
@@ -133,7 +142,7 @@ event adapt (i++) {
     (double[]){1.e-2, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 1);
 }
 
-event stop (t = 25);
+event stop (t = 0.25);
 
 /** 
 ~~~gnuplot temperature profiles

@@ -387,7 +387,7 @@ event tracer_diffusion (i++) {
 #ifdef SOLVE_TEMPERATURE
       double bc = TInt[];
       double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
-      double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true, bc, &success);
+      double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true , bc, &success);
 
       n.x = fabs(n.x); n.y = fabs(n.y);
 

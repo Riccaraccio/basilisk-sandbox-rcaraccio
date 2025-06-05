@@ -27,27 +27,26 @@ int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) 
   UserDataNls * data = (UserDataNls *)params;
   double TInti = gsl_vector_get(xdata, 0);
   
-  // Point point = locate(data->c.x, data->c.y, data->c.z);
-  foreach_point(data->c.x, data->c.y, data->c.z, serial) {
+  Point point = locate(data->c.x, data->c.y, data->c.z);
+  // foreach_point(data->c.x, data->c.y, data->c.z, serial) {
 
-    bool success = false;
+  bool success = false;
 
-    double gradTGn = ebmgrad(point, TG, fS, fG, fsS, fsG, true,  TInti, &success);
-    double gradTSn = ebmgrad(point, TS, fS, fG, fsS, fsG, false, TInti, &success);
+  double gradTGn = ebmgrad(point, TG, fS, fG, fsS, fsG, true, TInti, &success);
+  double gradTSn = ebmgrad(point, TS, fS, fG, fsS, fsG, false, TInti, &success);
 
-    coord n = facet_normal(point, fS, fsS);
-    normalize(&n);
-    n.x = fabs(n.x); n.y = fabs(n.y);
-    double lambda1vh = n.x/(n.x+n.y)*lambda1v.x[] + n.y/(n.x+n.y)*lambda1v.y[];
+  coord n = facet_normal(point, fS, fsS);
+  normalize(&n);
+  n.x = fabs(n.x); n.y = fabs(n.y);
 
-    // lambdaG_G is not dipendent on the direction, this is just to treat it the same way as lambdaS
-    double lambda2vh = n.x/(n.x+n.y)*lambda2v.x[] + n.y/(n.x+n.y)*lambda2v.y[];
+  double lambda1vh = n.x / (n.x + n.y) * lambda1v.x[] + n.y / (n.x + n.y) * lambda1v.y[];
+  double lambda2vh = n.x / (n.x + n.y) * lambda2v.x[] + n.y / (n.x + n.y) * lambda2v.y[];
 
-    gsl_vector_set(fdata, 0,
-      -divq_rad_int (TInti, TG0, RADIATION_INTERFACE) 
-      + lambda1vh*gradTSn 
-      + lambda2vh*gradTGn);
-  }
+  gsl_vector_set(fdata, 0,
+                 -divq_rad_int(TInti, TG0, RADIATION_INTERFACE) 
+                 + lambda1vh * gradTSn 
+                 + lambda2vh * gradTGn);
+  // }
   return GSL_SUCCESS;
 }
 

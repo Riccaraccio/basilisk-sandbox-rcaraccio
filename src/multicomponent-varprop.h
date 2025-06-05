@@ -20,102 +20,102 @@
 #include "int-concentration.h"
 
 // function to check the variables and dump the simulation if they are out of range
-void check_variables() {
-  bool status = true;
+// void check_variables() {
+//   bool status = true;
 
-  //check f
-  foreach()
-    if (f[] < 0. || f[] > 1.) {
-      fprintf(stderr, "f out of range: %g\n", f[]);
-      status = false;
-    }
+//   //check f
+//   foreach()
+//     if (f[] < 0. || f[] > 1.) {
+//       fprintf(stderr, "f out of range: %g\n", f[]);
+//       status = false;
+//     }
 
-  //check solid temperature
-  if (status) {
-    foreach() {
-      if (f[] > F_ERR) {
-        if (TS[] < 100. || TS[] > 1000.) {
-          fprintf(stderr, "Solid temperature out of range: %g\n", TS[]);
-          status = false;
-        }
-      }
-    }
-  }
+//   //check solid temperature
+//   if (status) {
+//     foreach() {
+//       if (f[] > F_ERR) {
+//         if (TS[] < 100. || TS[] > 1000.) {
+//           fprintf(stderr, "Solid temperature out of range: %g\n", TS[]);
+//           status = false;
+//         }
+//       }
+//     }
+//   }
     
-  //check gas temperature
-  if (status) {
-    foreach() {
-      if (f[] < 1.- F_ERR) {
-        if (TG[] < 100. || TG[] > 1000.) {
-          fprintf(stderr, "Gas temperature out of range: %g\n", TG[]);
-          status = false;
-        }
-      }
-    }
-  }
+//   //check gas temperature
+//   if (status) {
+//     foreach() {
+//       if (f[] < 1.- F_ERR) {
+//         if (TG[] < 100. || TG[] > 1000.) {
+//           fprintf(stderr, "Gas temperature out of range: %g\n", TG[]);
+//           status = false;
+//         }
+//       }
+//     }
+//   }
 
-  //check solid mass fractions
-  if (status) {
-    foreach() {
-      if (f[] > F_ERR) {
-        for (int jj=0; jj<NGS; jj++) {
-          scalar YG_S = YGList_S[jj];
-          if (YG_S[] < 0. || YG_S[] > 1.) {
-            fprintf(stderr, "Solid mass fraction out of range: %g\n", YG_S[]);
-            status = false;
-          }
-        }
-      }
-    }
-  }
+//   //check solid mass fractions
+//   if (status) {
+//     foreach() {
+//       if (f[] > F_ERR) {
+//         for (int jj=0; jj<NGS; jj++) {
+//           scalar YG_S = YGList_S[jj];
+//           if (YG_S[] < 0. || YG_S[] > 1.) {
+//             fprintf(stderr, "Solid mass fraction out of range: %g\n", YG_S[]);
+//             status = false;
+//           }
+//         }
+//       }
+//     }
+//   }
 
-  //check external gas mass fractions
-  if (status) {
-    foreach() {
-      if (f[] < 1.- F_ERR) {
-        for (int jj=0; jj<NGS; jj++) {
-          scalar YG_G = YGList_G[jj];
-          if (YG_G[] < 0. || YG_G[] > 1.) {
-            fprintf(stderr, "Gas mass fraction out of range: %g\n", YG_G[]);
-            status = false;
-          }
-        }
-      }
-    }
-  }
+//   //check external gas mass fractions
+//   if (status) {
+//     foreach() {
+//       if (f[] < 1.- F_ERR) {
+//         for (int jj=0; jj<NGS; jj++) {
+//           scalar YG_G = YGList_G[jj];
+//           if (YG_G[] < 0. || YG_G[] > 1.) {
+//             fprintf(stderr, "Gas mass fraction out of range: %g\n", YG_G[]);
+//             status = false;
+//           }
+//         }
+//       }
+//     }
+//   }
 
-  //check internal gas mass fractions
-  if (status) {
-    foreach() {
-      if (f[] > F_ERR) {
-        for (int jj=0; jj<NGS; jj++) {
-          scalar YG= YGList_S[jj];
-          if (YG[] < 0. || YG[] > 1.) {
-            fprintf(stderr, "Gas mass fraction out of range: %g\n", YG[]);
-            status = false;
-          }
-        }
-      }
-    }
-  }
+//   //check internal gas mass fractions
+//   if (status) {
+//     foreach() {
+//       if (f[] > F_ERR) {
+//         for (int jj=0; jj<NGS; jj++) {
+//           scalar YG= YGList_S[jj];
+//           if (YG[] < 0. || YG[] > 1.) {
+//             fprintf(stderr, "Gas mass fraction out of range: %g\n", YG[]);
+//             status = false;
+//           }
+//         }
+//       }
+//     }
+//   }
  
-  //check porosity
-  if (status) {
-    foreach() {
-      if (f[] > F_ERR) {
-        if (porosity[] < 0. || porosity[] > 1.) {
-          fprintf(stderr, "Porosity out of range: %g\n", porosity[]);
-          status = false;
-        }
-      }
-    }
-  }
+//   //check porosity
+//   if (status) {
+//     foreach() {
+//       if (f[] > F_ERR) {
+//         if (porosity[] < 0. || porosity[] > 1.) {
+//           fprintf(stderr, "Porosity out of range: %g\n", porosity[]);
+//           status = false;
+//         }
+//       }
+//     }
+//   }
   
-  if (!status) {
-    dump();
-    exit(1);
-  }
-}
+//   if (!status) {
+//     dump();
+//     exit(1);
+//   }
+// }
 
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE

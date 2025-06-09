@@ -40,11 +40,11 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  L0 = 2.1415*H0;
+  L0 = (3.14159 +1)*H0;
 
   zeta_policy = ZETA_REACTION;
 
-  DT = 5e-4;
+  DT = 1e-3;
 
   // kinfolder = "biomass/dummy-solid";
   kinfolder = "biomass/Solid-only-2407";
@@ -63,7 +63,7 @@ int main() {
   run();
 }
 
-double solid_mass0, h0;
+double solid_volume0, h0;
 event init(i=0) {
   fraction (f, H0-y);
 
@@ -89,6 +89,7 @@ event init(i=0) {
 
   TS[top] = dirichlet (0.);
   TS[bottom] = lambda1v.y[] > 0. ? neumann (HBLOCK*(TSTEEL + 273.15 - TS[])/lambda1v.y[]) : neumann (0.);
+  // TS[bottom] = dirichlet (TSTEEL + 273.15);
 #endif
 
   for (int jj=0; jj<NGS; jj++) {
@@ -97,9 +98,9 @@ event init(i=0) {
     YG[bottom] = dirichlet (0.);
   }
 
-  solid_mass0 = 0.;
-  foreach(reduction(+:solid_mass0))
-    solid_mass0 += (f[]-porosity[])*rhoS*dv();
+  solid_volume0 = 0.;
+  foreach(reduction(+:solid_volume0))
+    solid_volume0 += f[];
 
   h0 = 0.;
   coord p;
@@ -119,9 +120,9 @@ event output (t+=0.01) {
   sprintf(name, "OutputData-%d-%d", maxlevel, TSTEEL);
   static FILE * fp = fopen (name, "w");
 
-  double solid_mass = 0.;
-  foreach (reduction(+:solid_mass))
-    solid_mass += (f[]-porosity[])*rhoS*dv(); 
+  double solid_volume = 0.;
+  foreach (reduction(+:solid_volume))
+    solid_volume += f[];
 
   //also try calculating the height
   double h = 0.;
@@ -131,7 +132,7 @@ event output (t+=0.01) {
   foreach_region (p, regionh, samplingh, reduction(+:h))
     h += f[];
 
-  fprintf (fp, "%g %g %g\n", t, solid_mass/solid_mass0, h/h0);
+  fprintf (fp, "%g %g %g\n", t, solid_volume/solid_volume0, h/h0);
   fflush(fp);
 }
 
@@ -142,7 +143,7 @@ event adapt (i++) {
     (double[]){1.e-2, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 1);
 }
 
-event stop (t = 0.25);
+event stop (t = 25);
 
 /** 
 ~~~gnuplot temperature profiles
@@ -152,18 +153,16 @@ set xlabel "Time [s]"
 set ylabel "Normalized Volume"
 set key top right box width 1
 set xrange [0:25]
-set yrange [0.4:1.0]
+set yrange [0.:1.0]
 set grid
 
-plot  "OutputData-6-700" u 1:2 w l lw 2 lc "dark-green" t "Sym 700 C", \
-      "OutputData-6-600" u 1:2 w l lw 2 lc "blue" t "Sym 600 C", \
-      "OutputData-6-550" u 1:2 w l lw 2 lc "orange" t "Sym 550 C", \
-      "OutputData-6-500" u 1:2 w l lw 2 lc "black" t "Sym 500 C", \
+plot  "OutputData-6-700" u 1:3 w l lw 2 lc "dark-green" t "Sym 700 C", \
+      "OutputData-6-600" u 1:3 w l lw 2 lc "blue" t "Sym 600 C", \
+      "OutputData-6-550" u 1:3 w l lw 2 lc "orange" t "Sym 550 C", \
+      "OutputData-6-500" u 1:3 w l lw 2 lc "black" t "Sym 500 C", \
       "data/exp700" u 1:2 w p pt 4 lc "dark-green" t "Exp. 700 C", \
       "data/exp600" u 1:2 w p pt 4 lc "blue" t "Exp. 600 C", \
       "data/exp550" u 1:2 w p pt 4 lc "orange" t "Exp. 550 C", \
       "data/exp500" u 1:2 w p pt 4 lc "black" t "Exp. 500 C"
-
-
 ~~~
 **/

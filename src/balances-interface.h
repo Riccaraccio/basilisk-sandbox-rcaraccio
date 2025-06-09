@@ -72,7 +72,10 @@ static void interface_fluxes (Point point) {
   // tsGh.P = Ptest ? Ptest+101325 : 101325;
   // tsGh.x = xG;
   // rhoGInt = tpG.rhov (&tsGh);
-  rhoGInt = rhov[]/cm[]; // use rhoGv_G for the gas phase at the interface
+  scalar rhot[];
+  foreach()
+    rhot[] = rhov[]/cm[];
+  rhoGInt = interpolate(rhot, x+p.x*Delta, y+p.y*Delta);
   #else
   rhoGInt = rhoG;
   #endif
@@ -94,8 +97,9 @@ static void interface_fluxes (Point point) {
   for (int jj=0; jj<NGS; jj++) {
     scalar YGInt = YGList_Int[jj];
     foreach_dimension() {
+      mb.gas_mass_intnow[jj] += rhoGInt*ui.x*n.x*area*Delta*YGInt[]*dt;
       mb.gas_mass_intnow[jj] += -rhoGInt*us.x*n.x*area*Delta*cm[]*YGInt[]*dt; // gas phase left out due to the interface movement
-      mb.gas_mass_intnow[jj] += rhoGInt*u.x[]*n.x*area*Delta*cm[]*YGInt[]*dt;
+      // mb.gas_mass_intnow[jj] += rhoGInt*u.x[]*n.x*area*Delta*cm[]*YG[]/f[]*dt;
     }
   }
   

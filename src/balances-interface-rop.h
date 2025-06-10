@@ -223,7 +223,7 @@ event defaults (i = 0) {
   mb.sol_mass_start = NULL;
   mb.sol_mass = NULL;
 
-  sprintf(mb.name, "balances-%d", maxlevel);
+  sprintf(mb.name, "balances-%d-rop", maxlevel);
 }
 
 event init (i = 0) { 

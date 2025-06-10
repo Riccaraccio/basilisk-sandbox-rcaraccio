@@ -24,11 +24,10 @@ extern double rhoG, muG;
 coord Da = {1e-10, 1e-10};
 
 event viscous_term (i++) {
-  correction (dt);
   foreach() {
     if (f[] > F_ERR) {
       double e = porosity[]/f[];
-      double F = 1.75/pow (150*pow (e, 3), 0.5);
+      double F = 1.75/sqrt(150*pow (e, 3));
       double Umag = sqrt(sq(u.x[]) + sq(u.y[]));
 
       double muGh, rhoGh;
@@ -41,11 +40,10 @@ event viscous_term (i++) {
       #endif
 
       foreach_dimension() {
-        double A = (1./rhoGh)*(muGh*e/Da.x)*f[]; 
-        double B = (F*e/pow(Da.x,0.5))*Umag*f[];
-        u.x[] /= (1. + (A+B)*dt);
+        double A = (1./rhoGh)*(muGh*e/Da.x);
+        double B = F*e/sqrt(Da.x)*Umag;
+        u.x[] /= (1. + (A+B)*dt*f[]);
       }
     }
   }
-  correction (-dt);
 }

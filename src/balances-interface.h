@@ -47,6 +47,7 @@ struct MassBalances
 };
 
 struct MassBalances mb = {0};
+scalar rhot[];
 
 static void interface_fluxes (Point point) {
 
@@ -72,9 +73,6 @@ static void interface_fluxes (Point point) {
   // tsGh.P = Ptest ? Ptest+101325 : 101325;
   // tsGh.x = xG;
   // rhoGInt = tpG.rhov (&tsGh);
-  scalar rhot[];
-  foreach()
-    rhot[] = rhov[]/cm[];
   rhoGInt = interpolate(rhot, x+p.x*Delta, y+p.y*Delta);
   #else
   rhoGInt = rhoG;
@@ -178,7 +176,12 @@ static void compute_balances(void) {
   }
   #endif
 
-  foreach() {
+  #ifdef VARPROP
+  foreach()
+    rhot[] = rhoGv_S[]*f[] + rhoGv_G[]*(1. - f[]);
+  #endif
+
+    foreach() {
     if (f[] > F_ERR) {
       mb.tot_sol_mass += (f[] - porosity[])*rhoS*dv(); //(f-ef)
 

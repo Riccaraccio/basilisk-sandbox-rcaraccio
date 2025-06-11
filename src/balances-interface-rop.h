@@ -169,7 +169,7 @@ static void compute_balances(void) {
   #endif
 
     foreach()
-    if (f[] > F_ERR) && (f[] < 1.-F_ERR)
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
         interface_fluxes (point);
 
 

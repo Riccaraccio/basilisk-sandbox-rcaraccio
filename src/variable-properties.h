@@ -30,6 +30,7 @@ typedef struct {
   // Species properties
   void   (* diff)     (void *, double *);
   double (* cps)      (void *, int);
+  void   (* cpvs)     (void *, double *);
 } ThermoProps;
 
 #define aavg(f,v1,v2) (clamp(f,0.,1.)*(v1 - v2) + v2)

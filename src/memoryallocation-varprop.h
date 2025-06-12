@@ -16,6 +16,10 @@ scalar* XGList_G    = NULL;
 scalar* XGList_S    = NULL;
 scalar* XGList_Int  = NULL;
 #endif
+#ifdef MASS_DIFFUSION_ENTHALPY
+scalar* cpGList_G = NULL;
+scalar* cpGList_S = NULL;
+#endif
 
 double* gas_start;
 double* sol_start;
@@ -85,6 +89,10 @@ event defaults (i = 0) {
   XGList_G    = NULL;
   XGList_S    = NULL;
   XGList_Int  = NULL;
+  #endif
+  #ifdef MASS_DIFFUSION_ENTHALPY
+  cpGList_G = NULL;
+  cpGList_S = NULL;
   #endif
 
   //Allocate gas species fields
@@ -201,6 +209,26 @@ for (int jj=0; jj<NGS; jj++) {
     XGList_Int = list_append (XGList_Int, a);
   }
   reset (XGList_Int, 0.);
+  #endif
+  #ifdef MASS_DIFFUSION_ENTHALPY
+  for (int jj = 0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "cpG_%s_G",OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    cpGList_G = list_append (cpGList_G, a);
+  }
+  reset (cpGList_G, 0.);
+  for (int jj = 0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "cpG_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    cpGList_S = list_append (cpGList_S, a);
+  }
+  reset (cpGList_S, 0.);
   #endif
 
   //initialize vector with initial values
@@ -429,15 +457,22 @@ event cleanup (t = end) {
   free(sol_start),  sol_start = NULL;
   free(gas_MWs),    gas_MWs = NULL;
   free(sol_MWs),    sol_MWs = NULL;
+  delete(f.tracers),  free(f.tracers),   f.tracers = NULL;
+
 #ifdef MOLAR_DIFFUSION
   delete (XGList_S), free (XGList_S), XGList_S = NULL;
   delete (XGList_G), free (XGList_G), XGList_G = NULL;
   delete (XGList_Int), free (XGList_Int), XGList_Int = NULL;
 #endif
+
+#ifdef MASS_DIFFUSION_ENTHALPY
+  delete (cpGList_G), free (cpGList_G), cpGList_G = NULL;
+  delete (cpGList_S), free (cpGList_S), cpGList_S = NULL;
+#endif
+
 #ifdef SOLVE_TEMPERATURE
   delete ({TS,TG});
 #endif
-  delete(f.tracers),  free(f.tracers),   f.tracers = NULL;
 
 #ifdef TEMPERATURE_PROFILE
   TemperatureProfile_Free();

@@ -37,6 +37,13 @@ void opensmoke_gasprop_diff (void * p, double * Dmix) {
   OpenSMOKE_GasProp_Dmix (ts->x, Dmix);
 }
 
+void opensmoke_gasprop_species_heatcapacity (void * p, double * cpi) {
+  ThermoState * ts = (ThermoState *)p;
+  OpenSMOKE_GasProp_SetTemperature (ts->T);
+  OpenSMOKE_GasProp_SetPressure (ts->P);
+  OpenSMOKE_GasProp_HeatCapacity_PureSpecies (cpi);
+}
+
 double opensmoke_solprop_heatcapacity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_SolProp_SetTemperature (ts->T);
@@ -99,4 +106,5 @@ event defaults (i = 0) {
   tpG.lambdav = opensmoke_gasprop_thermalconductivity;
   tpG.cpv     = opensmoke_gasprop_heatcapacity;
   tpG.diff    = opensmoke_gasprop_diff;
+  tpG.cpvs    = opensmoke_gasprop_species_heatcapacity;
 }

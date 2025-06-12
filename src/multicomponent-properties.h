@@ -92,6 +92,14 @@ void update_properties_initial (void) {
       muGv_S[] = tpG.muv (&tsGh);
       lambdaGv_S[] = tpG.lambdav (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
+#ifdef MASS_DIFFUSION_ENTHALPY
+      double cpG[NGS];
+      tpG.cpvs (&tsGh, cpG);
+      for(int jj=0; jj<NGS; jj++) {
+        scalar cpGv = cpGList_S[jj];
+        cpGv[] = cpG[jj];
+      }
+#endif // MASS_DIFFUSION_ENTHALPY
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
@@ -176,6 +184,15 @@ void update_properties_initial (void) {
       cpGv_G[] = tpG.cpv (&tsGh);
       lambdaGv_G[] = tpG.lambdav (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
+#ifdef MASS_DIFFUSION_ENTHALPY
+      double cpG[NGS];
+      tpG.cpvs (&tsGh, cpG);
+      for(int jj=0; jj<NGS; jj++) {
+        scalar cpGv = cpGList_G[jj];
+        cpGv[] = cpG[jj];
+        // fprintf(stderr, "cpGv[%d] = %g\n", jj, cpGv[]);
+      }
+#endif // MASS_DIFFUSION_ENTHALPY
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_G[jj];
@@ -241,6 +258,15 @@ void update_properties (void) {
       lambdaGv_S[] = tpG.lambdav (&tsGh);
       muGv_S[] = tpG.muv (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
+
+#ifdef MASS_DIFFUSION_ENTHALPY
+      double cpG[NGS];
+      tpG.cpvs (&tsGh, cpG);
+      for(int jj=0; jj<NGS; jj++) {
+        scalar cpGv = cpGList_S[jj];
+        cpGv[] = cpG[jj];
+      }
+#endif // MASS_DIFFUSION_ENTHALPY
 
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
@@ -331,6 +357,15 @@ void update_properties (void) {
       cpGv_G[] = tpG.cpv (&tsGh);
       lambdaGv_G[] = tpG.lambdav (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
+
+#ifdef MASS_DIFFUSION_ENTHALPY
+      double cpG[NGS];
+      tpG.cpvs (&tsGh, cpG);
+      for(int jj=0; jj<NGS; jj++) {
+        scalar cpGv = cpGList_G[jj];
+        cpGv[] = cpG[jj];
+      }
+#endif // MASS_DIFFUSION_ENTHALPY
 
       for (int jj=0; jj<NGS; jj++) {
         scalar Dmix2v = DmixGList_G[jj];

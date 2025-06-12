@@ -78,7 +78,7 @@ static void interface_fluxes (Point point) {
     // mb.tot_gas_mass_intnow += rhoGInt*u.x[]*n.x*area*Delta*cm[]*dt;
   }
 
-  #ifdef MULTICOMPONENT
+#ifdef MULTICOMPONENT
   for (int jj=0; jj<NGS; jj++) {
     scalar YGInt = YGList_Int[jj];
     foreach_dimension() {
@@ -91,18 +91,33 @@ static void interface_fluxes (Point point) {
   // DIFFUSIVE FLUXES
   // We need to recalculate the fluxes since sGexp gets modified
   // by the diffusion solver
+  double jG[NGS];
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar DmixG = DmixGList_G[jj];
+# ifdef MOLAR_DIFFUSION
+    scalar XG = XGList_G[jj];
+    scalar XGInt = XGList_Int[jj];
+    double Gtrgrad = ebmgrad(point, XG, fS, fG, fsS, fsG, true, XGInt[], &success);
+    jG[jj] = rhoGInt * DmixG[] * Gtrgrad * gas_MWs[jj] / MWmixG_G[];
+# else
+    scalar YG = YGList_G[jj];
+    scalar YGInt = YGList_Int[jj];
+    double Gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, YGInt[], &success);
+    jG[jj] = rhoGInt * DmixG[] * Gtrgrad;
+# endif
+  }
+
+  double jGtot = 0.;
+# ifdef FICK_CORRECTED
+  for (int jj = 0; jj < NGS; jj++)
+    jGtot += jG[jj];
+# endif
+
   for (int jj = 0; jj < NGS; jj++) {
     scalar YGInt = YGList_Int[jj];
-    scalar YG = YGList_G[jj];
-    scalar DmixG = DmixGList_G[jj];
-
-    double bc = YGInt[];
-    double Gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, bc, &success);
-
-    double jG = rhoGInt * DmixG[] * Gtrgrad;
-    mb.gas_mass_intnow[jj] += jG*area*Delta*cm[]; 
+    mb.gas_mass_intnow[jj] += (jG[jj] - jGtot*YGInt[])*area*Delta*cm[]; 
   }
-  #endif
+#endif
 }
 
 static void compute_initial_state (void) {

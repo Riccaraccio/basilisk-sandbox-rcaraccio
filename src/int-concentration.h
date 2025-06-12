@@ -12,6 +12,13 @@ extern scalar* DmixGList_S;
 extern scalar* YGList_S;
 extern scalar* YGList_G;
 extern scalar* YGList_Int;
+extern double* gas_MWs;
+
+#ifdef MOLAR_DIFFUSION
+extern scalar* XGList_S;
+extern scalar* XGList_G;
+#endif
+
 
 #ifndef SOLVE_TEMPERATURE
 typedef struct {
@@ -26,7 +33,6 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
   for (int jj = 0; jj < NGS; jj++)
     YGInti[jj] = gsl_vector_get(xdata, jj);
 
-  // double XGInti[NGS];
   double jG_S[NGS];
   double jG_G[NGS];
   bool success = false;
@@ -34,11 +40,14 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
   Point point = locate(data->c.x, data->c.y, data->c.z);
   // foreach_point(data->c.x, data->c.y, data->c.z, serial) {
 
-  for (int jj = 0; jj < NGS; jj++) {
-    scalar YG = YGList_G[jj];
-    scalar DmixG = DmixGList_G[jj];
-    double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, YGInti[jj], &success);
+#ifdef MOLAR_DIFFUSION
+  //convert mass to mole fractions
+  double XGInti[NGS], MWmixInt;
+  OpenSMOKE_MoleFractions_From_MassFractions(XGInti, &MWmixInt, YGInti);
+#endif
 
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar DmixG = DmixGList_G[jj];
     double rhoGvh_G;
 #ifdef VARPROP
     rhoGvh_G = rhoGv_G[];
@@ -46,14 +55,19 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
     rhoGvh_G = rhoG;
 #endif
 
+#ifdef MOLAR_DIFFUSION
+    scalar XG = XGList_G[jj];
+    double gtrgrad = ebmgrad(point, XG, fS, fG, fsS, fsG, true, XGInti[jj], &success);
+    jG_G[jj] = rhoGvh_G * DmixG[] * gas_MWs[jj] / MWmixInt * gtrgrad;
+#else
+    scalar YG = YGList_G[jj];
+    double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, true, YGInti[jj], &success);
     jG_G[jj] = rhoGvh_G * DmixG[] * gtrgrad;
+#endif
   }
 
   for (int jj = 0; jj < NGS; jj++) {
-    scalar YG = YGList_S[jj];
     scalar DmixG = DmixGList_S[jj];
-    double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, false, YGInti[jj], &success);
-
     double rhoGvh_S;
 #ifdef VARPROP
     rhoGvh_S = rhoGv_S[];
@@ -61,12 +75,29 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
     rhoGvh_S = rhoG;
 #endif
 
+#ifdef MOLAR_DIFFUSION
+    scalar XG = XGList_S[jj];
+    double gtrgrad = ebmgrad(point, XG, fS, fG, fsS, fsG, false, XGInti[jj], &success);
+    jG_S[jj] = rhoGvh_S * DmixG[] * gas_MWs[jj] / MWmixInt * gtrgrad;
+#else
+    scalar YG = YGList_S[jj];
+    double gtrgrad = ebmgrad(point, YG, fS, fG, fsS, fsG, false, YGInti[jj], &success);
     jG_S[jj] = rhoGvh_S * DmixG[] * gtrgrad;
+#endif
   }
   // }
 
+  double jGtot_S = 0., jGtot_G = 0.;
+#ifdef FICK_CORRECTED
+  for (int jj = 0; jj < NGS; jj++) {
+    jGtot_S += jG_S[jj];
+    jGtot_G += jG_G[jj];
+  }
+#endif
+
   for (int jj = 0; jj < NGS; jj++)
-    gsl_vector_set(fdata, jj, jG_S[jj] + jG_G[jj]);
+    gsl_vector_set(fdata, jj, (jG_S[jj] - jGtot_S*YGInti[jj]) + 
+                              (jG_G[jj] - jGtot_G*YGInti[jj]));
 
   return GSL_SUCCESS;
 }

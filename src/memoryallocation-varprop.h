@@ -11,6 +11,11 @@ scalar* sGexpList   = NULL;
 scalar* YSList      = NULL;
 scalar* DmixGList_G = NULL;
 scalar* DmixGList_S = NULL;
+#ifdef MOLAR_DIFFUSION
+scalar* XGList_G    = NULL;
+scalar* XGList_S    = NULL;
+scalar* XGList_Int  = NULL;
+#endif
 
 double* gas_start;
 double* sol_start;
@@ -55,11 +60,6 @@ scalar MWmixG_G[], MWmixG_S[];
 scalar fG[], fS[];
 face vector fsS[], fsG[];
 
-#ifdef VARPROP //TODO: check if necessary
-scalar dummy[];
-scalar rhoSv0[], rhoGv_G0[], rhoGv_S0[];
-#endif
-
 event defaults (i = 0) {
 
   //Read the kinetic scheme
@@ -81,6 +81,11 @@ event defaults (i = 0) {
   YSList      = NULL;
   DmixGList_G = NULL;
   DmixGList_S = NULL;
+  #ifdef MOLAR_DIFFUSION
+  XGList_G    = NULL;
+  XGList_S    = NULL;
+  XGList_Int  = NULL;
+  #endif
 
   //Allocate gas species fields
   for (int jj = 0; jj<NGS; jj++) {
@@ -165,6 +170,39 @@ for (int jj=0; jj<NGS; jj++) {
   reset (sSexpList, 0.);
   reset (sGexpList, 0.);
 
+  #ifdef MOLAR_DIFFUSION
+  //Allocate gas molar fraction fields
+  for (int jj = 0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "XG_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    XGList_S = list_append (XGList_S, a);
+  }
+  reset (XGList_S, 0.);
+
+  for (int jj = 0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "XG_%s_G",OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    XGList_G = list_append (XGList_G, a);
+  }
+  reset (XGList_G, 0.);
+
+  for (int jj = 0; jj<NGS; jj++) {
+    scalar a = new scalar;
+    free (a.name);
+    char name[20];
+    sprintf (name, "XG_%s_Int",OpenSMOKE_NamesOfSpecies(jj));
+    a.name = strdup (name);
+    XGList_Int = list_append (XGList_Int, a);
+  }
+  reset (XGList_Int, 0.);
+  #endif
+
   //initialize vector with initial values
   gas_start = (double *)malloc(NGS * sizeof(double));
   sol_start = (double *)malloc(NSS * sizeof(double));
@@ -189,6 +227,14 @@ for (int jj=0; jj<NGS; jj++) {
 
   for (scalar s in YSList)
     s.inverse = false;
+
+#ifdef MOLAR_DIFFUSION
+  for (scalar s in XGList_S)
+    s.inverse = false;
+
+  for (scalar s in XGList_G)
+    s.inverse = true;
+#endif
 
   scalar *temp;
   temp = list_concat(f.tracers, YGList_S);
@@ -383,6 +429,11 @@ event cleanup (t = end) {
   free(sol_start),  sol_start = NULL;
   free(gas_MWs),    gas_MWs = NULL;
   free(sol_MWs),    sol_MWs = NULL;
+#ifdef MOLAR_DIFFUSION
+  delete (XGList_S), free (XGList_S), XGList_S = NULL;
+  delete (XGList_G), free (XGList_G), XGList_G = NULL;
+  delete (XGList_Int), free (XGList_Int), XGList_Int = NULL;
+#endif
 #ifdef SOLVE_TEMPERATURE
   delete ({TS,TG});
 #endif

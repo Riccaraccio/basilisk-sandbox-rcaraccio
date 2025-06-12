@@ -19,104 +19,105 @@
 #include "int-temperature.h"
 #include "int-concentration.h"
 
-// function to check the variables and dump the simulation if they are out of range
-// void check_variables() {
-//   bool status = true;
+/*
+//function to check the variables and dump the simulation if they are out of range
+void check_variables() {
+  bool status = true;
 
-//   //check f
-//   foreach()
-//     if (f[] < 0. || f[] > 1.) {
-//       fprintf(stderr, "f out of range: %g\n", f[]);
-//       status = false;
-//     }
+  //check f
+  foreach()
+    if (f[] < 0. || f[] > 1.) {
+      fprintf(stderr, "f out of range: %g\n", f[]);
+      status = false;
+    }
 
-//   //check solid temperature
-//   if (status) {
-//     foreach() {
-//       if (f[] > F_ERR) {
-//         if (TS[] < 100. || TS[] > 1000.) {
-//           fprintf(stderr, "Solid temperature out of range: %g\n", TS[]);
-//           status = false;
-//         }
-//       }
-//     }
-//   }
+  //check solid temperature
+  if (status) {
+    foreach() {
+      if (f[] > F_ERR) {
+        if (TS[] < 100. || TS[] > 1000.) {
+          fprintf(stderr, "Solid temperature out of range: %g\n", TS[]);
+          status = false;
+        }
+      }
+    }
+  }
     
-//   //check gas temperature
-//   if (status) {
-//     foreach() {
-//       if (f[] < 1.- F_ERR) {
-//         if (TG[] < 100. || TG[] > 1000.) {
-//           fprintf(stderr, "Gas temperature out of range: %g\n", TG[]);
-//           status = false;
-//         }
-//       }
-//     }
-//   }
+  //check gas temperature
+  if (status) {
+    foreach() {
+      if (f[] < 1.- F_ERR) {
+        if (TG[] < 100. || TG[] > 1000.) {
+          fprintf(stderr, "Gas temperature out of range: %g\n", TG[]);
+          status = false;
+        }
+      }
+    }
+  }
 
-//   //check solid mass fractions
-//   if (status) {
-//     foreach() {
-//       if (f[] > F_ERR) {
-//         for (int jj=0; jj<NGS; jj++) {
-//           scalar YG_S = YGList_S[jj];
-//           if (YG_S[] < 0. || YG_S[] > 1.) {
-//             fprintf(stderr, "Solid mass fraction out of range: %g\n", YG_S[]);
-//             status = false;
-//           }
-//         }
-//       }
-//     }
-//   }
+  //check solid mass fractions
+  if (status) {
+    foreach() {
+      if (f[] > F_ERR) {
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG_S = YGList_S[jj];
+          if (YG_S[] < 0. || YG_S[] > 1.) {
+            fprintf(stderr, "Solid mass fraction out of range: %g\n", YG_S[]);
+            status = false;
+          }
+        }
+      }
+    }
+  }
 
-//   //check external gas mass fractions
-//   if (status) {
-//     foreach() {
-//       if (f[] < 1.- F_ERR) {
-//         for (int jj=0; jj<NGS; jj++) {
-//           scalar YG_G = YGList_G[jj];
-//           if (YG_G[] < 0. || YG_G[] > 1.) {
-//             fprintf(stderr, "Gas mass fraction out of range: %g\n", YG_G[]);
-//             status = false;
-//           }
-//         }
-//       }
-//     }
-//   }
+  //check external gas mass fractions
+  if (status) {
+    foreach() {
+      if (f[] < 1.- F_ERR) {
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG_G = YGList_G[jj];
+          if (YG_G[] < 0. || YG_G[] > 1.) {
+            fprintf(stderr, "Gas mass fraction out of range: %g\n", YG_G[]);
+            status = false;
+          }
+        }
+      }
+    }
+  }
 
-//   //check internal gas mass fractions
-//   if (status) {
-//     foreach() {
-//       if (f[] > F_ERR) {
-//         for (int jj=0; jj<NGS; jj++) {
-//           scalar YG= YGList_S[jj];
-//           if (YG[] < 0. || YG[] > 1.) {
-//             fprintf(stderr, "Gas mass fraction out of range: %g\n", YG[]);
-//             status = false;
-//           }
-//         }
-//       }
-//     }
-//   }
+  //check internal gas mass fractions
+  if (status) {
+    foreach() {
+      if (f[] > F_ERR) {
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG= YGList_S[jj];
+          if (YG[] < 0. || YG[] > 1.) {
+            fprintf(stderr, "Gas mass fraction out of range: %g\n", YG[]);
+            status = false;
+          }
+        }
+      }
+    }
+  }
  
-//   //check porosity
-//   if (status) {
-//     foreach() {
-//       if (f[] > F_ERR) {
-//         if (porosity[] < 0. || porosity[] > 1.) {
-//           fprintf(stderr, "Porosity out of range: %g\n", porosity[]);
-//           status = false;
-//         }
-//       }
-//     }
-//   }
+  //check porosity
+  if (status) {
+    foreach() {
+      if (f[] > F_ERR) {
+        if (porosity[] < 0. || porosity[] > 1.) {
+          fprintf(stderr, "Porosity out of range: %g\n", porosity[]);
+          status = false;
+        }
+      }
+    }
+  }
   
-//   if (!status) {
-//     dump();
-//     exit(1);
-//   }
-// }
-
+  if (!status) {
+    dump();
+    exit(1);
+  }
+}
+*/
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
@@ -250,6 +251,42 @@ void check_and_correct_fractions (scalar* YList, int n, bool inverse, char* name
   }
 }
 
+void update_mole_fields() {
+  #ifdef MOLAR_DIFFUSION
+  foreach() {
+    double xG[NGS], yG[NGS];
+    double MWmix;
+    if (f[] > F_ERR) { // Internal gas phase
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_S[jj];
+        yG[jj] = YG[];
+      }
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmix, yG);
+      // MWmixG_S[] = MWmix; // Already done in update_properties()
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar XG = XGList_S[jj];
+        XG[] = xG[jj];
+      }
+    }
+
+    if (f[] < 1. - F_ERR) { // External gas phase
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        yG[jj] = YG[];
+      }
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmix, yG);
+      // MWmixG_G[] = MWmix; // Already done in update_properties()
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar XG = XGList_G[jj];
+        XG[] = xG[jj];
+      }
+    }
+  }
+  boundary (XGList_S);
+  boundary (XGList_G); // Ensure boundary conditions are applied
+  #endif
+}
+
 event tracer_diffusion (i++) {
   
   //Check the mass fractions Can be removed for performance
@@ -276,6 +313,8 @@ event tracer_diffusion (i++) {
     for (scalar YG in YGList_G)
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
   }
+
+  update_mole_fields();
 
   //Compute face gradients
   face_fraction (fS, fsS);
@@ -326,6 +365,22 @@ event tracer_diffusion (i++) {
   //find the interface concentration foreach species
   intConcentration();
 
+#ifdef MOLAR_DIFFUSION // calculate the mole fractions at the interface
+  foreach()
+    if (f[] > F_ERR && f[] < 1.-F_ERR) {
+      double xG[NGS], yG[NGS], MWmixInt;
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YGInt = YGList_Int[jj];
+        yG[jj] = YGInt[];
+      }
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixInt, yG);
+      for (int jj=0; jj<NGS; jj++) {
+        scalar XGInt = XGList_Int[jj];
+        XGInt[] = xG[jj];
+      }
+    }
+#endif
+
   //Calculate the source therm
   foreach() {
     if (f[] > F_ERR && f[] < 1.-F_ERR) {
@@ -335,14 +390,9 @@ event tracer_diffusion (i++) {
       normalize (&n);
 
       //Solid side
+      double jS[NGS];
       for (int jj=0; jj<NGS; jj++) {
-        scalar YGInt = YGList_Int[jj];
-        scalar YG    = YGList_S[jj];
-        scalar sSexp = sSexpList[jj];
         scalar DmixG = DmixGList_S[jj];
-
-        double bc = YGInt[];
-        double Strgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, false, bc, &success);
 
         double rhoGvh_S;
         #ifdef VARPROP
@@ -350,24 +400,41 @@ event tracer_diffusion (i++) {
         #else
         rhoGvh_S = rhoG;
         #endif
+        
+        #ifdef MOLAR_DIFFUSION
+        scalar XG = XGList_S[jj];
+        scalar XGInt = XGList_Int[jj];
+        double Strgrad = ebmgrad (point, XG, fS, fG, fsS, fsG, false, XGInt[], &success);
+        jS[jj] = rhoGvh_S*DmixG[]*Strgrad*gas_MWs[jj]/MWmixG_S[];
+        #else
+        scalar YG    = YGList_S[jj];
+        scalar YGInt = YGList_Int[jj];
+        double Strgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, false, YGInt[], &success);
+        jS[jj] = rhoGvh_S*DmixG[]*Strgrad; 
+        #endif
+      }
 
-        double jS = rhoGvh_S*DmixG[]*Strgrad;
+      double jStot = 0.;
+#ifdef FICK_CORRECTED
+      for (int jj=0; jj<NGS; jj++)
+        jStot += jS[jj];
+#endif
+
+      for (int jj=0; jj<NGS; jj++) {
+        scalar sSexp = sSexpList[jj];
+        scalar YGInt = YGList_Int[jj];
+        jS[jj] -= jStot*YGInt[];
 #ifdef AXI
-        sSexp[] += jS*area*(y + p.y*Delta)/(Delta*y)*cm[];
+        sSexp[] += jS[jj]*area*(y + p.y*Delta)/(Delta*y)*cm[];
 #else
-        sSexp[] += jS*area/Delta*cm[];
+        sSexp[] += jS[jj]*area/Delta*cm[];
 #endif
       }
 
       //Gas side
+      double jG[NGS];
       for (int jj=0; jj<NGS; jj++) {
-        scalar YGInt = YGList_Int[jj];
-        scalar YG    = YGList_G[jj];
-        scalar sGexp = sGexpList[jj];
         scalar DmixG = DmixGList_G[jj];
-
-        double bc = YGInt[];
-        double Gtrgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, true, bc, &success);
 
         double rhoGvh_G;
 #ifdef VARPROP
@@ -376,11 +443,33 @@ event tracer_diffusion (i++) {
         rhoGvh_G = rhoG;
 #endif
 
-        double jG = rhoGvh_G*DmixG[]*Gtrgrad;
-#ifdef AXI
-        sGexp[] += jG*area*(y + p.y*Delta)/(Delta*y)*cm[];
+#ifdef MOLAR_DIFFUSION
+        scalar XG = XGList_G[jj];
+        scalar XGInt = XGList_Int[jj];
+        double Gtrgrad = ebmgrad (point, XG, fS, fG, fsS, fsG, true, XGInt[], &success);
+        jG[jj] = rhoGvh_G*DmixG[]*Gtrgrad*gas_MWs[jj]/MWmixG_G[];
 #else
-        sGexp[] += jG*area/Delta*cm[];
+        scalar YG    = YGList_G[jj];
+        scalar YGInt = YGList_Int[jj];
+        double Gtrgrad = ebmgrad (point, YG, fS, fG, fsS, fsG, true, YGInt[], &success);
+        jG[jj] = rhoGvh_G*DmixG[]*Gtrgrad;
+#endif
+      }
+
+      double jGtot = 0.;
+#ifdef FICK_CORRECTED
+      for (int jj=0; jj<NGS; jj++)
+        jGtot += jG[jj];
+#endif
+
+      for (int jj=0; jj<NGS; jj++) {
+        scalar sGexp = sGexpList[jj];
+        scalar YGInt = YGList_Int[jj];
+        jG[jj] -= jGtot*YGInt[];
+#ifdef AXI
+        sGexp[] += jG[jj]*area*(y + p.y*Delta)/(Delta*y)*cm[];
+#else
+        sGexp[] += jG[jj]*area/Delta*cm[];
 #endif
       }
 
@@ -411,6 +500,125 @@ event tracer_diffusion (i++) {
 #if defined VARPROP && !defined NO_EXPANSION
   update_divergence_density();
 #endif
+
+  face vector phicGtot[];
+  foreach_face() {
+    phicGtot.x[] = 0.;
+    for (int jj=0; jj<NGS; jj++) {
+#ifdef FICK_CORRECTED
+      scalar DmixG = DmixGList_G[jj];
+      double DmixGf = face_value(DmixG, 0);
+      double rhoGf;
+# ifdef VARPROP
+      rhoGf = face_value(rhoGv_G, 0);
+# else
+      rhoGf = rhoG;
+# endif
+
+# ifdef MOLAR_DIFFUSION
+      scalar XG = XGList_G[jj];
+      double MWmixf = face_value(MWmixG_G, 0);
+      phicGtot.x[] += (MWmixf > 0.) ? rhoGf*DmixGf*face_gradient_x (XG, 0)*gas_MWs[jj]/MWmixf : 0.;
+# else
+      scalar YG = YGList_G[jj];
+      phicGtot.x[] += rhoGf*DmixGf*face_gradient_x (YG, 0);
+# endif
+#endif
+    }
+    phicGtot.x[] *= fsG.x[]*fm.x[];
+  }
+
+  face vector phicStot[];
+  foreach_face() {
+    phicStot.x[] = 0.;
+    for (int jj=0; jj<NGS; jj++) {
+#ifdef FICK_CORRECTED
+      scalar DmixG = DmixGList_S[jj];
+      double DmixGf = face_value(DmixG, 0);
+      double rhoGf;
+# ifdef VARPROP
+      rhoGf = face_value(rhoGv_S, 0);
+# else
+      rhoGf = rhoG;
+# endif
+
+# ifdef MOLAR_DIFFUSION
+      scalar XG = XGList_S[jj];
+      double MWmixf = face_value(MWmixG_S, 0);
+      phicStot.x[] += (MWmixf > 0.) ? rhoGf*DmixGf*face_gradient_x (XG, 0)*gas_MWs[jj]/MWmixf : 0.;
+# else
+      scalar YG = YGList_S[jj];
+      phicStot.x[] += rhoGf*DmixGf*face_gradient_x (YG, 0);
+# endif
+#endif
+    }
+    phicStot.x[] *= fsS.x[]*fm.x[];
+  }
+
+  //Apply the Fick's law correction
+  for (int jj=0; jj<NGS; jj++) {
+    face vector phicjj[];
+    foreach_face() {
+      phicjj.x[] = phicGtot.x[];
+#ifdef MOLAR_DIFFUSION
+      scalar DmixG = DmixGList_G[jj];
+      double DmixGf = face_value(DmixG, 0);
+      double MWmixf = face_value(MWmixG_G, 0);
+
+      double rhoGf;
+# ifdef VARPROP
+      rhoGf = face_value(rhoGv_G, 0);
+# else
+      rhoGf = rhoG;
+# endif
+      phicjj.x[] -= (MWmixf > 0.) ? rhoGf*DmixGf/MWmixf*face_gradient_x (MWmixG_G, 0)*fsG.x[]*fm.x[] : 0.;
+#endif
+  }
+
+    scalar YG = YGList_G[jj];
+    double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
+    YG.gradient = NULL; //reset the gradient
+    face vector flux[];
+    tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
+    YG.gradient = gradient_backup; // restore the gradient function
+    
+    // apply the corrective fluxes
+    foreach()
+      foreach_dimension()
+        YG[] += (rhoGv_G[] > 0.) ? dt/(rhoGv_G[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.; 
+  }
+
+  for (int jj=0; jj<NGS; jj++) {
+    face vector phicjj[];
+    foreach_face() {
+      phicjj.x[] = phicStot.x[];
+#ifdef MOLAR_DIFFUSION
+      scalar DmixG = DmixGList_S[jj];
+      double DmixGf = face_value(DmixG, 0);
+      double MWmixf = face_value(MWmixG_S, 0);
+
+      double rhoGf;
+# ifdef VARPROP
+      rhoGf = face_value(rhoGv_S, 0);
+# else
+      rhoGf = rhoG;
+# endif
+      phicjj.x[] -= (MWmixf > 0.) ? rhoGf*DmixGf/MWmixf*face_gradient_x (MWmixG_S, 0)*fsS.x[]*fm.x[] : 0.;
+#endif
+  }
+
+    scalar YG = YGList_S[jj];
+    double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
+    YG.gradient = NULL; //reset the gradient
+    face vector flux[];
+    tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
+    YG.gradient = gradient_backup; // restore the gradient function
+    
+    // apply the corrective fluxes
+    foreach()
+      foreach_dimension()
+        YG[] += (rhoGv_S[] > 0.) ? dt/(rhoGv_S[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.; 
+  }
 
   scalar theta1[], theta2[];
 
@@ -476,6 +684,7 @@ event tracer_diffusion (i++) {
 
     scalar YG = YGList_G[jj];
     scalar sGexp = sGexpList[jj];
+
 #ifdef EXPLICIT_DIFFUSION
     diffusion_explicit (YG, dt, D=DmixGf, theta=theta2);
 #else
@@ -492,10 +701,10 @@ event tracer_diffusion (i++) {
   foreach() {
     double theta1vh, theta2vh;
 # ifdef VARPROP
-    theta1vh = porosity[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[])*rhoSv[]*cpSv[];
+    theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.;
     theta2vh = rhoGv_G[]*cpGv_G[];
 # else
-    theta1vh = porosity[]*rhoG*cpG + (1. - porosity[])*rhoS*cpS;
+    theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.;
     theta2vh = rhoG*cpG;
 # endif
 
@@ -530,5 +739,4 @@ event tracer_diffusion (i++) {
 
   check_and_correct_fractions (YGList_S, NGS, false, "YGList_S-2");
   check_and_correct_fractions (YGList_G, NGS, true,  "YGList_G-2");
-  check_and_correct_fractions (YSList,   NSS, false, "YSList-2");
 }

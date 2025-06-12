@@ -187,6 +187,18 @@ static void compute_balances(void) {
     if (f[] > F_ERR && f[] < 1.-F_ERR)
         interface_fluxes (point);
 
+    foreach() {
+      if (f[] > F_ERR) {
+        mb.tot_sol_mass += (f[] - porosity[]) * rhoS * dv(); //(f-ef)
+
+#ifdef MULTICOMPONENT
+        for (int jj = 0; jj < NSS; jj++) {
+          scalar YS = YSList[jj];
+          mb.sol_mass[jj] += (f[] - porosity[]) * rhoS * (YS[] / f[]) * dv(); // ef/f*(YG*f) = ef*YG
+        }
+#endif
+      }
+    }
 
 #ifdef MULTICOMPONENT
   // Recover tracer form for YGList_G
@@ -202,8 +214,8 @@ static void compute_balances(void) {
 static void write_balances(void) {
   //print total mass
   fprintf(mb.fb, "%-18.12f %-18.12f %-18.12f %-18.12f ", t,
-                                        mb.tot_sol_mass,
-                                        mb.tot_gas_mass,
+                                        mb.tot_sol_mass/mb.tot_sol_mass_start,
+                                        mb.tot_gas_mass_intnow/mb.tot_sol_mass_start,
                                         mb.tot_mass);
 
   #ifdef MULTICOMPONENT

@@ -499,71 +499,83 @@ event tracer_diffusion (i++) {
 
 #ifdef MASS_DIFFUSION_ENTHALPY
   foreach() {
-    double mde1 = 0., mde2 = 0.;
-    coord gTS = {0., 0., 0.}, gTG = {0., 0., 0.};
-    coord gYGj_S = {0., 0., 0.}, gYGj_G = {0., 0., 0.};
-    coord gYGsum_S = {0., 0., 0.}, gYGsum_G = {0., 0., 0.};
-    foreach_dimension() {
-      gTG.x = (TG[1] - TG[-1])/(2.*Delta);
-      gTS.x = (TS[1] - TS[-1])/(2.*Delta);
+    if (f[] > 1.-F_ERR) { //Internal gas phase
+      double mdeGS = 0.;
+      coord gTS = {0., 0., 0.};
+      coord gYGj_S = {0., 0., 0.};
+      coord gYGsum_S = {0., 0., 0.};
+
+      foreach_dimension()
+        gTS.x = (TS[1] - TS[-1])/(2.*Delta);
+      
+      foreach_dimension() {
+        for (int jj=0; jj<NGS; jj++) {
+          scalar Dmixv = DmixGList_S[jj];
+  # ifdef MOLAR_DIFFUSION
+          scalar XG = XGList_S[jj];
+          gYGsum_S.x -= (MWmixG_S[] > 0.) ?
+            rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
+  # else
+          scalar YG = YGList_S[jj];
+          gYGsum_S.x -= rhoGv_S[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
+  # endif
+        }
+
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG = YGList_S[jj];
+          scalar cpGv = cpGList_S[jj];
+          scalar Dmixv = DmixGList_S[jj];
+  # ifdef MOLAR_DIFFUSION
+          scalar XG = XGList_S[jj];
+          gYGj_S.x = (MWmixG_S[] > 0.) ?
+            -rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
+  # else
+          gYGj_S.x = -rhoGv_S[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
+  # endif
+          mdeGS += cpGv[]*(gYGj_S.x - YG[]*gYGsum_S.x)*gTS.x;
+        }
+      }
+    sST[] -= mdeGS*cm[];
     }
+   
+    if (f[] < F_ERR) { //Internal gas phase
+      double mdeGG = 0.;
+      coord gTG = {0., 0., 0.};
+      coord gYGj_G = {0., 0., 0.};
+      coord gYGsum_G = {0., 0., 0.};
 
-    foreach_dimension() {
-      for (int jj=0; jj<NGS; jj++) {
-        scalar Dmixv = DmixGList_G[jj];
-# ifdef MOLAR_DIFFUSION
-        scalar XG = XGList_G[jj];
-        gYGsum_G.x -= (MWmixG_G[] > 0.) ?
-          rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
-# else
-        scalar YG = YGList_G[jj];
-        gYGsum_G.x -= rhoGv_G[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
-# endif
-      }
+      foreach_dimension()
+        gTG.x = (TG[1] - TG[-1])/(2.*Delta);
+      
+      foreach_dimension() {
+        for (int jj=0; jj<NGS; jj++) {
+          scalar Dmixv = DmixGList_G[jj];
+  # ifdef MOLAR_DIFFUSION
+          scalar XG = XGList_G[jj];
+          gYGsum_G.x -= (MWmixG_G[] > 0.) ?
+            rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
+  # else
+          scalar YG = YGList_G[jj];
+          gYGsum_G.x -= rhoGv_G[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
+  # endif
+        }
 
-      for (int jj=0; jj<NGS; jj++) {
-        scalar Dmixv = DmixGList_S[jj];
-# ifdef MOLAR_DIFFUSION
-        scalar XG = XGList_S[jj];
-        gYGsum_S.x -= (MWmixG_S[] > 0.) ?
-          rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
-# else
-        scalar YG = YGList_S[jj];
-        gYGsum_S.x -= rhoGv_S[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
-# endif
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG = YGList_G[jj];
+          scalar cpGv = cpGList_G[jj];
+          scalar Dmixv = DmixGList_G[jj];
+  # ifdef MOLAR_DIFFUSION
+          scalar XG = XGList_G[jj];
+          gYGj_G.x = (MWmixG_G[] > 0.) ?
+            -rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
+  # else
+          gYGj_G.x = -rhoGv_G[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
+  # endif
+          mdeGG += cpGv[]*(gYGj_G.x - YG[]*gYGsum_G.x)*gTG.x;
+        }
       }
-
-      for (int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList_G[jj];
-        scalar cpGv = cpGList_G[jj];
-        scalar Dmixv = DmixGList_G[jj];
-# ifdef MOLAR_DIFFUSION
-        scalar XG = XGList_G[jj];
-        gYGj_G.x = (MWmixG_G[] > 0.) ?
-          -rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
-# else
-        gYGj_G.x = -rhoGv_G[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
-# endif
-        mde2 += cpGv[]*(gYGj_G.x - YG[]*gYGsum_G.x)*gTG.x;
-      }
-
-      for (int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList_S[jj];
-        scalar cpGv = cpGList_S[jj];
-        scalar Dmixv = DmixGList_S[jj];
-# ifdef MOLAR_DIFFUSION
-        scalar XG = XGList_S[jj];
-        gYGj_S.x = (MWmixG_S[] > 0.) ?
-          -rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
-# else
-        gYGj_S.x = -rhoGv_S[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
-# endif
-        mde1 += cpGv[]*(gYGj_S.x - YG[]*gYGsum_S.x)*gTS.x;
-      }
+    sGT[] -= mdeGG*cm[];
     }
-
-    sST[] -= mde1*cm[]*(f[] > (1. - F_ERR)); // Solid side
-    sGT[] -= mde2*cm[]*(f[] < F_ERR); // Gas side
   }
 #endif //MASS_DIFFUSION_ENTHALPY
 

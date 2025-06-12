@@ -1,6 +1,8 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
-#define CONST_DIFF 2.05e-5
+#define MOLAR_DIFFUSION 1
+#define FICK_CORRECTED 1
+#define MASS_DIFFUSION_ENTHALPY 1
 
 #include "temperature-profile.h"
 #include "axi.h"
@@ -11,7 +13,7 @@
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "view.h"
-#include "balances-interface.h"
+#include "balances-interface-rop.h"
 
 u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
@@ -36,7 +38,7 @@ int main() {
 #ifdef TEMPERATURE_PROFILE
   TS0 = 300.; TG0 = 300.;
 #else
-  TS0 = 300.; TG0 = 750.;
+  TS0 = 650.; TG0 = 650.;
 #endif
   rhoS = 850; rhoG = 0.674;
   muG = 3.53e-5;
@@ -51,11 +53,11 @@ int main() {
   L0 = 2.5*D0;
 
   shift_prod = true;
-  zeta_policy = ZETA_SWELLING;
+  zeta_policy = ZETA_CONST;
 
-  DT = 1.e-1;
+  DT = 1.e-2;
 
-  // kinfolder = "biomass/dummy-solid";
+  //  kinfolder = "biomass/dummy-solid";
   kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
@@ -75,7 +77,7 @@ event init(i=0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0214;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0086;
 
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+  //  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
   foreach()
     porosity[] = eps0*f[];
@@ -137,13 +139,15 @@ event output (t+=1) {
     Tsurf = TemperatureProfile_GetT(t);
   #endif
 
-  fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
+  fprintf (fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf, radius/D0/2);
   fflush(fp);
 }
 
 event adapt (i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-    (double[]){1.e-2, 1.e-2, 1.e-2}, maxlevel, minlevel, 1);
+  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
+
+  adapt_wavelet_leave_interface ({T, u.x, u.y, inert}, {f},
+    (double[]){1.e-2, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 1);
 }
 
 event movie(t+=5) {
@@ -155,7 +159,6 @@ event movie(t+=5) {
   mirror ({1.,0.}) {
     draw_vof ("f", lw=2);
     squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
-    // vectors ("u", scale=1);
  }
  save ("movie.mp4");
 }
@@ -180,74 +183,92 @@ event stop (t = 1000);
 ~~~gnuplot temperature profiles
 reset
 set terminal svg size 450,400
+set title "Zeta reaction rate"
+datafile = "OutputData-7-rate"
+
 set xlabel "Time [s]"
 set ylabel "Temperature [K]"
 set key bottom right box width 1
 set xrange [0:1000]
-set yrange [300:800]
+set yrange [300:850]
 set grid
-
-plot  "OutputData-6" u 1:3 w l lw 2 lc "dark-green" t "Core", \
-      "OutputData-6" u 1:4 w l lw 2 lc "blue" t "R/2", \
-      "OutputData-6" u 1:5 w l lw 2 lc "black" t "Surface", \
+plot  datafile u 1:3 w l lw 2 lc "dark-green" t "Core", \
+      datafile u 1:4 w l lw 2 lc "blue" t "R/2", \
+      datafile u 1:5 w l lw 2 lc "black" t "Surface", \
+      "data/corbetta-core.txt"  u 1:2 w p pt 4 lc "dark-green" t "Corbetta core", \
       "data/corbetta-core.txt"  u 1:2 w p pt 4 lc "dark-green" t "Corbetta core", \
       "data/corbetta-r2.txt"    u 1:2 w p pt 4 lc "blue" t "Corbetta R/2", \
       "data/corbetta-surf.txt"  u 1:2 w p pt 4 lc "black" t "Corbetta surface"
 ~~~
 
-~~~gnuplot temperature profiles
+~~~gnuplot species profiles
 reset
-set xlabel "t [s]"
-set ylabel "temperature [K]"
-set key bottom right box width 1
-set xrange [0:1000]
-set yrange [300:800]
+set terminal svg size 1350,400
+set multiplot layout 1,3
+
+# Define a function for centered derivative with multiplier
+# centered_diff(file, column, multiplier) = sprintf("< awk -v col=%d -v mult=%g 'NR==2{a=$1;b=$col;next} NR==3{c=$1;d=$col;next} NR>=4{dt=$1-a; dy=$col-b; if(dt!=0) print c,(dy/dt)*mult; a=c; b=d; c=$1; d=$col}' %s", column, multiplier, file)
+
+# Function with sampling parameter (most readable)
+centered_diff(file, column, multiplier, interval) = sprintf("< awk -v col=%d -v mult=%g -v skip=%d 'NR%%skip==1{count++; if(count==2){a=$1;b=$col;next} if(count==3){c=$1;d=$col;next} if(count>=4){dt=$1-a; dy=$col-b; if(dt!=0) print c,(dy/dt)*mult; a=c; b=d; c=$1; d=$col}}' %s", column, multiplier, interval, file)
+
+datafile = "balances-7-rate"
+
+set title "Zeta Rate"
+set xlabel "Time [s]"
+set ylabel "Production rate [mg/s/g_{init}]"
+set key top right box width 2.2
 set grid
+set xrange [0:600]
+set yrange [0:0.5]
+plot  centered_diff(datafile, 32, 1000, 25) u 1:2 w l lw 2 lc "dark-green" t "sym CO_{2}", \
+      "data/expCO2" u 1:2 w p pt 4 lc "dark-green" t "exp CO_{2}", \
+      centered_diff(datafile, 31, 1000, 25) u 1:2 w l lw 2 lc "blue" t "sym CO", \
+      "data/expCO" u 1:2 w p pt 4 lc "blue" t "exp CO", \
+      centered_diff(datafile, 19, 1000, 25) u 1:2 w l lw 2 lc "black" t "sym HCHO", \
+      "data/expHCHO" u 1:2 w p pt 4 lc "black" t "exp HCHO"
 
-plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
-      "data/biosmoke-core.txt"  u 1:2 w l lw 2 dt 2 lc "red" t "BioSMOKE core", \
-      "data/biosmoke-r2.txt"    u 1:2 w l lw 2 dt 2 lc "web-green" t "BioSMOKE R/2", \
-      "data/biosmoke-surf.txt"  u 1:2 w l lw 2 dt 2 lc "web-blue" t "BioSMOKE surface"
+set xlabel "Time [s]"
+set ylabel "Production rate [mg/s/g_{init}]"
+set key top right box width 2.2
+set grid
+set xrange [0:600]
+set yrange [0:0.4]
+plot  centered_diff(datafile, 7, 1000, 25) u 1:2 w l lw 2 lc "dark-green" t "sym CH_{3}COOH", \
+      "data/expCH3COOH" u 1:2 w p pt 4 lc "dark-green" t "exp CH_{3}COOH", \
+      centered_diff(datafile, 18, 1000, 25) u 1:2 w l lw 2 lc "blue" t "sym CH_{3}OH", \
+      "data/expCH3OH" u 1:2 w p pt 4 lc "blue" t "exp CH_{3}OH"
 
+set xlabel "Time [s]"
+set ylabel "Production rate [mg/s/g_{init}]"
+set key top right box width 2.2
+set grid
+set xrange [0:600]
+set yrange [0:0.05]
+plot  centered_diff(datafile, 33, 1000*10, 25) u 1:2 w l lw 2 lc "dark-green" t "sym H_{2}*10", \
+      "data/expH2" u 1:($2*10) w p pt 4 lc "dark-green" t "exp H_{2}*10", \
+      centered_diff(datafile, 34, 1000, 25) u 1:2 w l lw 2 lc "blue" t "sym CH_{4}", \
+      "data/expCH4" u 1:2 w p pt 4 lc "blue" t "exp CH_{4}", \
+      centered_diff(datafile, 20, 1000, 25) u 1:2 w l lw 2 lc "black" t "sym HCOOH", \
+      "data/expHCOOH" u 1:2 w p pt 4 lc "black" t "exp HCOOH"
+
+unset multiplot
 ~~~
-~~~gnuplot temperature profiles
-reset
-set xlabel "t [s]"
-set ylabel "temperature [K]"
-set key bottom right box width 1
-set xrange [0:1000]
-set yrange [300:800]
-set grid
 
-plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface", \
-      "data/biosmoke-core.txt"  u 1:2 w l lw 2 dt 2 lc "red" t "BioSMOKE core", \
-      "data/biosmoke-r2.txt"    u 1:2 w l lw 2 dt 2 lc "web-green" t "BioSMOKE R/2", \
-      "data/biosmoke-surf.txt"  u 1:2 w l lw 2 dt 2 lc "web-blue" t "BioSMOKE surface"
-~~~
-~~~gnuplot temperature profiles
+~~~gnuplot testing plot
 reset
-set xlabel "t [s]"
-set ylabel "temperature [K]"
-set key bottom right box width 1
-set xrange [0:1000]
-set yrange [300:800]
-set grid
+set terminal svg size 450,400
 
-plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface", \
-      "data/temperature.ris"    u 1:2 w l lw 2 dt 2 lc "red" t "BioSMOKE core", \
-      "data/temperature.ris"    u 1:3 w l lw 2 dt 2 lc "web-green" t "BioSMOKE R/2", \
-      "data/temperature.ris"  u 1:11 w l lw 2 dt 2 lc "web-blue" t "BioSMOKE surface"
+set xlabel "Time [s]"
+set grid
+# Function with sampling parameter
+centered_diff(file, column, multiplier, interval) = sprintf("< awk -v col=%d -v mult=%g -v skip=%d 'NR%%skip==1{count++; if(count==2){a=$1;b=$col;next} if(count==3){c=$1;d=$col;next} if(count>=4){dt=$1-a; dy=$col-b; if(dt!=0) print c,(dy/dt)*mult; a=c; b=d; c=$1; d=$col}}' %s", column, multiplier, interval, file)
+ 
+datafile = "balances-7-old"
+
+plot centered_diff(datafile, 6, 1, 2) u 1:2 w l lw 2 lc "black" t "Tar", \
+     centered_diff(datafile, 7, 1, 2) u 1:2 w l lw 2 lc "dark-green" t "H2O", \
+     "balances-7" u 1:6 w l dt 2 lw 2 lc "black" t "Tar", \
+     "balances-7" u 1:7 w l dt 2 lw 2 lc "dark-green" t "H2O"
 ~~~
 **/

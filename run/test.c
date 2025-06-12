@@ -5,11 +5,12 @@ face vector fsS[];
 
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
-#include "const-prop.h"
+#include "constant-properties.h"
 #include "two-phase.h"
 #include "shrinking.h"
-#include "view.h"
-#include "balances-interface.h"
+#include "darcy.h"
+// #include "view.h"
+#include "balances-interface-rop.h"
 
 u.n[top] = neumann(0.);
 u.t[top] = neumann(0.);
@@ -23,17 +24,22 @@ p[right] = dirichlet(0.);
 pf[right] = dirichlet(0.);
 psi[right] = dirichlet(0.);
 
+u.n[left] = neumann(0.);
+u.t[left] = neumann(0.);
+p[left] = dirichlet(0.);
+pf[left] = dirichlet(0.);
+psi[left] = dirichlet(0.);
 
 int maxlevel = 7, minlevel = 4;
-double D0 = 1;
+double D0 = 1e-2;
 scalar omega[];
 
 int main() {
   eps0 = 0.4;
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
-  muG = 1.e-3;
-  L0 = 1.5*D0;
+  muG = 1.e-5;
+  L0 = 2.5*D0;
   DT = 1e-2;
 
   rhoS = 100.;
@@ -44,6 +50,8 @@ int main() {
   //   init_grid(1 << maxlevel);
   //   run();
   // }
+
+  origin (-L0/2, 0.);
 
   init_grid(1 << maxlevel);
   run();
@@ -86,7 +94,7 @@ event chemistry(i++) {
 
 event adapt (i++) {
     adapt_wavelet_leave_interface({porosity, u.x, u.y}, {f}, 
-      (double[]){1e-2, 1e-2, 1e-2}, maxlevel, minlevel, 1);
+      (double[]){1e-2, 1e-2, 1e-2}, maxlevel, minlevel, 2);
 }
 
 event log (t+=0.1) {

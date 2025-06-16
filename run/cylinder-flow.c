@@ -1,8 +1,9 @@
 #define NO_ADVECTION_DIV 1
-#define NO_EXPANSION 1
 #define SOLVE_TEMPERATURE 1
-#define CONST_DIFF 2.05e-5
-#define RADIATION_INTERFACE 1
+#define RADIATION_INTERFACE 0.8
+#define MOLAR_DIFFUSION 1
+#define FICK_CORRECTED 1
+#define MASS_DIFFUSION_ENTHALPY 1
 
 double D0 = 2e-2; //2cm
 double H0 = 3e-2; //3cm
@@ -171,18 +172,26 @@ event output (t += 1) {
   }
 }
 
-event movie (t += 5) {
-  clear();
-  // box();
-  view (width=1000., height=900.);
-  draw_vof ("f");
-  squares("T", min=300, max=750, linear=true, spread=-1);
-  mirror ({0, 1}) {
-    draw_vof("f");
-    squares("LVG_G+LVG_S", min=0, max=1, linear=true, spread=-1);
-    // vectors ("u", scale=5e-4);
-  }
-  save ("movie.mp4");
+// event movie (t += 5) {
+//   clear();
+//   // box();
+//   view (width=1000., height=900.);
+//   draw_vof ("f");
+//   squares("T", min=300, max=750, linear=true, spread=-1);
+//   mirror ({0, 1}) {
+//     draw_vof("f");
+//     squares("LVG_G+LVG_S", min=0, max=1, linear=true, spread=-1);
+//     // vectors ("u", scale=5e-4);
+//   }
+//   save ("movie.mp4");
+// }
+
+event outputfields (t = {100, 200, 300, 400}) {
+  char name[80];
+  sprintf (name, "Snapshot-%d", (int)(t));
+  static FILE * fs = fopen (name, "w");
+
+  output_field ({T}, fs);
 }
 
 event stop (t = tend);

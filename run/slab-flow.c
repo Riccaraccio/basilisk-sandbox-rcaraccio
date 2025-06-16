@@ -3,11 +3,11 @@
 #define CONST_DIFF 2.05e-5
 
 #ifndef TSTEEL
-  #define TSTEEL 500
+  #define TSTEEL 500 //C
 #endif
 
 #ifndef HBLOCK
-# define HBLOCK 550
+  #define HBLOCK 400 // W/m^2/K
 #endif
 
 #include "navier-stokes/centered-phasechange.h"
@@ -16,15 +16,30 @@
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
+#include "superquadric.h"
 
-u.n[top]      = neumann (0.);
-u.t[top]      = neumann (0.);
-p[top]        = dirichlet (0.);
-pf[top]       = dirichlet (0.);
+double Uin = -0.084; //0.84 m/s or 13Nl/min over 2.5e-4 m^2 area
+u.n[top]      = dirichlet (Uin);
+u.t[top]      = dirichlet (0.);
+p[top]        = neumann (0.);
+pf[top]       = neumann (0.);
 psi[top]      = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 2;
+u.n[right]    = neumann (0.);
+u.t[right]    = neumann (0.);
+p[right]      = dirichlet (0.);
+pf[right]     = dirichlet (0.);
+psi[right]    = dirichlet (0.);
+
+u.n[bottom]   = dirichlet (0.);
+u.t[bottom]   = dirichlet (0.);
+p[bottom]     = neumann (0.);
+pf[bottom]    = neumann (0.);
+psi[bottom]   = dirichlet (0.);
+
+int maxlevel = 7; int minlevel = 2;
 double H0 = 1e-3;
+double side = 2e-3;
 
 int main() {
   lambdaS = 0.1987; lambdaG = 0.076;
@@ -40,11 +55,11 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  L0 = (3.14159 +1)*H0;
+  L0 = (3.14159 +5)*H0;
 
   zeta_policy = ZETA_REACTION;
 
-  DT = 1e-3;
+  // DT = 1e-3; //velocity controls the time step
 
   kinfolder = "biomass/dummy-solid";
   // kinfolder = "biomass/Solid-only-2407";
@@ -65,7 +80,9 @@ int main() {
 
 double solid_volume0, h0;
 event init(i=0) {
-  fraction (f, H0-y);
+  // fraction (f, H0-y);
+
+  fraction (f, superquadric(x, y, 20, side, H0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
 
@@ -84,19 +101,31 @@ event init(i=0) {
     porosity[] = eps0*f[];
 
 #ifdef SOLVE_TEMPERATURE
-  // TG[top] = neumann (0.);
   TG[top] = dirichlet (TG0);
-  TG[bottom] = dirichlet (0.);
+  TG[right] = neumann (0.);
+  TG[bottom] = f[] < 1.-F_ERR ? lambda2v.y[] > 0. ? neumann (HBLOCK/100*(TSTEEL + 273.15 - TG[]/(1-f[]))/lambda2v.y[]) : neumann (0.) : dirichlet (0.);
+
+  TS[bottom] = f[] > F_ERR ? lambda1v.y[] > 0. ? neumann (HBLOCK*(TSTEEL + 273.15 - TS[]/f[])/lambda1v.y[]) : neumann (0.): dirichlet (0.);
 
   TS[top] = dirichlet (0.);
-  TS[bottom] = lambda1v.y[] > 0. ? neumann (HBLOCK*(TSTEEL + 273.15 - TS[])/lambda1v.y[]) : neumann (0.);
+  TS[left] = f[] > 1.-F_ERR ? neumann (0.) : dirichlet (0.);
+  TS[right] = dirichlet (0.);
+
+  // TS[top] = dirichlet (0.);
+  // TS[bottom] = neumann (0.);
+  // TS[bottom] = lambda1v.y[] > 0. ? neumann (HBLOCK*(TSTEEL + 273.15 - TS[])/lambda1v.y[]) : neumann (0.);
   // TS[bottom] = dirichlet (TSTEEL + 273.15);
 #endif
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
-    YG[top] = neumann (0.);
-    YG[bottom] = dirichlet (0.);
+    if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
+      YG[top] = dirichlet (1.);
+    } else {
+      YG[top] = dirichlet (0.);
+    }
+    YG[bottom] = neumann(0.);
+    YG[right] = neumann(0.);
   }
 
   solid_volume0 = 0.;
@@ -105,7 +134,7 @@ event init(i=0) {
 
   h0 = 0.;
   coord p;
-  coord regionh[2] = {{L0/2, 0},{L0/2, L0}};
+  coord regionh[2] = {{0, 0},{0, L0/2}};
   coord samplingh = {1, (1<<maxlevel)};
   foreach_region (p, regionh, samplingh, reduction(+:h0))
     h0 += f[]; 
@@ -150,18 +179,17 @@ event stop (t = 25);
 ~~~gnuplot temperature profiles
 reset
 set terminal svg size 450,400
-set title "Zeta const"
 set xlabel "Time [s]"
 set ylabel "Normalized Volume"
-set key bottom left box columns 2 
+set key top right box width 1
 set xrange [0:25]
-set yrange [0.4:1.0]
+set yrange [0.:1.0]
 set grid
 
-plot  "OutputData-6-700-const" u 1:3 w l lw 2 lc "dark-green" t "Sym 700 C", \
-      "OutputData-6-600-const" u 1:3 w l lw 2 lc "blue" t "Sym 600 C", \
-      "OutputData-6-550-const" u 1:3 w l lw 2 lc "orange" t "Sym 550 C", \
-      "OutputData-6-500-const" u 1:3 w l lw 2 lc "black" t "Sym 500 C", \
+plot  "OutputData-6-700" u 1:3 w l lw 2 lc "dark-green" t "Sym 700 C", \
+      "OutputData-6-600" u 1:3 w l lw 2 lc "blue" t "Sym 600 C", \
+      "OutputData-6-550" u 1:3 w l lw 2 lc "orange" t "Sym 550 C", \
+      "OutputData-6-500" u 1:3 w l lw 2 lc "black" t "Sym 500 C", \
       "data/exp700" u 1:2 w p pt 4 lc "dark-green" t "Exp. 700 C", \
       "data/exp600" u 1:2 w p pt 4 lc "blue" t "Exp. 600 C", \
       "data/exp550" u 1:2 w p pt 4 lc "orange" t "Exp. 550 C", \

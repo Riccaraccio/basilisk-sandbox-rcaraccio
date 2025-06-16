@@ -188,10 +188,20 @@ event output (t += 1) {
 
 event outputfields (t = {100, 200, 300, 400}) {
   char name[80];
-  sprintf (name, "Snapshot-%d", (int)(t));
+  sprintf (name, "Fields-%d", (int)(t));
   static FILE * fs = fopen (name, "w");
 
-  output_field ({T}, fs);
+  scalar p1[], p2[];
+  scalar ps1 = YGList_S[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  scalar ps2 = YGList_S[OpenSMOKE_IndexOfSpecies ("CO2")];
+  scalar pg1= YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  scalar pg2= YGList_G[OpenSMOKE_IndexOfSpecies ("CO2")];
+  foreach() {
+    p1[] = ps1[] + pg1[];
+    P2[] = ps2[] + pg2[];
+  }
+
+  output_field ({T, f, u.x, u.y, omega, zeta, porosity, p1, p2}, fs);
 }
 
 event stop (t = tend);

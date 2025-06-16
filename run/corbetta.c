@@ -255,6 +255,54 @@ plot  centered_diff(datafile, 33, 1000*10, 25) u 1:2 w l lw 2 lc "dark-green" t 
 unset multiplot
 ~~~
 
+~~~gnuplot species profiles using rop files
+reset
+set terminal svg size 1350,400
+set multiplot layout 1,3
+
+datafile = "balances-8-const-rop"
+
+set title "Zeta Rate"
+set xlabel "Time [s]"
+set ylabel "Production rate [mg/s/g_{init}]"
+set key top right box width 2.2
+set grid
+set xrange [0:600]
+set yrange [0:0.5]
+plot  datafile u 1:($32*1000) every 200 w l lw 2 lc "dark-green" t "sym CO_{2}", \
+      "data/expCO2" u 1:2 w p pt 4 lc "dark-green" t "exp CO_{2}", \
+      datafile u 1:($31*1000) every 200 w l lw 2 lc "blue" t "sym CO", \
+      "data/expCO" u 1:2 w p pt 4 lc "blue" t "exp CO", \
+      datafile u 1:($19*1000) every 200 w l lw 2 lc "black" t "sym HCHO", \
+      "data/expHCHO" u 1:2 w p pt 4 lc "black" t "exp HCHO"
+
+set xlabel "Time [s]"
+set ylabel "Production rate [mg/s/g_{init}]"
+set key top right box width 2.2
+set grid
+set xrange [0:600]
+set yrange [0:0.4]
+plot  datafile u 1:($7*1000) every 200 w l lw 2 lc "dark-green" t "sym CH_{3}COOH", \
+      "data/expCH3COOH" u 1:2 w p pt 4 lc "dark-green" t "exp CH_{3}COOH", \
+      datafile u 1:($18*1000) every 200 w l lw 2 lc "blue" t "sym CH_{3}OH", \
+      "data/expCH3OH" u 1:2 w p pt 4 lc "blue" t "exp CH_{3}OH"
+
+set xlabel "Time [s]"
+set ylabel "Production rate [mg/s/g_{init}]"
+set key top right box width 2.2
+set grid
+set xrange [0:600]
+set yrange [0:0.05]
+plot  datafile u 1:($33*10*1000) every 200 w l lw 2 lc "dark-green" t "sym H_{2}*10", \
+      "data/expH2" u 1:($2*10) w p pt 4 lc "dark-green" t "exp H_{2}*10", \
+      datafile u 1:($34*1000) every 200 w l lw 2 lc "blue" t "sym CH_{4}", \
+      "data/expCH4" u 1:2 w p pt 4 lc "blue" t "exp CH_{4}", \
+      datafile u 1:($20*1000) every 200 w l lw 2 lc "black" t "sym HCOOH", \
+      "data/expHCOOH" u 1:2 w p pt 4 lc "black" t "exp HCOOH"
+
+unset multiplot
+~~~
+
 ~~~gnuplot testing plot
 reset
 set terminal svg size 450,400

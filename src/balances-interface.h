@@ -370,6 +370,6 @@ event reset_sources (i++) {
   compute_balances();
 
   // Write balances to file
-  if (i % mb.print_iter == 0)
+  if (i % mb.print_iter == 0 && pid() == 0)
     write_balances();
 }

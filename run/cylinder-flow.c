@@ -198,7 +198,7 @@ event outputfields (t = {100, 200, 300, 400}) {
   scalar pg2= YGList_G[OpenSMOKE_IndexOfSpecies ("CO2")];
   foreach() {
     p1[] = ps1[] + pg1[];
-    P2[] = ps2[] + pg2[];
+    p2[] = ps2[] + pg2[];
   }
 
   output_field ({T, f, u.x, u.y, omega, zeta, porosity, p1, p2}, fs);

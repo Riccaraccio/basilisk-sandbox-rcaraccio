@@ -15,7 +15,7 @@ u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 pf[right] = dirichlet (0.);
 
-int maxlevel = 8;
+int maxlevel = 10;
 double eps0 = 0.6;
 scalar porosity[];
 
@@ -72,35 +72,44 @@ event stop (i = 100);
 /** 
 ~~~gnuplot velocity profile
 reset
+set terminal epslatex size 3.5, 3.5 color 
+set output "septum-velocity.tex"
+
 set xlabel "x"
 set ylabel "velocity"
 set yrange [0:2]
-set key top right box width 1
-set samples 40
+set xtics 0.2
+set key top right box width 1 opaque
+set samples 20
 
 set object 1 rectangle from 0.4,graph 0 to 0.6,graph 1 behind fc "black" fs solid 0.2
-set label 1 at 0.5,0.1 "porous region" center
+set label 1 at 0.5,0.1 "porous region" center front
 
 u_in = 0.8
 epsilon = 0.6
 analytical_u(x) = u_in
 analytical_v(x) = (x < 0.4) ? u_in : (x > 0.6) ? u_in : u_in/epsilon
-plot "Output" u 1:2 w l lw 2 lc "red" t "v = εu", \
-     "Output" u 1:3 w l lw 2 lc "web-green" t "u", \
-      analytical_u(x) w p pt 4 lc "red" t "analytical v", \
-      analytical_v(x) w p pt 4 lc "web-green" t "analytical u"
+plot "Output"           u 1:2 w l lw 4 lc "dark-green" t "v", \
+     "Output" every ::1 u 1:3 w l lw 4 lc "blue" t "u", \
+      analytical_u(x) w p pt 4 ps 1.2 lc "dark-green" t "analytical v", \
+      analytical_v(x) w p pt 4 ps 1.2 lc "blue" t "analytical u"
 ~~~
 
 ~~~gnuplot pressure profile
 reset
+set terminal epslatex size 3.5, 3.5 color 
+set output "septum-pressure.tex
+#set terminal svg size 350, 350
+
 set xlabel "x"
 set ylabel "pressure"
-set yrange [-1.5:0.5]
-set samples 40
-set key bottom right box width 1
+set yrange [-1:0.5]
+set samples 20
+set xtics 0.2
+set key top right box width 1 opaque
 
 set object 1 rectangle from 0.4,graph 0 to 0.6,graph 1 behind fc "black" fs solid 0.2
-set label 1 at 0.5,-1.4 "porous region" center
+set label 1 at 0.5,-0.9 "porous region" center front
 
 u_in = 0.8
 rho = 1
@@ -108,9 +117,9 @@ epsilon = 0.6
 analytical_p(x) = (x < 0.4) ? 0 : (x > 0.6) ? 0 : rho*u_in*u_in*(1-1/epsilon)
 analytical_p_prime(x) = (x < 0.4) ? 0 : (x > 0.6) ? 0 : rho*u_in*u_in*(1-1/epsilon)/epsilon
 
-plot "Output" u 1:4 w l lw 2 lc "red" t "p' = εp", \
-     "Output" u 1:5 w l lw 2 lc "web-green" t "p", \
-      analytical_p(x) w p pt 4 lc "red" t "analytical p'", \
-      analytical_p_prime(x) w p pt 4 lc "web-green" t "analytical p"
+plot "Output" u 1:4 w l lw 4 lc "blue" t "p", \
+      analytical_p(x) w p pt 4 ps 1.2 lc "blue" t "analytical p"
+      #"Output" u 1:5 w l lw 2 lc "web-green" t "p", \
+      #analytical_p_prime(x) w p pt 4 lc "web-green" t "analytical p", \
 ~~~
 */

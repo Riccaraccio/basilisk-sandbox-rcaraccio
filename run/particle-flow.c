@@ -46,9 +46,10 @@ double solid_mass0 = 0.;
 int main() {
   
   lambdaS = 0.1987;
+  lambdaSmodel = L_CORBETTA;
   TS0 = 300.; TG0 = T_ENV;
-  rhoS = 850;
-  eps0 = 0.4;
+  rhoS = 920;
+  eps0 = 0.39;
 
   //dummy properties
   rho1 = 1., rho2 = 1.;
@@ -67,7 +68,8 @@ int main() {
 
   DT = 1e-1;
 
-  kinfolder = "biomass/dummy-solid";
+  //kinfolder = "biomass/dummy-solid";
+  kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
 }
@@ -75,18 +77,21 @@ int main() {
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
 event init(i=0) {
-  //mask (y > 4e-2 ? top : none);
   fraction (f, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+  //sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4807;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.2611;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.1325;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0957;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0214;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0086;
+  // No ultimate analysis was found, average from smilar chinese hardwood
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.4229;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.1830;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1759;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.0364;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0081;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.0362;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0245;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0130;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.1000;
 
   foreach()
     porosity[] = eps0*f[];

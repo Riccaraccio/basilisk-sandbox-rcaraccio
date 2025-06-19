@@ -1,11 +1,15 @@
 #define NO_ADVECTION_DIV 1
-#define NO_EXPANSION 1
 #define SOLVE_TEMPERATURE 1
-#define CONST_DIFF 2.05e-5
-#define FSOLVE_ABSTOL 1.e-3
-#define RADIATION_INTERFACE 1
+#define RADIATION_INTERFACE 0.8
+#define MOLAR_DIFFUSION 1
+#define FICK_CORRECTED 1
+#define MASS_DIFFUSION_ENTHALPY 1
 
-// #include "temperature-profile.h"
+#ifndef T_ENV
+# define T_ENV 673
+#endif
+
+//#include "grid/multigrid.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -13,32 +17,36 @@
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
-#include "view.h"
 
-double Uin = 16.4; //inlet velocity, 300 NL/min over 8.04e-4 m^2 area
+double Uin = 0.0221; //inlet velocity, 300 NL/min over 8.04e-4 m^2 area
+double tend = 500.; //simulation time
 
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
+pf[left]     = neumann (0.);
 psi[left]    = neumann (0.);
 
 u.n[top]      = dirichlet (0.);
 u.t[top]      = dirichlet (0.);
 p[top]        = neumann (0.);
+pf[top]       = neumann (0.);
 psi[top]      = neumann (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
+pf[right]     = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
 int maxlevel = 7; int minlevel = 2;
-double D0 = 2.54e-2;
+double D0 = 2e-2;
 double solid_mass0 = 0.;
 
 int main() {
+  
   lambdaS = 0.1987;
-  TS0 = 300.; TG0 = 750.;
+  TS0 = 300.; TG0 = T_ENV;
   rhoS = 850;
   eps0 = 0.4;
 
@@ -46,11 +54,16 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  Da = 1e-10;
-  zeta_policy = ZETA_SWELLING;
-  
-  L0 = 6*D0;
-  origin (-L0/3, 0);
+  zeta_policy = ZETA_REACTION;
+
+#if TREE
+  L0 = 4e-2;
+#else
+  int n_proc = 3;
+  size((4e-2)*n_proc);
+  dimensions(nx=n_proc, ny=1);
+#endif
+  origin (-L0/2, 0);
 
   DT = 1e-1;
 
@@ -62,7 +75,7 @@ int main() {
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
 event init(i=0) {
-  mask (y > 5.25e-2/2 ? top : none); //5.25 cm diameter of tube
+  //mask (y > 4e-2 ? top : none);
   fraction (f, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
@@ -82,7 +95,7 @@ event init(i=0) {
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
   TG[left] = dirichlet (TG0);
-  TG[right] = dirichlet (TG0);
+  TG[right] = neumann (0);
   TG[top] = dirichlet (TG0);
 
   for (int jj=0; jj<NGS; jj++) {
@@ -101,104 +114,37 @@ event init(i=0) {
 event output (t+=1) {
   fprintf (stderr, "%g\n", t);
 
-  // char name[80];
-  // sprintf(name, "OutputData-%d", maxlevel);
-  // static FILE * fp = fopen (name, "w");
+  char name[80];
+  sprintf(name, "OutputData-%d", maxlevel);
+  static FILE * fp = fopen (name, "w");
 
-  // //log mass profile
-  // double solid_mass = 0.;
-  // foreach (reduction(+:solid_mass))
-  //   solid_mass += (f[]-porosity[])*rhoS*dv();
+  //log mass profile
+  double solid_mass = 0.;
+  foreach (reduction(+:solid_mass))
+    solid_mass += (f[]-porosity[])*rhoS*dv();
 
-  // //calculate radius
-  // double radius = pow (3.*statsf(f).sum, 1./3.);
+  //calculate radius
+  double radius = cbrt (3./2.*statsf(f).sum);
 
-  // //save temperature profile
-  // double Tcore  = interpolate (T, 0., 0.);
-  // double Tr2    = interpolate (T, radius/2., 0.);
-  // double Tsurf  = interpolate (T, radius, 0.);
+  //save temperature profile
+  double Tcore  = interpolate (T, 0., 0.);
+  double Tr2    = interpolate (T, radius/2., 0.);
+  double Tsurf  = interpolate (T, radius, 0.);
 
-  // #ifdef TEMPERATURE_PROFILE
-  //   Tsurf = TemperatureProfile_GetT(t);
-  // #endif
-
-  // fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf);
-  // fflush(fp);
+  fprintf (fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf, radius/(D0/2.));
+  fflush(fp);
 }
 
-event adapt (i>10; i++) {
-  adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1}, maxlevel, minlevel, 1);
+#if TREE
+event adapt (i++) {
+  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
+  adapt_wavelet_leave_interface ({T, u.x, u.y, inert}, {f},
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 1);
 }
+#endif
 
-// event movie(t+=1) {
-//   clear();
-//   box();
-//   view (ty=-0.5, tx=-0.5);
-//   squares("T", max=TG0,  min=TS0);
-//   draw_vof("f");
-//   //cells();
-//   save ("temperature.mp4");
-//
-//   clear();
-//   box();
-//   view (ty=-0.5, tx=-0.5);
-//   squares("C6H10O5", max=1,  min=0);
-//   draw_vof("f");
-//   save ("LVG.mp4");
-// }
 
-// event movie(t+=5) {
-//   clear();
-//   box();
-//   view (ty=-0.5, width = 1400.);
-//   draw_vof("f", lw=2);
-//   squares ("T", min=300, max=800, linear=true);
-//   mirror ({1.,0.}) {
-//     draw_vof ("f", lw=2);
-//     squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
-//     // vectors ("u", scale=1);
-//  }
-//  save ("movie.mp4");
-
-  // clear ();
-  // box ();
-  // view (ty = -0.5, width = 1400.);
-  // draw_vof ("f", lw = 2);
-  // scalar epsi[];
-  // foreach()
-  //   epsi[] = f[]>F_ERR ? porosity[]/f[] : 1.;
-  // squares ("epsi", min = 0., max = 1., linear = true);
-  // mirror ({1., 0.}) {
-  //   draw_vof ("f", lw = 2);
-  //   cells();
-  //   vectors ("u", scale = 1e-2);
-  // }
-  // save("movie2.mp4");
-// }
-
-// #if DUMP
-// int count = 0;
-// event snapshots (t += 1) {
-//   // we keep overwriting the last two snapshots
-//   if (count == 0) {
-//     dump ("snapshot-0");
-//     count++;
-//   } else {
-//     dump ("snapshot-1");
-//     count = 0;
-//   }
-// }
-// #endif
-
-// #if TRACE > 1
-//   event profiling (i += 20) {
-//   static FILE * fp = fopen ("profiling", "w");
-//   trace_print (fp, 1);
-// }
-// #endif
-
-event stop (t = 1000);
+event stop (t = tend);
 
 /** 
 ~~~gnuplot temperature profiles

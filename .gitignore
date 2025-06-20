@@ -1,0 +1,17 @@
+# Ignore everything at the root level
+/*
+
+# Except these file types
+!*.c
+!*.h
+
+# Except these specific directories
+!data/
+
+# Except .gitignore
+!.gitignore
+
+# Within any directory, ignore hidden files
+.*/
+.*
+!.gitignore

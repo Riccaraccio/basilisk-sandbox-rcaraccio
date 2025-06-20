@@ -25,13 +25,13 @@ u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
 pf[left]     = neumann (0.);
-psi[left]    = neumann (0.);
+psi[left]    = dirichlet (0.);
 
 u.n[top]      = dirichlet (0.);
 u.t[top]      = dirichlet (0.);
 p[top]        = neumann (0.);
 pf[top]       = neumann (0.);
-psi[top]      = neumann (0.);
+psi[top]      = dirichlet (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);

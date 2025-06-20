@@ -107,7 +107,7 @@ void update_properties_initial (void) {
         DmixGv[] = CONST_DIFF;
         #else
         DmixGv[] = Diff_coeff[jj];
-        DmixGv[] *= pow(porosity[]/f[], 3./2.); //effect of solid, to be revised
+        DmixGv[] *= pow(porosity[]/f[], 4./3.); //effect of solid, to be revised
         #endif
       }
       
@@ -239,7 +239,7 @@ void update_properties (void) {
       double inv_f = 1./f_val;
       double porosity_val = porosity[]*inv_f;
       double TS_val = TS[]*inv_f;
-      double por_f_pow = pow(porosity_val, 1.5);
+      double por_f_pow = pow(porosity_val, 4./3.);
 
       // Update internal gas properties
       foreach_elem (YGList_S, jj) {

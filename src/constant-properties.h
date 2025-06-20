@@ -73,7 +73,7 @@ event properties (i++) {
     }
     for (int jj = 0; jj < NGS; jj++) {
       scalar Dmix2 = DmixGList_S[jj];
-      Dmix2[] = f[] > F_ERR ? Dmixv * pow(porosity[], 3. / 2.) : 0.; // effect of solid, to be revised
+      Dmix2[] = f[] > F_ERR ? Dmixv * pow(porosity[], 4./3.) : 0.; // effect of solid, to be revised
     }
   }
 #endif

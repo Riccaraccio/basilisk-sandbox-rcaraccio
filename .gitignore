@@ -1,17 +1,17 @@
-# Ignore everything at the root level
-/*
+# Ignore everything
+*
 
-# Except these file types
+# But not these files...
 !*.c
 !*.h
 
-# Except these specific directories
-!data/
+# Also, do not ignore directories
+!*/
 
-# Except .gitignore
+# Ignore hidden directories specifically
+.**/
+# But allow .gitignore
 !.gitignore
 
-# Within any directory, ignore hidden files
-.*/
-.*
-!.gitignore
+# Include data folder
+!data/*

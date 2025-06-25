@@ -210,7 +210,7 @@ event tracer_advection (i++) {
 #endif
 
 void check_and_correct_fractions (scalar* YList, int n, bool inverse, char* name) { //YList in tracer form
-  bool warning = false;
+  // bool warning = false;
   foreach() {
     double sum = 0.;
 
@@ -225,19 +225,19 @@ void check_and_correct_fractions (scalar* YList, int n, bool inverse, char* name
       sum += Y[];
     }
 
-    if ((fabs(sum - 1.) > 1.e-1) && !warning && (sum > 1e-10)) {
-      fprintf(stderr, "Warning: sum of mass fractions is not equal to 1 for %s: %g\n", name, sum);
+    // if ((fabs(sum - 1.) > 1.e-1) && !warning && (sum > 1e-10)) {
+    //   fprintf(stderr, "Warning: sum of mass fractions is not equal to 1 for %s: %g\n", name, sum);
 
-      for (int jj = 0; jj < n; jj++) {
-        scalar Y = YList[jj];
-        fprintf(stderr, "Y[%d] = %g\n", jj, Y[]);
-      }
-      fprintf(stderr, "f = %g\n", f[]);
-      fprintf(stderr, "Inverse = %d\n", inverse);
-      fprintf(stderr, "Point: (%g, %g, %g)\n", x, y, z);
+    //   for (int jj = 0; jj < n; jj++) {
+    //     scalar Y = YList[jj];
+    //     fprintf(stderr, "Y[%d] = %g\n", jj, Y[]);
+    //   }
+    //   fprintf(stderr, "f = %g\n", f[]);
+    //   fprintf(stderr, "Inverse = %d\n", inverse);
+    //   fprintf(stderr, "Point: (%g, %g, %g)\n", x, y, z);
 
-      // warning = true; // set a flag to avoid multiple warnings
-    }
+    //   // warning = true; // set a flag to avoid multiple warnings
+    // }
 
     for (int jj = 0; jj < n; jj++) {
       scalar Y = YList[jj];

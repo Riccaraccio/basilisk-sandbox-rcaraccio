@@ -17,6 +17,7 @@ describe low Mach compressibility effects. */
 enum solid_thermal_conductivity_model {
   L_CONST,
   L_CORBETTA,
+  L_HUANG,
   L_ANCACOUCE,
   L_KK
 };
@@ -311,6 +312,16 @@ void update_properties (void) {
         case L_CORBETTA: {
           double char_cond = 0.1405;
           double bio_cond = 0.1937;
+          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction = char_field[] / f[];
+          foreach_dimension()
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
+          break;
+        }
+        
+        case L_HUANG: {
+          double char_cond = 0.071;
+          double bio_cond = 0.21;
           scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
           double char_fraction = char_field[] / f[];
           foreach_dimension()

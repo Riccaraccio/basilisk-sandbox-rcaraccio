@@ -18,8 +18,8 @@
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 
-double Uin = 0.0221; //inlet velocity, 300 NL/min over 8.04e-4 m^2 area
-double tend = 500.; //simulation time
+double Uin = 0.0221; //inlet velocity, 400 NL/min over 5.03e-3 m^2 area
+double tend = 600.; //simulation time
 
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
@@ -41,12 +41,12 @@ psi[right]    = dirichlet (0.);
 
 int maxlevel = 7; int minlevel = 2;
 double D0 = 2e-2;
-double solid_mass0 = 0.;
+double solid_mass0 = 0., moisture0 = 0.;
 
 int main() {
   
   lambdaS = 0.1987;
-  lambdaSmodel = L_CORBETTA;
+  lambdaSmodel = L_HUANG;
   TS0 = 300.; TG0 = T_ENV;
   rhoS = 920;
   eps0 = 0.39;
@@ -68,9 +68,9 @@ int main() {
 
   DT = 1e-1;
 
-  kinfolder = "biomass/dummy-solid";
+  // kinfolder = "biomass/dummy-solid";
   shift_prod = true;
-  // kinfolder = "biomass/Solid-only-2407";
+  kinfolder = "biomass/Solid-only-2507";
   init_grid(1 << maxlevel);
   run();
 }
@@ -81,24 +81,27 @@ event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
   // No ultimate analysis was found, average from smilar chinese hardwood
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.4229;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.1830;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1759;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.0364;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0081;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.0362;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0245;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0130;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.1000;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.4229;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.1830;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1759;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.0364;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0081;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.0362;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0245;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0130;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.1000;
 
   foreach()
     porosity[] = eps0*f[];
 
+  solid_mass0 = 0.;
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
+
+  moisture0 = solid_mass0*sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")];
 
   TG[left] = dirichlet (TG0);
   TG[right] = neumann (0);
@@ -132,12 +135,21 @@ event output (t+=1) {
   //calculate radius
   double radius = cbrt (3./2.*statsf(f).sum);
 
+  //log moisture profile
+  double moisture = 0.;
+  scalar Ymoist = YSList[OpenSMOKE_IndexOfSolidSpecies ("MOIST")];
+  foreach (reduction(+:moisture)) {
+    if (f[] > F_ERR)
+      moisture += (f[]-porosity[])*rhoS*Ymoist[]/f[]*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
+  }
+
   //save temperature profile
   double Tcore  = interpolate (T, 0., 0.);
   double Tr2    = interpolate (T, radius/2., 0.);
   double Tsurf  = interpolate (T, radius, 0.);
 
-  fprintf (fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf, radius/(D0/2.));
+  fprintf (fp, "%g %g %g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, 
+                                      Tr2, Tsurf, radius/(D0/2.), moisture/moisture0);
   fflush(fp);
 }
 
@@ -153,76 +165,79 @@ event adapt (i++) {
 event stop (t = tend);
 
 /** 
-~~~gnuplot temperature profiles
+~~~gnuplot
 reset
-set xlabel "t [s]"
-set ylabel "temperature [K]"
-set key bottom right box width 1
-set xrange [0:1000]
-set yrange [300:800]
-set grid
+set terminal svg size 450, 450
+set output "huang-mass.svg"
 
-plot  "OutputData-6" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-6" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-6" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface"
+set xlabel "Time [s]"
+set ylabel "Normalized mass [-]"
+set grid
+set xrange [0:650]
+set xtics 100
+set yrange [0:1.1]
+set ytics 0.2
+set key top right box width 2.2
+set size square
+
+plot  "OutputData-20-773" u 1:2 w l lw 3 lc "black" t "2 cm", \
+      "../../data/huang-particleflow/20/773-mass" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
+      "OutputData-30-773" u 1:2 w l lw 3 lc "dark-green" t "3 cm", \
+      "../../data/huang-particleflow/30/773-mass" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
 ~~~
-
-~~~gnuplot temperature profiles
+~~~gnuplot
 reset
-set xlabel "t [s]"
-set ylabel "temperature [K]"
-set key bottom right box width 1
-set xrange [0:1000]
-set yrange [300:800]
+set terminal svg size 450, 450
+set output "huang-shrink-20.svg"
+set xlabel "Time [s]"
+set ylabel "Shrinking factor [-]"
 set grid
+set xrange [0:650]
+set xtics 100
+set yrange [0.5:1.05]
+set ytics 0.1
+set key top right box width 2.2
+set size square 
 
-plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
-      "data/biosmoke-core.txt"  u 1:2 w l lw 2 dt 2 lc "red" t "BioSMOKE core", \
-      "data/biosmoke-r2.txt"    u 1:2 w l lw 2 dt 2 lc "web-green" t "BioSMOKE R/2", \
-      "data/biosmoke-surf.txt"  u 1:2 w l lw 2 dt 2 lc "web-blue" t "BioSMOKE surface"
-
+plot  "OutputData-20-673" u 1:6 w l lw 1 lc "black" t "673K", \
+      "OutputData-20-773" u 1:6 w l lw 1 lc "dark-green" t "773K", \
+      "OutputData-20-873" u 1:6 w l lw 1 lc "blue" t "873", \
+      "OutputData-20-973" u 1:6 w l lw 1 lc "orange" t "973", \
+      "../../data/huang-particleflow/20/673-shrinking" u 1:2 w p pt 4 ps 0.8 lc "black" notitle, \
+      "../../data/huang-particleflow/20/773-shrinking" u 1:2 w p pt 4 ps 0.8 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/20/873-shrinking" u 1:2 w p pt 4 ps 0.8 lc "blue" notitle, \
+      "../../data/huang-particleflow/20/973-shrinking" u 1:2 w p pt 4 ps 0.8 lc "orange" notitle
+      #"OutputData-30-673" u 1:6 w l lw 1 lc "dark-green" t "3 cm", \
+      #"OutputData-30-773" u 1:6 w l lw 1 lc "dark-green" notitle, \
+      #"OutputData-30-873" u 1:6 w l lw 1 lc "dark-green" notitle, \
+      #"OutputData-30-973" u 1:6 w l lw 1 lc "dark-green" notitle, \
+      #"../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 1 ps 0.8 lc "dark-green" notitle, \
+      #"../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 4 ps 0.8 lc "dark-green" notitle, \
+      #"../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 3 ps 0.8 lc "dark-green" notitle, \
+      #"../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 2 ps 0.8 lc "dark-green" notitle
 ~~~
-~~~gnuplot temperature profiles
+~~~gnuplot
 reset
-set xlabel "t [s]"
-set ylabel "temperature [K]"
-set key bottom right box width 1
-set xrange [0:1000]
-set yrange [300:800]
+set terminal svg size 450, 450
+set output "huang-shrink-30.svg"
+set xlabel "Time [s]"
+set ylabel "Shrinking factor [-]"
 set grid
+set xrange [0:650]
+set xtics 100
+set yrange [0.5:1.05]
+set ytics 0.1
+set key top right box width 2.2
+set size square 
 
-plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface", \
-      "data/biosmoke-core.txt"  u 1:2 w l lw 2 dt 2 lc "red" t "BioSMOKE core", \
-      "data/biosmoke-r2.txt"    u 1:2 w l lw 2 dt 2 lc "web-green" t "BioSMOKE R/2", \
-      "data/biosmoke-surf.txt"  u 1:2 w l lw 2 dt 2 lc "web-blue" t "BioSMOKE surface"
-~~~
-~~~gnuplot temperature profiles
-reset
-set xlabel "t [s]"
-set ylabel "temperature [K]"
-set key bottom right box width 1
-set xrange [0:1000]
-set yrange [300:800]
-set grid
+plot  "OutputData-30-673" u 1:6 w l lw 1 lc "black" t "673K", \
+      "OutputData-30-773" u 1:6 w l lw 1 lc "dark-green" t "773K", \
+      "OutputData-30-873" u 1:6 w l lw 1 lc "blue" t "873K", \
+      "OutputData-30-973" u 1:6 w l lw 1 lc "orange" t "973K", \
+      "../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 4 ps 0.8 lc "black" notitle, \
+      "../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 4 ps 0.8 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 4 ps 0.8 lc "blue" notitle, \
+      "../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 4 ps 0.8 lc "orange" notitle
 
-plot  "OutputData-7" u 1:3 w l lw 2 lc "red" t "Core", \
-      "OutputData-7" u 1:4 w l lw 2 lc "web-green" t "R/2", \
-      "OutputData-7" u 1:5 w l lw 2 lc "web-blue" t "Surface", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 7 lc "red" t "Corbetta core", \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 7 lc "web-green" t "Corbetta R/2", \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 7 lc "web-blue" t "Corbetta surface", \
-      "data/temperature.ris"    u 1:2 w l lw 2 dt 2 lc "red" t "BioSMOKE core", \
-      "data/temperature.ris"    u 1:3 w l lw 2 dt 2 lc "web-green" t "BioSMOKE R/2", \
-      "data/temperature.ris"  u 1:11 w l lw 2 dt 2 lc "web-blue" t "BioSMOKE surface"
 ~~~
 **/

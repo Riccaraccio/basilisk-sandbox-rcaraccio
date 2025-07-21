@@ -1,6 +1,6 @@
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
-#define RADIATION_INTERFACE 0.8
+#define RADIATION_INTERFACE 0.9
 #define MOLAR_DIFFUSION 1
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
@@ -239,5 +239,25 @@ plot  "OutputData-30-673" u 1:6 w l lw 1 lc "black" t "673K", \
       "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 4 ps 0.8 lc "blue" notitle, \
       "../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 4 ps 0.8 lc "orange" notitle
 
+~~~
+
+~~~gnuplot
+reset
+set terminal svg size 450, 450
+set output "huang-temperature.svg"
+set xlabel "Time [s]"
+set ylabel "Temperature [K]"
+set grid
+set xrange [0:650]
+set xtics 100
+set yrange [200:850]
+set ytics 100
+set key bottom right box width 2.1
+set size square
+
+plot "OutputData-20-773" u 1:3 w l lw 3 lc "black" t "2 cm", \
+     "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
+     "OutputData-30-773" u 1:3 w l lw 3 lc "dark-green" t "3 cm", \
+     "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
 ~~~
 **/

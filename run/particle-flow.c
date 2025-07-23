@@ -146,19 +146,19 @@ event output (t+=1) {
   //// FRONT
   double Tr2_front = interpolate (T, -radius/2., 0.);
   double Tsurf_front =  0.;
-  foreach_point (-radius, 0.)
+  foreach_point (-radius, 0., serial)
     Tsurf_front = TInt[];
 
   //// BACK
   double Tr2_back = interpolate (T, radius/2., 0.);
   double Tsurf_back = 0.;
-  foreach_point (radius, 0.)
+  foreach_point (radius, 0., serial)
     Tsurf_back = TInt[];
   
   //// TOP
   double Tr2_top = interpolate (T, 0., radius/2.);
   double Tsurf_top = 0.;
-  foreach_point (0., radius)
+  foreach_point (0., radius, serial)
     Tsurf_top = TInt[];
 
   //// AVERAGE
@@ -174,7 +174,7 @@ event output (t+=1) {
 
   double Tsurf_avg = 0.; 
   int count = 0;
-  foreach() {
+  foreach(reduction(+:Tsurf_avg)reduction(+:count)) {
     if (f[] > F_ERR && f[] < 1.-F_ERR) {
       Tsurf_avg += TInt[];
       count++;

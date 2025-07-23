@@ -143,13 +143,54 @@ event output (t+=1) {
       moisture += (f[]-porosity[])*rhoS*Ymoist[]/f[]*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
   }
 
-  //save temperature profile
-  double Tcore  = interpolate (T, 0., 0.);
-  double Tr2    = interpolate (T, radius/2., 0.);
-  double Tsurf  = interpolate (T, radius, 0.);
+  //// FRONT
+  double Tr2_front = interpolate (T, -radius/2., 0.);
+  double Tsurf_front =  0.;
+  foreach_point (-radius, 0.)
+    Tsurf_front = TInt[];
 
-  fprintf (fp, "%g %g %g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, 
-                                      Tr2, Tsurf, radius/(D0/2.), moisture/moisture0);
+  //// BACK
+  double Tr2_back = interpolate (T, radius/2., 0.);
+  double Tsurf_back = 0.;
+  foreach_point (radius, 0.)
+    Tsurf_back = TInt[];
+  
+  //// TOP
+  double Tr2_top = interpolate (T, 0., radius/2.);
+  double Tsurf_top = 0.;
+  foreach_point (0., radius)
+    Tsurf_top = TInt[];
+
+  //// AVERAGE
+  double Tr2_avg = 0.;
+  int num_points = 100;
+  for (int jj=0; jj<num_points; jj++) {
+    double theta = M_PI*jj/num_points;
+    double x = radius/2.*cos(theta);
+    double y = radius/2.*sin(theta);
+    Tr2_avg += interpolate (TS, x, y);
+  }
+  Tr2_avg /= num_points;
+
+  double Tsurf_avg = 0.; 
+  int count = 0;
+  foreach() {
+    if (f[] > F_ERR && f[] < 1.-F_ERR) {
+      Tsurf_avg += TInt[];
+      count++;
+    }
+  }
+  Tsurf_avg /= count;
+
+  ////CORE
+  double Tcore  = interpolate (T, 0., 0.);
+
+
+  fprintf (fp, "%g %g %g %g %g %g %g ", t, solid_mass/solid_mass0, Tcore, 
+                                      Tr2_back, Tsurf_back, radius/(D0/2.), moisture/moisture0);
+
+  fprintf (fp, "%g %g %g %g %g %g\n", Tr2_front, Tsurf_front, Tr2_top, Tsurf_top, Tr2_avg, Tsurf_avg);
+
   fflush(fp);
 }
 
@@ -244,7 +285,7 @@ plot  "OutputData-30-673" u 1:6 w l lw 1 lc "black" t "673K", \
 ~~~gnuplot
 reset
 set terminal svg size 450, 450
-set output "huang-temperature.svg"
+set output "huang-t-core.svg"
 set xlabel "Time [s]"
 set ylabel "Temperature [K]"
 set grid
@@ -259,5 +300,45 @@ plot "OutputData-20-773" u 1:3 w l lw 3 lc "black" t "2 cm", \
      "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
      "OutputData-30-773" u 1:3 w l lw 3 lc "dark-green" t "3 cm", \
      "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
+~~~
+
+~~~gnuplot
+reset
+set terminal svg size 450, 450
+set output "huang-t-r2.svg"
+set xlabel "Time [s]"
+set ylabel "Temperature [K]"
+set grid
+set xrange [0:650]
+set xtics 100
+set yrange [200:850]
+set ytics 100
+set key bottom right box width 2.1
+set size square
+
+plot "OutputData-20-773" u 1:4 w l lw 3 lc "black" t "2 cm", \
+     "../../data/huang-particleflow/20/773-T-r2" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
+     "OutputData-30-773" u 1:4 w l lw 3 lc "dark-green" t "3 cm", \
+     "../../data/huang-particleflow/30/773-T-r2" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
+~~~
+
+~~~gnuplot
+reset
+set terminal svg size 450, 450
+set output "huang-t-surf.svg"
+set xlabel "Time [s]"
+set ylabel "Temperature [K]"
+set grid
+set xrange [0:650]
+set xtics 100
+set yrange [200:850]
+set ytics 100
+set key bottom right box width 2.1
+set size square
+
+plot "OutputData-20-773" u 1:5 w l lw 3 lc "black" t "2 cm", \
+     "../../data/huang-particleflow/20/773-T-surf" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
+     "OutputData-30-773" u 1:5 w l lw 3 lc "dark-green" t "3 cm", \
+     "../../data/huang-particleflow/30/773-T-surf" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
 ~~~
 **/

@@ -14,4 +14,4 @@
 !.gitignore
 
 # Include data folder
-!data/*
+!data/**

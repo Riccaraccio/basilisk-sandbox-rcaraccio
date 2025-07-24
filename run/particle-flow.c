@@ -77,6 +77,7 @@ int main() {
 
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
+double r0;
 event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
@@ -117,10 +118,18 @@ event init(i=0) {
   }
 
   foreach()
-    u.x[] = f[] > F_ERR ? 0. : Uin; 
+    u.x[] = f[] > F_ERR ? 0. : Uin;
+  
+  //vertical shrinking
+  r0 = 0.;
+  coord p;
+  coord regionvert[2] = {{0, 0}, {0, L0/3.}};
+  coord samplingvert = {1, (1<<maxlevel)/3};
+  foreach_region (p, regionvert, samplingvert, reduction(+:r0))
+    r0 += f[];
 }
 
-event output (t+=1) {
+event output (t += 1) {
   fprintf (stderr, "%g\n", t);
 
   char name[80];
@@ -143,23 +152,29 @@ event output (t+=1) {
       moisture += (f[]-porosity[])*rhoS*Ymoist[]/f[]*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
   }
 
+  coord p;
   //// FRONT
-  double Tr2_front = interpolate (T, -radius/2., 0.);
+  double Tr2_front = interpolate(T, -radius/2., 0.);
   double Tsurf_front =  0.;
-  foreach_point (-radius, 0., serial)
-    Tsurf_front = TInt[];
+  coord regionfront[2] = {{-L0/2, 0}, {0, 0}};
+  coord samplingfront = {(1<<maxlevel)/2, 1};
+  foreach_region (p, regionfront, samplingfront, reduction(+:Tsurf_front))
+    Tsurf_front += TInt[];
 
   //// BACK
   double Tr2_back = interpolate (T, radius/2., 0.);
   double Tsurf_back = 0.;
-  foreach_point (radius, 0., serial)
-    Tsurf_back = TInt[];
-  
+  coord regionback[2] = {{0, 0}, {L0/2, 0.}};
+  foreach_region (p, regionback, samplingfront, reduction(+:Tsurf_back))
+    Tsurf_back += TInt[];
+
   //// TOP
   double Tr2_top = interpolate (T, 0., radius/2.);
   double Tsurf_top = 0.;
-  foreach_point (0., radius, serial)
-    Tsurf_top = TInt[];
+  coord regiontop[2] = {{0, 0}, {0, 4e-2-1e-4}}; 
+  coord samplingtop = {1, (1<<maxlevel)/3};
+  foreach_region (p, regiontop, samplingtop, reduction(+:Tsurf_top))
+    Tsurf_top += TInt[];
 
   //// AVERAGE
   double Tr2_avg = 0.;
@@ -185,11 +200,20 @@ event output (t+=1) {
   ////CORE
   double Tcore  = interpolate (T, 0., 0.);
 
+  //vertical shrinking
+  double r = 0.;
+  coord regionvert[2] = {{0, 0}, {0, L0/3.}};
+  coord samplingvert = {1, (1<<maxlevel)/3};
+  foreach_region (p, regionvert, samplingvert, reduction(+:r))
+    r += f[];
 
   fprintf (fp, "%g %g %g %g %g %g %g ", t, solid_mass/solid_mass0, Tcore, 
                                       Tr2_back, Tsurf_back, radius/(D0/2.), moisture/moisture0);
 
-  fprintf (fp, "%g %g %g %g %g %g\n", Tr2_front, Tsurf_front, Tr2_top, Tsurf_top, Tr2_avg, Tsurf_avg);
+  fprintf (fp, "%g %g %g %g %g %g %g\n", Tr2_front, Tsurf_front, 
+                                      Tr2_top, Tsurf_top, 
+                                      Tr2_avg, Tsurf_avg,
+                                      r/r0);
 
   fflush(fp);
 }
@@ -208,8 +232,11 @@ event stop (t = tend);
 /** 
 ~~~gnuplot
 reset
-set terminal svg size 450, 450
-set output "huang-mass.svg"
+#set terminal svg size 450, 450
+#set output "huang-mass.svg"
+
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "huang-mass.tex"
 
 set xlabel "Time [s]"
 set ylabel "Normalized mass [-]"
@@ -228,8 +255,12 @@ plot  "OutputData-20-773" u 1:2 w l lw 3 lc "black" t "2 cm", \
 ~~~
 ~~~gnuplot
 reset
-set terminal svg size 450, 450
-set output "huang-shrink-20.svg"
+#set terminal svg size 450, 450
+#set output "huang-shrink-20.svg"
+
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "huang-shrink-20.tex"
+
 set xlabel "Time [s]"
 set ylabel "Shrinking factor [-]"
 set grid
@@ -237,13 +268,13 @@ set xrange [0:650]
 set xtics 100
 set yrange [0.5:1.05]
 set ytics 0.1
-set key top right box width 2.2
+set key bottom right box width 2.2
 set size square 
 
-plot  "OutputData-20-673" u 1:6 w l lw 1 lc "black" t "673K", \
-      "OutputData-20-773" u 1:6 w l lw 1 lc "dark-green" t "773K", \
-      "OutputData-20-873" u 1:6 w l lw 1 lc "blue" t "873", \
-      "OutputData-20-973" u 1:6 w l lw 1 lc "orange" t "973", \
+plot  "OutputData-20-673" u 1:6 w l lw 1 lc "black" t "673$K$", \
+      "OutputData-20-773" u 1:6 w l lw 1 lc "dark-green" t "773$K$", \
+      "OutputData-20-873" u 1:6 w l lw 1 lc "blue" t "873$K$", \
+      "OutputData-20-973" u 1:6 w l lw 1 lc "orange" t "973$K$", \
       "../../data/huang-particleflow/20/673-shrinking" u 1:2 w p pt 4 ps 0.8 lc "black" notitle, \
       "../../data/huang-particleflow/20/773-shrinking" u 1:2 w p pt 4 ps 0.8 lc "dark-green" notitle, \
       "../../data/huang-particleflow/20/873-shrinking" u 1:2 w p pt 4 ps 0.8 lc "blue" notitle, \
@@ -261,6 +292,10 @@ plot  "OutputData-20-673" u 1:6 w l lw 1 lc "black" t "673K", \
 reset
 set terminal svg size 450, 450
 set output "huang-shrink-30.svg"
+
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "huang-shrink-30.tex"
+
 set xlabel "Time [s]"
 set ylabel "Shrinking factor [-]"
 set grid
@@ -268,13 +303,13 @@ set xrange [0:650]
 set xtics 100
 set yrange [0.5:1.05]
 set ytics 0.1
-set key top right box width 2.2
+set key bottom right box width 2.2
 set size square 
 
-plot  "OutputData-30-673" u 1:6 w l lw 1 lc "black" t "673K", \
-      "OutputData-30-773" u 1:6 w l lw 1 lc "dark-green" t "773K", \
-      "OutputData-30-873" u 1:6 w l lw 1 lc "blue" t "873K", \
-      "OutputData-30-973" u 1:6 w l lw 1 lc "orange" t "973K", \
+plot  "OutputData-30-673" u 1:6 w l lw 1 lc "black" t "673$K$", \
+      "OutputData-30-773" u 1:6 w l lw 1 lc "dark-green" t "773$K$", \
+      "OutputData-30-873" u 1:6 w l lw 1 lc "blue" t "873$K$", \
+      "OutputData-30-973" u 1:6 w l lw 1 lc "orange" t "973$K$", \
       "../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 4 ps 0.8 lc "black" notitle, \
       "../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 4 ps 0.8 lc "dark-green" notitle, \
       "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 4 ps 0.8 lc "blue" notitle, \
@@ -284,8 +319,12 @@ plot  "OutputData-30-673" u 1:6 w l lw 1 lc "black" t "673K", \
 
 ~~~gnuplot
 reset
-set terminal svg size 450, 450
-set output "huang-t-core.svg"
+#set terminal svg size 450, 450
+#set output "huang-t-core.svg"
+
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "huang-t-core.tex"
+
 set xlabel "Time [s]"
 set ylabel "Temperature [K]"
 set grid

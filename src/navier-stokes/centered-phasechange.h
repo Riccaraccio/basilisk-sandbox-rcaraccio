@@ -102,9 +102,13 @@ event advection_term (i++,last) {
   prediction();
   mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);
 
+  scalar eps[];
+  foreach()
+    eps[] = porosity[] + (1. - f[]);
+
   face vector ufn[];
   foreach_face() {
-    double ef = face_value(porosity, 0) + (1. - face_value(f, 0));
+    double ef = face_value(eps, 0);
     ufn.x[] = uf.x[]/ef;
   }
   

@@ -124,7 +124,7 @@ event init(i=0) {
   r0 = 0.;
   coord p;
   coord regionvert[2] = {{0, 0}, {0, L0/3.}};
-  coord samplingvert = {1, (1<<maxlevel)/3};
+  coord samplingvert = {1, (1<<maxlevel)/2  };
   foreach_region (p, regionvert, samplingvert, reduction(+:r0))
     r0 += f[];
 }
@@ -152,41 +152,7 @@ event output (t += 1) {
       moisture += (f[]-porosity[])*rhoS*Ymoist[]/f[]*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
   }
 
-  coord p;
-  //// FRONT
-  double Tr2_front = interpolate(T, -radius/2., 0.);
-  double Tsurf_front =  0.;
-  coord regionfront[2] = {{-L0/2, 0}, {0, 0}};
-  coord samplingfront = {(1<<maxlevel)/2, 1};
-  foreach_region (p, regionfront, samplingfront, reduction(+:Tsurf_front))
-    Tsurf_front += TInt[];
-
-  //// BACK
-  double Tr2_back = interpolate (T, radius/2., 0.);
-  double Tsurf_back = 0.;
-  coord regionback[2] = {{0, 0}, {L0/2, 0.}};
-  foreach_region (p, regionback, samplingfront, reduction(+:Tsurf_back))
-    Tsurf_back += TInt[];
-
-  //// TOP
-  double Tr2_top = interpolate (T, 0., radius/2.);
-  double Tsurf_top = 0.;
-  coord regiontop[2] = {{0, 0}, {0, 4e-2-1e-4}}; 
-  coord samplingtop = {1, (1<<maxlevel)/3};
-  foreach_region (p, regiontop, samplingtop, reduction(+:Tsurf_top))
-    Tsurf_top += TInt[];
-
-  //// AVERAGE
-  double Tr2_avg = 0.;
-  int num_points = 100;
-  for (int jj=0; jj<num_points; jj++) {
-    double theta = M_PI*jj/num_points;
-    double x = radius/2.*cos(theta);
-    double y = radius/2.*sin(theta);
-    Tr2_avg += interpolate (TS, x, y);
-  }
-  Tr2_avg /= num_points;
-
+  //average temperature of the surface
   double Tsurf_avg = 0.; 
   int count = 0;
   foreach(reduction(+:Tsurf_avg)reduction(+:count)) {
@@ -197,23 +163,20 @@ event output (t += 1) {
   }
   Tsurf_avg /= count;
 
-  ////CORE
   double Tcore  = interpolate (T, 0., 0.);
+  double Tr2    = interpolate (T, 0., radius/2.);
 
   //vertical shrinking
   double r = 0.;
-  coord regionvert[2] = {{0, 0}, {0, L0/3.}};
-  coord samplingvert = {1, (1<<maxlevel)/3};
-  foreach_region (p, regionvert, samplingvert, reduction(+:r))
+  coord p;
+  coord region[2] = {{0, 0}, {0, L0/3.}};
+  coord sampling = {1, (1<<maxlevel)/2};
+  foreach_region (p, region, sampling, reduction(+:r))
     r += f[];
 
-  fprintf (fp, "%g %g %g %g %g %g %g ", t, solid_mass/solid_mass0, Tcore, 
-                                      Tr2_back, Tsurf_back, radius/(D0/2.), moisture/moisture0);
-
-  fprintf (fp, "%g %g %g %g %g %g %g\n", Tr2_front, Tsurf_front, 
-                                      Tr2_top, Tsurf_top, 
-                                      Tr2_avg, Tsurf_avg,
-                                      r/r0);
+  fprintf (fp, "%g %g %g %g %g %g %g %g\n", 
+            t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf_avg, 
+            radius/(D0/2.), moisture/moisture0, r/r0);
 
   fflush(fp);
 }
@@ -248,10 +211,10 @@ set ytics 0.2
 set key top right box width 2.2
 set size square
 
-plot  "OutputData-20-773" u 1:2 w l lw 3 lc "black" t "2 cm", \
-      "../../data/huang-particleflow/20/773-mass" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
-      "OutputData-30-773" u 1:2 w l lw 3 lc "dark-green" t "3 cm", \
-      "../../data/huang-particleflow/30/773-mass" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
+plot  "OutputData-20-773" u 1:2 w l lw 6 lc "black" t "2 cm", \
+      "../../data/huang-particleflow/20/773-mass" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
+      "OutputData-30-773" u 1:2 w l lw 6 lc "dark-green" t "3 cm", \
+      "../../data/huang-particleflow/30/773-mass" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle
 ~~~
 ~~~gnuplot
 reset
@@ -271,27 +234,17 @@ set ytics 0.1
 set key bottom right box width 2.2
 set size square 
 
-plot  "OutputData-20-673" u 1:6 w l lw 1 lc "black" t "673$K$", \
-      "OutputData-20-773" u 1:6 w l lw 1 lc "dark-green" t "773$K$", \
-      "OutputData-20-873" u 1:6 w l lw 1 lc "blue" t "873$K$", \
-      "OutputData-20-973" u 1:6 w l lw 1 lc "orange" t "973$K$", \
-      "../../data/huang-particleflow/20/673-shrinking" u 1:2 w p pt 4 ps 0.8 lc "black" notitle, \
-      "../../data/huang-particleflow/20/773-shrinking" u 1:2 w p pt 4 ps 0.8 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/20/873-shrinking" u 1:2 w p pt 4 ps 0.8 lc "blue" notitle, \
-      "../../data/huang-particleflow/20/973-shrinking" u 1:2 w p pt 4 ps 0.8 lc "orange" notitle
-      #"OutputData-30-673" u 1:6 w l lw 1 lc "dark-green" t "3 cm", \
-      #"OutputData-30-773" u 1:6 w l lw 1 lc "dark-green" notitle, \
-      #"OutputData-30-873" u 1:6 w l lw 1 lc "dark-green" notitle, \
-      #"OutputData-30-973" u 1:6 w l lw 1 lc "dark-green" notitle, \
-      #"../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 1 ps 0.8 lc "dark-green" notitle, \
-      #"../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 4 ps 0.8 lc "dark-green" notitle, \
-      #"../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 3 ps 0.8 lc "dark-green" notitle, \
-      #"../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 2 ps 0.8 lc "dark-green" notitle
-~~~
-~~~gnuplot
+ plot "../../data/huang-particleflow/20/673-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
+      "../../data/huang-particleflow/20/773-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/20/873-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
+      "../../data/huang-particleflow/20/973-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "orange" notitle, \
+      "OutputData-20-673" u 1:6 w l lw 6 lc "black" t "673$K$", \
+      "OutputData-20-773" u 1:6 w l lw 6 lc "dark-green" t "773$K$", \
+      "OutputData-20-873" u 1:6 w l lw 6 lc "blue" t "873$K$", \
+      "OutputData-20-973" u 1:6 w l lw 6 lc "orange" t "973$K$"
 reset
-set terminal svg size 450, 450
-set output "huang-shrink-30.svg"
+#set terminal svg size 450, 450
+#set output "huang-shrink-30.svg"
 
 set terminal epslatex size 3.6, 3.6 color colortext
 set output "huang-shrink-30.tex"
@@ -306,14 +259,14 @@ set ytics 0.1
 set key bottom right box width 2.2
 set size square 
 
-plot  "OutputData-30-673" u 1:6 w l lw 1 lc "black" t "673$K$", \
-      "OutputData-30-773" u 1:6 w l lw 1 lc "dark-green" t "773$K$", \
-      "OutputData-30-873" u 1:6 w l lw 1 lc "blue" t "873$K$", \
-      "OutputData-30-973" u 1:6 w l lw 1 lc "orange" t "973$K$", \
-      "../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 4 ps 0.8 lc "black" notitle, \
-      "../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 4 ps 0.8 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 4 ps 0.8 lc "blue" notitle, \
-      "../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 4 ps 0.8 lc "orange" notitle
+plot  "../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
+      "../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
+      "../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "orange" notitle, \
+      "OutputData-30-673" u 1:6 w l lw 6 lc "black" t "673$K$", \
+      "OutputData-30-773" u 1:6 w l lw 6 lc "dark-green" t "773$K$", \
+      "OutputData-30-873" u 1:6 w l lw 6 lc "blue" t "873$K$", \
+      "OutputData-30-973" u 1:6 w l lw 6 lc "orange" t "973$K$"
 
 ~~~
 
@@ -335,10 +288,10 @@ set ytics 100
 set key bottom right box width 2.1
 set size square
 
-plot "OutputData-20-773" u 1:3 w l lw 3 lc "black" t "2 cm", \
-     "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
-     "OutputData-30-773" u 1:3 w l lw 3 lc "dark-green" t "3 cm", \
-     "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
+plot "OutputData-20-773" u 1:3 w l lw 6 lc "black" t "2 cm", \
+     "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 64 ps 2 lw 5 lc "black" notitle, \
+     "OutputData-30-773" u 1:3 w l lw 6 lc "dark-green" t "3 cm", \
+     "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 64 ps 2 lw 5 lc "dark-green" notitle
 ~~~
 
 ~~~gnuplot

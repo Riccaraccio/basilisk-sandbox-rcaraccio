@@ -42,8 +42,41 @@ event viscous_term (i++) {
       foreach_dimension() {
         double A = (1./rhoGh)*(muGh*e/Da.x);
         double B = F*e/sqrt(Da.x)*Umag;
-        u.x[] /= (1. + (A+B)*dt*f[]);
+
+        // u.x[] = u.x[]/(1. + dt*(A+B)*f[]); // Implicit v1 does not work
+        u.x[] = u.x[]*exp(-(A+B)*dt*f[]);     // Implicit v2 does not work, but better than v1
+        // u.x[] = u.x[]*(1. - dt*(A+B)*f[]); // Explicit v1 works
+        // u.x[] = u.x[]*(1. - dt/2*(A+B)*f[])/(1. + dt/2*(A+B)*f[]); // Crank-Nicolson in between, does not work
       }
     }
   }
 }
+
+
+// Old approach, works but explicit
+// event defaults (i = 0) {
+//   if (is_constant(a.x)) {
+//     a = new face vector;
+//     foreach_face() {
+//       a.x[] = 0.;
+//       dimensional (a.x[] == Delta/sq(DT));
+//     }
+//   }
+// }
+
+// event acceleration (i++){
+//   face vector av = a;
+//   foreach_face() {
+//     double ff = face_value(f, 0);
+//     if (ff > F_ERR) {
+//       double ef = face_value(porosity, 0);
+//       double F  = 1.75/pow (150*pow (ef, 3), 0.5);
+
+//       // Darcy contribution, weighted by the face fraction of the interface
+//       av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (muG*ef/Da.x) *uf.x[] *ff; 
+
+//       // Forcheimer contribution
+//       av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*ef*rhoG/pow(Da.x,0.5)) *fabs(uf.x[])*uf.x[] *ff;
+//     }
+//   }
+// }

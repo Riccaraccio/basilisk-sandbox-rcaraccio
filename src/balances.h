@@ -215,6 +215,13 @@ static void compute_initial_state (void) {
     }
 
     mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
+    
+    #ifdef BALANCES_SPHERE
+    // overwrite using equation for sphere
+    mb.tot_sol_mass_start = 3.14159265358979323846*sq(0.5)/4*(1-eps0)*rhoS;
+    mb.tot_gas_mass_start = 3.14159265358979323846*sq(0.5)/4*(eps0-1)*rhoG + L0*L0*rhoG;
+    mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
+    #endif
 
   #ifdef MULTICOMPONENT
     for (int jj=0; jj<NGS; jj++)

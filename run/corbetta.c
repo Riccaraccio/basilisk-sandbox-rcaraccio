@@ -1,5 +1,5 @@
-#define NO_ADVECTION_DIV    1
-#define SOLVE_TEMPERATURE   1
+#define NO_ADVECTION_DIV 1
+#define SOLVE_TEMPERATURE 1
 #define MOLAR_DIFFUSION 1
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
@@ -13,7 +13,7 @@
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "view.h"
-#include "balances-interface-rop.h"
+//#include "balances-interface-rop.h"
 
 u.n[top]      = neumann (0.);
 u.t[top]      = neumann (0.);
@@ -27,7 +27,7 @@ p[right]      = dirichlet (0.);
 pf[right]     = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 8; int minlevel = 2;
 double D0 = 2*1.27e-2;
 double solid_mass0 = 0.;
 
@@ -57,7 +57,6 @@ int main() {
 
   DT = 1.e-2;
 
-  //  kinfolder = "biomass/dummy-solid";
   kinfolder = "biomass/Solid-only-2407";
   init_grid(1 << maxlevel);
   run();
@@ -76,8 +75,6 @@ event init(i=0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.0957;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.0214;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0086;
-
-  //  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
   foreach()
     porosity[] = eps0*f[];
@@ -150,18 +147,18 @@ event adapt (i++) {
     (double[]){1.e-2, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 1);
 }
 
-event movie(t+=5) {
-  clear();
-  box();
-  view (ty=-0.5, width = 1400.);
-  draw_vof("f", lw=2);
-  squares ("T", min=300, max=800, linear=true);
-  mirror ({1.,0.}) {
-    draw_vof ("f", lw=2);
-    squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
- }
- save ("movie.mp4");
-}
+// event movie(t+=5) {
+//  clear();
+//  box();
+//  view (ty=-0.5, width = 1400.);
+//  draw_vof("f", lw=2);
+//  squares ("T", min=300, max=800, linear=true);
+//  mirror ({1.,0.}) {
+//    draw_vof ("f", lw=2);
+//    squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
+// }
+// save ("movie.mp4");
+// }
 
 #if DUMP
 int count = 0;
@@ -177,28 +174,40 @@ event snapshots (t += 1) {
 }
 #endif
 
-event stop (t = 1000);
+// event outputfields (t = {100, 200, 305, 600}) {
+//  char name[80];
+//  sprintf (name, "OutputFields-%d", (int)(t));
+//  static FILE * fs = fopen (name, "w");
+
+//  output_field ({T, f, u.x, u.y, omega, zeta, porosity}, fs);
+//  fflush (fs);
+// }
+
+
+event stop (i = 1);
 
 /** 
 ~~~gnuplot temperature profiles
 reset
-set terminal svg size 450,400
-set title "Zeta reaction rate"
-datafile = "OutputData-7-rate"
+#set terminal svg size 450,400
+#set title "Zeta reaction rate"
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "corbetta-temperature-profile.tex"
+datafile = "OutputData-8-rate"
 
 set xlabel "Time [s]"
+set size square
 set ylabel "Temperature [K]"
 set key bottom right box width 1
 set xrange [0:1000]
 set yrange [300:850]
 set grid
-plot  datafile u 1:3 w l lw 2 lc "dark-green" t "Core", \
-      datafile u 1:4 w l lw 2 lc "blue" t "R/2", \
-      datafile u 1:5 w l lw 2 lc "black" t "Surface", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 4 lc "dark-green" t "Corbetta core", \
-      "data/corbetta-core.txt"  u 1:2 w p pt 4 lc "dark-green" t "Corbetta core", \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 4 lc "blue" t "Corbetta R/2", \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 4 lc "black" t "Corbetta surface"
+plot  "data/corbetta-core.txt"  u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
+      "data/corbetta-r2.txt"    u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
+      "data/corbetta-surf.txt"  u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
+      datafile u 1:3 w l lw 6 lc "dark-green" t "core", \
+      datafile u 1:4 w l lw 6 lc "blue" t "half-radius", \
+      datafile u 1:5 w l lw 6 lc "black" t "surface"
 ~~~
 
 ~~~gnuplot species profiles
@@ -212,9 +221,9 @@ set multiplot layout 1,3
 # Function with sampling parameter (most readable)
 centered_diff(file, column, multiplier, interval) = sprintf("< awk -v col=%d -v mult=%g -v skip=%d 'NR%%skip==1{count++; if(count==2){a=$1;b=$col;next} if(count==3){c=$1;d=$col;next} if(count>=4){dt=$1-a; dy=$col-b; if(dt!=0) print c,(dy/dt)*mult; a=c; b=d; c=$1; d=$col}}' %s", column, multiplier, interval, file)
 
-datafile = "balances-7-rate"
+datafile = "balances-7-const"
 
-set title "Zeta Rate"
+#set title "Zeta Rate"
 set xlabel "Time [s]"
 set ylabel "Production rate [mg/s/g_{init}]"
 set key top right box width 2.2
@@ -229,7 +238,8 @@ plot  centered_diff(datafile, 32, 1000, 25) u 1:2 w l lw 2 lc "dark-green" t "sy
       "data/expHCHO" u 1:2 w p pt 4 lc "black" t "exp HCHO"
 
 set xlabel "Time [s]"
-set ylabel "Production rate [mg/s/g_{init}]"
+#set ylabel "Production rate [mg/s/g_{init}]"
+unset ylabel
 set key top right box width 2.2
 set grid
 set xrange [0:600]
@@ -240,7 +250,8 @@ plot  centered_diff(datafile, 7, 1000, 25) u 1:2 w l lw 2 lc "dark-green" t "sym
       "data/expCH3OH" u 1:2 w p pt 4 lc "blue" t "exp CH_{3}OH"
 
 set xlabel "Time [s]"
-set ylabel "Production rate [mg/s/g_{init}]"
+#set ylabel "Production rate [mg/s/g_{init}]"
+
 set key top right box width 2.2
 set grid
 set xrange [0:600]
@@ -251,6 +262,72 @@ plot  centered_diff(datafile, 33, 1000*10, 25) u 1:2 w l lw 2 lc "dark-green" t 
       "data/expCH4" u 1:2 w p pt 4 lc "blue" t "exp CH_{4}", \
       centered_diff(datafile, 20, 1000, 25) u 1:2 w l lw 2 lc "black" t "sym HCOOH", \
       "data/expHCOOH" u 1:2 w p pt 4 lc "black" t "exp HCOOH"
+
+unset multiplot
+~~~
+
+~~~gnuplot species profiles
+reset
+set terminal epslatex size 10, 3.6 color colortex
+set output "corbetta-species-profile.tex"
+set multiplot layout 1,3
+
+# Function with sampling parameter (most readable)
+centered_diff(file, column, multiplier, interval) = sprintf("< awk -v col=%d -v mult=%g -v skip=%d 'NR%%skip==1{count++; if(count==2){a=$1;b=$col;next} if(count==3){c=$1;d=$col;next} if(count>=4){dt=$1-a; dy=$col-b; if(dt!=0) print c,(dy/dt)*mult; a=c; b=d; c=$1; d=$col}}' %s", column, multiplier, interval, file)
+
+datafile = "balances-7-rate"
+
+#set title "Zeta Rate"
+set xlabel "Time [s]"
+set ylabel "Production rate [mg/s/g_{init}]"
+set key top right box width 2.2
+set size square 
+set grid
+set xrange [0:600]
+set xtics 200
+set ytics 0.1
+set yrange [0:0.5]
+
+plot  "data/expCO2"   u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
+      "data/expCO"    u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
+      "data/expHCHO"  u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
+      centered_diff(datafile, 32, 1000, 25) u 1:2 w l lw 6 lc "dark-green" t "CO_{2}", \
+      centered_diff(datafile, 31, 1000, 25) u 1:2 w l lw 6 lc "blue" t "CO", \
+      centered_diff(datafile, 19, 1000, 25) u 1:2 w l lw 6 lc "black" t "HCHO"
+
+set xlabel "Time [s]"
+#set ylabel "Production rate [mg/s/g_{init}]"
+unset ylabel
+set key top right box width 2.2
+set size square
+set grid
+set xrange [0:600]
+set xtics 200
+set ytics 0.1
+set yrange [0:0.4]
+      
+plot  "data/expCH3COOH" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
+      "data/expCH3OH"   u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
+      centered_diff(datafile, 7, 1000, 25)  u 1:2 w l lw 6 lc "dark-green" t "CH_{3}COOH", \
+      centered_diff(datafile, 18, 1000, 25) u 1:2 w l lw 6 lc "blue" t "CH_{3}OH"
+
+set xlabel "Time [s]"
+#set ylabel "Production rate [$mg/s/g_{init}$]"
+
+set key top right box width 2.2
+set grid
+set xrange [0:600]
+set size square
+set xtics 200
+set ytics 0.01
+set yrange [0:0.05]
+
+plot  "data/expH2"  u 1:($2*10) w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
+      "data/expCH4" u 1:2       w p pt 64 ps 2 lw 3 lc "blue" notitle, \
+      "data/expHCOOH" u 1:2     w p pt 64 ps 2 lw 3 lc "black" notitle, \
+      centered_diff(datafile, 33, 1000*10, 25) u 1:2 w l lw 6 lc "dark-green" t "H_{2}*10", \
+      centered_diff(datafile, 34, 1000, 25)    u 1:2 w l lw 6 lc "blue" t "CH_{4}", \
+      centered_diff(datafile, 20, 1000, 25)    u 1:2 w l lw 6 lc "black" t "HCOOH"
 
 unset multiplot
 ~~~

@@ -353,12 +353,10 @@ event defaults (i = 0) {
   mb.tot_gas_mass_bd = 0.;
   mb.tot_mass = 0.;
   mb.tot_sol_mass = 0.;
-  mb.tot_sol_mass_start = 0.;
   mb.tot_gas_mass_start = 0.;
   mb.tot_mass_start = 0.;
   mb.tot_sol_mass_start = 0.;
-  mb.tot_gas_mass_start = 0.;
-  mb.tot_mass_start = 0.;
+  mb.fb = NULL;
   
   mb.print_iter = 10;
   mb.boundaries = true;
@@ -426,7 +424,9 @@ event init (i = 0) {
 }
 
 event cleanup(t = end) {
-  fclose(mb.fb);
+  if (mb.fb != NULL)
+    fclose(mb.fb);
+
   free(mb.gas_mass_start);
   free(mb.gas_mass_bd);
   free(mb.gas_mass_bdnow);

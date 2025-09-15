@@ -222,7 +222,7 @@ set grid
 err_mass_time_r = 20
 err_mass_time_l = 0.
 
-plot  "OutputData-7-rate" u 1:2 w l lw 2 lc "black" t "Mass r", \
+plot  "OutputData-7-08" u 1:2 w l lw 2 lc "black" t "Mass r", \
       "OutputData-7-const" u 1:2 w l lw 2 lc "black" t "Mass c", \
       "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 4 lc "black" t "Mass exp"
       #"data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Mass Gentile"
@@ -246,12 +246,60 @@ err_shrink_value_u = 0.
 err_shrink_value_d = 0.05
 err_mass_time = 20
 
-plot "OutputData-7-rate" u 1:3 w l dt 2 lw 2 lc "dark-green" t "Radial r", \
-     "OutputData-7-rate" u 1:4 w l dt 2 lw 2 lc "black" t "Axial r", \
+plot "OutputData-7-08" u 1:3 w l dt 2 lw 2 lc "dark-green" t "Radial r", \
+     "OutputData-7-08" u 1:4 w l dt 2 lw 2 lc "black" t "Axial r", \
      "OutputData-7-const" u 1:3 w l lw 2 lc "dark-green" t "Radial c", \
      "OutputData-7-const" u 1:4 w l lw 2 lc "black" t "Axial c", \
      "data/radial-exp" u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 4 lw 1.5 lc "dark-green" t "Radial exp", \
      "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 4 lw 1.5 lc "black" t "Axial exp"
+     #"data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "dark-green" t "Radial Gentile", \
+     #"data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Axial Gentile"
+~~~
+
+~~~gnuplot Mass profile
+reset
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "mass-profile.tex"
+set xlabel "Time [s]"
+set size square
+set ylabel "Normalized solid mass [-]"
+set yrange [0:1]
+#set key top right box width 1
+set xrange [0:800]
+set yrange [0:1.0]
+set xtics (0, 200, 400, 600, 800)
+set grid
+err_mass_time_r = 20
+err_mass_time_l = 0.
+
+plot  "OutputData-7-08" u 1:2 w l lw 6 lc "black" notitle, \
+      "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 64 ps 2 lw 5 lc "black" notitle
+      #"data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Mass Gentile"
+~~~
+
+~~~gnuplot Shrinking
+reset
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "shrinking-profile.tex"
+set xlabel "Time [s]"
+set size square
+set ylabel "Shrinking factor [-]"
+set key bottom left box width 1
+set yrange [0.5:1.0]
+set xrange [0:800]
+set xtics (0, 200, 400, 600, 800)
+set grid
+
+err_shrink_time_r = 25
+err_shrink_time_l = 0.
+err_shrink_value_u = 0.
+err_shrink_value_d = 0.05
+err_mass_time = 20
+
+plot "OutputData-7-08" u 1:3 w l lw 6 lc "dark-green" t "Radial", \
+     "OutputData-7-08" u 1:4 w l lw 6 lc "black" t "Axial", \
+     "data/radial-exp" u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 64 ps 2 lw 5 lc "dark-green" notitle, \
+     "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 64 ps 2 lw 5 lc "black" notitle
      #"data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "dark-green" t "Radial Gentile", \
      #"data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Axial Gentile"
 ~~~

@@ -1,10 +1,20 @@
 #ifndef DARCY
-# define DARCY_INDEX 6
+# define DARCY_INDEX 0
 #endif
 
 #define POROUS_ADVECTION 1
 #define POROUS_MEDIA 1
 #define AMR_ACTIVE 1
+
+////INPUTS//////////////
+int maxlevel = 10; 
+double Re = 20;
+double R0 = 0.5;
+double U0 = 1.;
+double epsi0 = 0.7;
+double side_length = 20;
+double tend = 2.;
+////////////////////////
 
 #ifdef POROUS_MEDIA
 #include "navier-stokes/centered-phasechange.h"
@@ -12,16 +22,6 @@
 #include "darcy.h"
 #include "view.h"
 #include "adapt_wavelet_leave_interface.h"
-
-////INPUTS//////////////
-int maxlevel = 11; 
-double Re = 20;
-double R0 = 0.5;
-double U0 = 1.;
-double epsi0 = 0.7;
-double side_length = 40;
-double tend = 150.;
-////////////////////////
 
 // BOUNDARIES: left and right open, top and bottom no-slip
 u.n[left] = dirichlet (U0);
@@ -43,11 +43,10 @@ int main() {
   const face vector muv[] = {muG, muG};
   mu = muv;
   rhoG = 1;
-  Da = DaList[DARCY_INDEX];
-  fprintf(stderr, "Da = %g\n", Da);
+  Da = (coord) {DaList[DARCY_INDEX], DaList[DARCY_INDEX]};
+  fprintf(stderr, "Da = %g\n", DaList[DARCY_INDEX]);
 
   L0 = side_length*R0*2;
-  // DT = 1e-1;
   origin(-L0/2, 0);
   init_grid (1 << maxlevel);
   run();
@@ -60,7 +59,7 @@ event init (i = 0) {
   fraction (f, circle(x, y, R0));
 
   foreach()
-    porosity[] = (1.-f[]) + f[]*epsi0;
+    porosity[] = f[]*epsi0;
   
   foreach()
     u.x[] = f[] > 0 ? U0/10 : U0; 
@@ -68,7 +67,7 @@ event init (i = 0) {
 
 #if AMR_ACTIVE
 event adapt (i++) {
-  adapt_wavelet_leave_interface ({u.x, u.y}, {f}, (double[]){1.e-3, 1.e-3}, maxlevel, 3, padding=1);
+  adapt_wavelet_leave_interface ({u.x, u.y}, {f}, (double[]){1.e-3, 1.e-3}, maxlevel, 2, padding=2);
 }
 #endif
 
@@ -77,16 +76,6 @@ event adapt (i++) {
 #include "navier-stokes/centered.h"
 #include "view.h"
 #include "adapt_wavelet_leave_interface.h"
-
-////INPUTS//////////////
-int maxlevel = 10; 
-double Re = 20;
-double R0 = 0.5;
-double U0 = 1.;
-double epsi0 = 0.3;
-double side_length = 40;
-double tend = 150.;
-////////////////////////
 
 // BOUNDARIES: left and right open, top and bottom no-slip
 u.n[left] = dirichlet (U0);
@@ -106,7 +95,6 @@ int main() {
   mu = muv;
 
   L0 = side_length*R0*2;
-  DT = 1e-3;
   origin(-L0/2, 0);
   init_grid (1 << maxlevel);
   run();
@@ -134,42 +122,61 @@ event adapt (i++) {
 #endif // !POROUS_MEDIA
 
 
-scalar psi[];
-scalar omega[];
+scalar avcd[];
 // Movie event
-event movie (t += 2) {
+event movie (t=tend) {
+  scalar omega[];
+  vertex scalar stream[];
   foreach()
     omega[] = 0;
 
   vorticity (u, omega);
-  psi[top] = dirichlet(0.);
-  psi[bottom] = dirichlet(U0*L0);  
 
-  poisson(psi, omega);
+  // avcd[bottom] = dirichlet(0.);
+  // avcd[top]    = ne(0.);
+  // avcd[left]   = neumann(U0);
+  // avcd[right]  = neumann(U0);
 
-  view (fov = 6, tx = -0.65, ty = -0.5,
-        width = 1600, height = 800);
-  box ();
-  #ifdef POROUS_MEDIA
-    draw_vof ("f", fc = {0.5,0.5,0.5});
-  #else
-    draw_vof ("cs", fc = {0.5,0.5,0.5});
-  #endif
-  isoline (phi = "psi", n = 80, min=0.4 , max=0.6);
-  save("streamlines.mp4");
+  avcd[top] = dirichlet(0);
+  avcd[bottom] = dirichlet(U0*L0/2);
 
-  clear();
+  poisson(avcd, omega);
+  boundary({avcd});
+  foreach_vertex()
+    stream[] = (avcd[0,-1] + avcd[-1, -1]
+              + avcd[] + avcd[-1])/4;
 
-  view (fov = 6, tx = -0.65, ty = -0.5,
-        width = 1600, height = 800);
-  box ();
-  #ifdef POROUS_MEDIA
-    draw_vof ("f", fc = {0.5,0.5,0.5});
-  #else
-    draw_vof ("cs", fc = {0.5,0.5,0.5});
-  #endif
-  squares (color = "u.x", spread = -1, linear = true);
-  save("velocity.mp4");
+  view (quat = {0.000, 0.000, 0.000, 1.000},
+        fov = 30, near = 0.01, far = 1000,
+        tx = -0.036, ty = -0.029, tz = -0.182,
+        width = 1920, height = 1080);
+  draw_vof (c = "f");
+  isoline (phi = "avcd", n = 400, min = 9.95, max = 11);
+  save ("movie.ppm");
+
+  // view (fov = 6, tx = -0.65, ty = -0.5,
+  //       width = 1600, height = 800);
+  // box ();
+  // #ifdef POROUS_MEDIA
+  //   draw_vof ("f", fc = {0.5,0.5,0.5});
+  // #else  
+  //   draw_vof ("cs", fc = {0.5,0.5,0.5});
+  // #endif
+  // isoline (phi = "psi", n = 80, min=0.4 , max=0.6);
+  // save("streamlines.mp4");
+
+  // clear();
+
+  // view (fov = 6, tx = -0.65, ty = -0.5,
+  //       width = 1600, height = 800);
+  // box ();
+  // #ifdef POROUS_MEDIA
+  //   draw_vof ("f", fc = {0.5,0.5,0.5});
+  // #else
+  //   draw_vof ("cs", fc = {0.5,0.5,0.5});
+  // #endif
+  // squares (color = "u.x", spread = -1, linear = true);
+  // save("velocity.mp4");
 } 
 
 //Print the current time on log file
@@ -179,6 +186,7 @@ event logfile (t += 1) {
 
 // Output data
 void write_profile (void) {
+  fprintf(stderr, "Writing wake length profile\n");
   char name[80];
   #ifdef POROUS_MEDIA
     sprintf (name, "WakeLength-Da-%d", DARCY_INDEX);
@@ -197,21 +205,42 @@ void write_profile (void) {
   fclose(fp);
 }
 
-event end (t = tend) {
-  printf("Reached final time\n");
+event stop (t = tend) {
+  fprintf(stderr, "Reached final time\n");
   write_profile();
 }
 
-#if DUMP
-int count = 0;
-event snapshots (t += 1) {
-  // we keep overwriting the last two snapshots
-  if (count == 0) {
-    dump ("snapshot-0");
-    count++;
-  } else {
-    dump ("snapshot-1");
-    count = 0;
-  }
-}
-#endif
+/**
+~~~gnuplot wake length
+reset
+set terminal svg size 450,400
+set output "wake-length.svg"
+
+Wake_Embed = 0.923063153
+
+set grid
+set xlabel "Permeability [m^2]"
+set ylabel "Normalized Wake length [-]"
+set logscale x
+set format x "10^{%T}"
+set xrange [1e-6:1e-2]
+set yrange [0:1.0]
+set key bottom left box opaque
+
+# Inline data for Wake_Da and Da
+$WakeData << EOD
+1.00E-05 0.878739855
+5.00E-05 0.875961644
+1.00E-04 0.872480282
+5.00E-04 0.842615767
+1.00E-03 0.799354374
+2.50E-03 0.624881385
+5.00E-03 0.000000000
+EOD
+
+plot Wake_Embed w l dt 2 lw 2 lc "black" t "Embed",\
+     $WakeData u 1:2 w lp pt 4 lw 2 lc "dark-green" notitle,\
+     "../../data/porouscylinder/yuData" u 1:2 w p pt 6 lc "blue" t "Yu et al. (2011)"
+
+~~~
+**/

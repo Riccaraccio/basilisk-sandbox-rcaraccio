@@ -1,6 +1,7 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
 #define CONST_DIFF 2.05e-5
+#define FIXED_INT_TEMP 1
 
 #ifndef TSTEEL
   #define TSTEEL 500
@@ -89,8 +90,8 @@ event init(i=0) {
   TG[bottom] = dirichlet (0.);
 
   TS[top] = dirichlet (0.);
-  TS[bottom] = lambda1v.y[] > 0. ? neumann (HBLOCK*(TSTEEL + 273.15 - TS[])/lambda1v.y[]) : neumann (0.);
-  // TS[bottom] = dirichlet (TSTEEL + 273.15);
+  // TS[bottom] = lambda1v.y[] > 0. ? neumann (HBLOCK*(TSTEEL + 273.15 - TS[])/lambda1v.y[]) : neumann (0.);
+  TS[bottom] = dirichlet (TSTEEL + 273.15);
 #endif
 
   for (int jj=0; jj<NGS; jj++) {
@@ -155,13 +156,13 @@ set xlabel "Time [s]"
 set ylabel "Normalized Volume"
 set key bottom left box columns 2 
 set xrange [0:25]
-set yrange [0.4:1.0]
+set yrange [0:1.0]
 set grid
 
-plot  "OutputData-6-700-const" u 1:3 w l lw 2 lc "dark-green" t "Sym 700 C", \
-      "OutputData-6-600-const" u 1:3 w l lw 2 lc "blue" t "Sym 600 C", \
-      "OutputData-6-550-const" u 1:3 w l lw 2 lc "orange" t "Sym 550 C", \
-      "OutputData-6-500-const" u 1:3 w l lw 2 lc "black" t "Sym 500 C", \
+plot  "fixedInt/OutputData-6-700" u 1:3 w l lw 2 lc "dark-green" t "Sym 700 C", \
+      "fixedInt/OutputData-6-600" u 1:3 w l lw 2 lc "blue" t "Sym 600 C", \
+      "fixedInt/OutputData-6-550" u 1:3 w l lw 2 lc "orange" t "Sym 550 C", \
+      "fixedInt/OutputData-6-500" u 1:3 w l lw 2 lc "black" t "Sym 500 C", \
       "data/exp700" u 1:2 w p pt 4 lc "dark-green" t "Exp. 700 C", \
       "data/exp600" u 1:2 w p pt 4 lc "blue" t "Exp. 600 C", \
       "data/exp550" u 1:2 w p pt 4 lc "orange" t "Exp. 550 C", \

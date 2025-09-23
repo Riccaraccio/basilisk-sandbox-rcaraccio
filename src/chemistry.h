@@ -96,18 +96,22 @@ event cleanup (t = end) {
   OpenSMOKE_CleanODESolver ();
 }
 
+scalar QRgas_field[];
 event reset_sources (i++) {
   foreach()
     omega[] = 0.;
+
+  foreach()
+    QRgas_field[] = 0.;
 }
 
 event chemistry (i++) {
 
 #ifdef SOLVE_TEMPERATURE
-  odefunction batch = &batch_nonisothermal_constantpressure;
+  odefunction batch = &solid_batch_nonisothermal_constantpressure;
   unsigned int NEQ = NGS + NSS + 1 + 1; //NGS + NSS + porosity + T
 #else
-  odefunction batch = &batch_isothermal_constantpressure;
+  odefunction batch = &solid_batch_isothermal_constantpressure;
   unsigned int NEQ = NGS + NSS + 1;
 #endif
 
@@ -126,7 +130,7 @@ event chemistry (i++) {
       }
       porosity[] /= f[];
 
-      double y0ode[NEQ];
+      double y0ode[NEQ]; // We solve in terms of mass because the volume is variable
       UserDataODE data;
       data.P = Pref + p[];
       data.T = TS[]/f[];
@@ -215,11 +219,58 @@ event chemistry (i++) {
 
 #ifdef SOLVE_TEMPERATURE
       TS[] = y0ode[NGS+NSS+1]*f[];
+      QRgas_field[] += sources[NGS+NSS+1];
 // # ifdef VARPROP
 //       DTDtS[] += sources[NGS+NSS+1]*cm[];
 // # endif
 #endif
       omega[] = sources[NGS+NSS];
     }
+
+// Pure gas phase reactions
+#ifdef GAS_PHASE_REACTIONS
+    foreach() {
+      if (f[] < 1.-F_ERR) {
+
+        double y0ode[NGS + 1]; // NGS + T
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG = YGList_G[jj];
+          y0ode[jj] = YG[]/(1.-f[]);
+        }
+        y0ode[NGS] = TG[]/(1.-f[]);
+
+        UserDataODE data;
+        data.P = Pref + p[];
+        data.T = TG[]/(1.-f[]);
+        double sources[NGS+1];
+        data.sources = sources;
+#ifdef VARPROP
+        data.rhog = rhoGv_G[];
+#else
+        data.rhog = rhoG;
+#endif
+#ifdef SOLVE_TEMPERATURE
+# ifdef VARPROP
+        data.cpg = cpGv_G[];
+# else
+        data.cpg = cpG;
+# endif
+#endif
+
+        OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dt, y0ode, &data);
+
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG = YGList_G[jj];
+          YG[] = (y0ode[jj] > 1e-8) ? y0ode[jj]*(1.-f[]) : 0.;
+          YG[] = y0ode[jj]*(1.-f[]);
+        }
+#ifdef SOLVE_TEMPERATURE
+        TG[] = y0ode[NGS]*(1.-f[]);
+        QRgas_field[] += data.sources[NGS+1];
+#endif
+      }
+    }
+#endif
+
 }
 #endif

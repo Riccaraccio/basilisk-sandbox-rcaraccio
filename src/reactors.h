@@ -21,7 +21,7 @@ typedef struct {
 } UserDataODE;
 
 
-void batch_isothermal_constantpressure (const double* y, const double dt, double* dy, void* args) {
+void solid_batch_isothermal_constantpressure (const double* y, const double dt, double* dy, void* args) {
 
   /**
   Unpack data for the ODE system. */
@@ -111,7 +111,7 @@ void batch_isothermal_constantpressure (const double* y, const double dt, double
 * *args*: structure with additional arguments to be passed to the system
 */
 
-void batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
+void solid_batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
 
   /**
   Unpack data for the ODE system. */
@@ -184,9 +184,20 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   OpenSMOKE_SolProp_ReactionRates (cgas,csolid);
   OpenSMOKE_SolProp_FormationRates (rgas, rsolid); //[kmol/m3_solid/s]
 
+  double rgas_pure[NGS], QRgas = 0.;
+  for (int jj=0; jj<NGS; jj++)
+    rgas_pure[jj] = 0.;
+
+#ifdef GAS_PHASE_REACTIONS
+  OpenSMOKE_GasProp_KineticConstants ();
+  OpenSMOKE_GasProp_ReactionRates (cgas);
+  OpenSMOKE_GasProp_FormationRates (rgas_pure); //[kmol/m3_gas/s]
+  QRgas = OpenSMOKE_GasProp_HeatRelease (rgas_pure);
+#endif
+
   for (int jj=0; jj<NGS; jj++) {
-    dy[jj] = gas_MWs[jj]*rgas[jj]*(1-epsilon);
-    sources[jj] = dy[jj]*epsilon; //make sure it is correct to multiply by porosity to get dwdt = source
+    dy[jj] = gas_MWs[jj]* (rgas[jj]*(1-epsilon) + rgas_pure[jj]*epsilon);
+    sources[jj] = dy[jj]*epsilon;
   }
 
   for (int jj=0; jj<NSS; jj++) {
@@ -203,14 +214,65 @@ void batch_nonisothermal_constantpressure (const double * y, const double dt, do
   sources[NGS+NSS] = -totsolidreaction;
 
   //Temperature equation
-  // double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas); //should be 0 for now
   double QRsol = OpenSMOKE_SolProp_HeatRelease (rgas, rsolid);
 
   // dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
-  dy[NGS+NSS+1] = (QRsol*(1-epsilon))/((rhog*cpg*epsilon) + rhos*cps*(1-epsilon));
-  sources[NGS+NSS+1] = dy[NGS+NSS+1]*(rhog*cpg*epsilon + rhos*cps*(1-epsilon));
-#ifdef TURN_OFF_HEAT_OF_REACTION
+  dy[NGS+NSS+1] = (QRsol*(1-epsilon) + QRgas*epsilon)/((rhog*cpg*epsilon) + rhos*cps*(1-epsilon));
+  // sources[NGS+NSS+1] = dy[NGS+NSS+1]*(rhog*cpg*epsilon + rhos*cps*(1-epsilon));
+  sources[NGS+NSS+1] = QRgas*epsilon;
+  #ifdef TURN_OFF_HEAT_OF_REACTION
   dy[NGS+NSS+1] *= 0.;
-  sources[NGS+NSS+1] *= 0.;
+  // sources[NGS+NSS+1] *= 0.;
+#endif
+}
+
+void gas_batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
+
+  /**
+  Unpack data for the ODE system. */
+
+  UserDataODE data = *(UserDataODE *)args;
+  double rhog = data.rhog;
+  double cpg = data.cpg;
+  double Pressure = data.P;
+
+  double Temperature = y[NGS];
+
+  OpenSMOKE_GasProp_SetTemperature (Temperature);
+  OpenSMOKE_GasProp_SetPressure (Pressure);
+
+  double gasmassfracs[NGS], gasmolefracs[NGS];
+  for (int jj=0; jj<NGS; jj++)
+    gasmassfracs[jj] = y[jj] < 0. ? 0. : y[jj];
+
+  double MWMix;
+  OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWMix, gasmassfracs);
+
+
+  double ctot = Pressure/(R_GAS*1000)/Temperature; // kmol/m3
+  double cgas[NGS], rgas[NGS];
+  for (int jj=0; jj<NGS; jj++) {
+    cgas[jj] = ctot*gasmolefracs[jj];
+    rgas[jj] = 0.;
+  }
+#ifdef VARPROP
+  rhog = ctot*MWMix;
+  cpg = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
+#endif
+  OpenSMOKE_GasProp_KineticConstants ();
+  OpenSMOKE_GasProp_ReactionRates (cgas);
+  OpenSMOKE_GasProp_FormationRates (rgas); //[kmol/m3_gas/s]
+
+  double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas);
+
+  for (int jj=0; jj<NGS; jj++)
+    dy[jj] = gas_MWs[jj]*rgas[jj];
+
+  //Temperature equation
+  dy[NGS] = QRgas/(rhog*cpg);
+  double* sources = data.sources;
+  sources[NGS+1] = QRgas;
+#ifdef TURN_OFF_HEAT_OF_REACTION
+  dy[NGS] *= 0.;
 #endif
 }

@@ -583,11 +583,11 @@ event tracer_diffusion (i++) {
   update_divergence_density();
 #endif
 
+#ifdef FICK_CORRECTED
   face vector phicGtot[];
   foreach_face() {
     phicGtot.x[] = 0.;
     for (int jj=0; jj<NGS; jj++) {
-#ifdef FICK_CORRECTED
       scalar DmixG = DmixGList_G[jj];
       double DmixGf = face_value(DmixG, 0);
       double rhoGf;
@@ -605,7 +605,6 @@ event tracer_diffusion (i++) {
       scalar YG = YGList_G[jj];
       phicGtot.x[] += rhoGf*DmixGf*face_gradient_x (YG, 0);
 # endif
-#endif
     }
     phicGtot.x[] *= fsG.x[]*fm.x[];
   }
@@ -614,7 +613,6 @@ event tracer_diffusion (i++) {
   foreach_face() {
     phicStot.x[] = 0.;
     for (int jj=0; jj<NGS; jj++) {
-#ifdef FICK_CORRECTED
       scalar DmixG = DmixGList_S[jj];
       double DmixGf = face_value(DmixG, 0);
       double rhoGf;
@@ -632,7 +630,6 @@ event tracer_diffusion (i++) {
       scalar YG = YGList_S[jj];
       phicStot.x[] += rhoGf*DmixGf*face_gradient_x (YG, 0);
 # endif
-#endif
     }
     phicStot.x[] *= fsS.x[]*fm.x[];
   }
@@ -655,7 +652,7 @@ event tracer_diffusion (i++) {
 # endif
       phicjj.x[] -= (MWmixf > 0.) ? rhoGf*DmixGf/MWmixf*face_gradient_x (MWmixG_G, 0)*fsG.x[]*fm.x[] : 0.;
 #endif
-  }
+    }
 
     scalar YG = YGList_G[jj];
     double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
@@ -701,6 +698,7 @@ event tracer_diffusion (i++) {
       foreach_dimension()
         YG[] += (rhoGv_S[] > 0.) ? dt/(rhoGv_S[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.; 
   }
+  #endif //FICK_CORRECTED
 
   scalar theta1[], theta2[];
 

@@ -1,7 +1,7 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
 #define CONST_DIFF 2.05e-5
-#define RADIATION_INTERFACE 0.9
+// #define RADIATION_INTERFACE 0.9
 // #define TURN_OFF_HEAT_OF_REACTION 1
 
 #ifndef GAS_VELOCITY
@@ -16,13 +16,14 @@
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
+#include "view.h"
 
 const double Uin = GAS_VELOCITY; // 50 cm/s, avg inlet velocity from Nobili
 const double H0 = 4e-3; // 4 mm, from picuture in paper
 
 u.n[top]      = dirichlet(0.)*f[] + (1-f[])*neumann (0.);
 u.t[top]      = dirichlet(0.)*f[] + (1-f[])*neumann (0.);
-p[top]        = neumann(0.)*f[] + (1-f[])*dirichlet (0.);
+p[top]        = neumann(0.)*f[]   + (1-f[])*dirichlet (0.);
 psi[top]      = neumann (0.);
 
 u.n[right]   = dirichlet(-Uin);
@@ -33,7 +34,7 @@ psi[right]   = dirichlet(0.);
 int maxlevel = 6; int minlevel = 2;
 
 int main() {
-  lambdaS = 0.5; lambdaG = 0.10931; //N2 at 2000 K and 1 atm
+  lambdaS = 0.5*2; lambdaG = 0.10931; //N2 at 2000 K and 1 atm
   cpS = 2000;     cpG = 1284; //N2 at 2000 K and 1 atm
  
   TS0 = 600.; TG0 = 2000.;
@@ -50,6 +51,7 @@ int main() {
 
   zeta_policy = ZETA_SHRINK;
 
+  shift_prod = true;
   DT = 1;
 
   kinfolder = "biomass/PE";
@@ -94,12 +96,7 @@ double delta = H0, RR;
 event end_timestep (i++) {
   double delta0 = delta;
   delta = 2./sq(L0)*statsf(f).sum;
-  RR = fabs (delta - delta0)/dt*1e3;
-
-  if (delta < F_ERR) {
-    fprintf (stderr, "Particle fully devolatilized\n");
-    return 1;
-  }
+  RR = fabs (delta - delta0)/dt*1e3; //mm/s
 }
 
 event output (t += 0.01) {

@@ -25,14 +25,14 @@ u.n[top] = dirichlet (0.)*f[] + (1-f[])*neumann (0.);
 u.t[top] = dirichlet (0.)*f[] + (1-f[])*neumann (0.);
 p[top]   = neumann (0.)*f[] + (1-f[])*dirichlet (0.);
 pf[top]  = neumann (0.)*f[] + (1-f[])*dirichlet (0.);
-psi[top]      = neumann (0.);
+psi[top] = neumann (0.);
 
 u.n[right]   = dirichlet(-Uin);
 u.t[right]   = dirichlet(0.);
 p[right]     = neumann(0.);
 psi[right]   = dirichlet(0.);
 
-int maxlevel = 7; int minlevel = 2;
+int maxlevel = 7; int minlevel = 3;
 
 int main() {
   lambdaS = 0.5*2; lambdaG = 0.10931; //N2 at 2000 K and 1 atm
@@ -49,12 +49,12 @@ int main() {
   mu1 = 1., mu2 = 1.;
 
   L0 = (H0 + 0.01); //10 mm distance of nozzel from fuel surface
-  Da = (coord) {1e-20, 1e-20};
+  Da = (coord) {1e-14, 1e-14};
 
-  zeta_policy = ZETA_SWELLING;
+  zeta_policy = ZETA_SHRINK;
 
   shift_prod = true;
-  DT = 1;
+  DT = 1e-1;
 
   kinfolder = "biomass/PE";
   init_grid(1 << maxlevel);
@@ -71,16 +71,11 @@ event init(i=0) {
   foreach()
     porosity[] = eps0*f[];
 
+  foreach()
+    u.y[] = Uin*(1. - f[]);
+
 #ifdef SOLVE_TEMPERATURE
   TG[right]   = dirichlet (TG0);
-  TG[bottom]  = neumann (0.);
-  TG[top]     = dirichlet (0.)*(f[] > 1.-F_ERR) + neumann (0.)*(f[]<=1.-F_ERR);
-  TG[left]    = dirichlet (0.);
-
-  TS[left]    = neumann (0.);
-  TS[bottom]  = neumann (0.);
-  TS[right]   = dirichlet (0.);
-  TS[top]     = dirichlet (0.)*(f[] < F_ERR) + neumann (0.)*(f[]>=F_ERR);
 #endif
 
   for (int jj=0; jj<NGS; jj++) {

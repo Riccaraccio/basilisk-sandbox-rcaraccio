@@ -1,8 +1,9 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
-#define CONST_DIFF 2.05e-5
-// #define RADIATION_INTERFACE 0.9
-// #define TURN_OFF_HEAT_OF_REACTION 1
+#define RADIATION_INTERFACE 0
+#define MASS_DIFFUSION_ENTHALPY 1
+#define MOLAR_DIFFUSION 1
+#define FICK_CORRECTED 1 
 
 #ifndef GAS_VELOCITY
 # define GAS_VELOCITY 0.5
@@ -10,8 +11,7 @@
 
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
-#define MULTICOMPNENT
-#include "constant-properties.h"
+#include "opensmoke-properties.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
@@ -21,9 +21,10 @@
 const double Uin = GAS_VELOCITY; // 50 cm/s, avg inlet velocity from Nobili
 const double H0 = 4e-3; // 4 mm, from picuture in paper
 
-u.n[top]      = dirichlet(0.)*f[] + (1-f[])*neumann (0.);
-u.t[top]      = dirichlet(0.)*f[] + (1-f[])*neumann (0.);
-p[top]        = neumann(0.)*f[]   + (1-f[])*dirichlet (0.);
+u.n[top] = dirichlet (0.)*f[] + (1-f[])*neumann (0.);
+u.t[top] = dirichlet (0.)*f[] + (1-f[])*neumann (0.);
+p[top]   = neumann (0.)*f[] + (1-f[])*dirichlet (0.);
+pf[top]  = neumann (0.)*f[] + (1-f[])*dirichlet (0.);
 psi[top]      = neumann (0.);
 
 u.n[right]   = dirichlet(-Uin);
@@ -31,12 +32,13 @@ u.t[right]   = dirichlet(0.);
 p[right]     = neumann(0.);
 psi[right]   = dirichlet(0.);
 
-int maxlevel = 6; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 
 int main() {
   lambdaS = 0.5*2; lambdaG = 0.10931; //N2 at 2000 K and 1 atm
   cpS = 2000;     cpG = 1284; //N2 at 2000 K and 1 atm
- 
+
+  lambdaSmodel = L_CONST;
   TS0 = 600.; TG0 = 2000.;
   rhoS = 1078; rhoG = 0.1745; //rhoG equimolar mix N2 and CH2O at 2000 K and 1 atm
   muG = 6.54e-5; // N2 at 2000 K and 1 atm
@@ -47,9 +49,9 @@ int main() {
   mu1 = 1., mu2 = 1.;
 
   L0 = (H0 + 0.01); //10 mm distance of nozzel from fuel surface
-  Da = (coord) {1e-10, 1e-14};
+  Da = (coord) {1e-20, 1e-20};
 
-  zeta_policy = ZETA_SHRINK;
+  zeta_policy = ZETA_SWELLING;
 
   shift_prod = true;
   DT = 1;
@@ -70,14 +72,15 @@ event init(i=0) {
     porosity[] = eps0*f[];
 
 #ifdef SOLVE_TEMPERATURE
-  TG[right] = dirichlet (TG0);
-  TG[bottom] = neumann (0.);
-  TG[top] = neumann (0.);
+  TG[right]   = dirichlet (TG0);
+  TG[bottom]  = neumann (0.);
+  TG[top]     = dirichlet (0.)*(f[] > 1.-F_ERR) + neumann (0.)*(f[]<=1.-F_ERR);
+  TG[left]    = dirichlet (0.);
 
-  TS[left] = neumann (0.);
-  TS[bottom] = neumann (0.);
-  // TS[top] = neumann(-1e6/lambdaS)*f[] + (1-f[])*neumann(0.);
-  TS[top] = neumann(0.)*f[] + (1-f[])*neumann(0.);
+  TS[left]    = neumann (0.);
+  TS[bottom]  = neumann (0.);
+  TS[right]   = dirichlet (0.);
+  TS[top]     = dirichlet (0.)*(f[] < F_ERR) + neumann (0.)*(f[]>=F_ERR);
 #endif
 
   for (int jj=0; jj<NGS; jj++) {
@@ -153,24 +156,6 @@ event adapt (i++) {
 event stop (t = 500);
 
 /** 
-~~~gnuplot temperature profiles
-reset
-set terminal svg size 450,400
-set title "Zeta const"
-set xlabel "Time [s]"
-set ylabel "Normalized Volume"
-set key bottom left box columns 2 
-set xrange [0:25]
-set yrange [0:1.0]
-set grid
-
-plot  "fixedInt/OutputData-6-700" u 1:3 w l lw 2 lc "dark-green" t "Sym 700 C", \
-      "fixedInt/OutputData-6-600" u 1:3 w l lw 2 lc "blue" t "Sym 600 C", \
-      "fixedInt/OutputData-6-550" u 1:3 w l lw 2 lc "orange" t "Sym 550 C", \
-      "fixedInt/OutputData-6-500" u 1:3 w l lw 2 lc "black" t "Sym 500 C", \
-      "data/exp700" u 1:2 w p pt 4 lc "dark-green" t "Exp. 700 C", \
-      "data/exp600" u 1:2 w p pt 4 lc "blue" t "Exp. 600 C", \
-      "data/exp550" u 1:2 w p pt 4 lc "orange" t "Exp. 550 C", \
-      "data/exp500" u 1:2 w p pt 4 lc "black" t "Exp. 500 C"
+~~~gnuplot
 ~~~
 **/

@@ -580,6 +580,7 @@ event tracer_diffusion (i++) {
 #endif //MASS_DIFFUSION_ENTHALPY
 
 #if defined VARPROP && !defined NO_EXPANSION
+if (i > 10)
   update_divergence_density();
 #endif
 
@@ -781,16 +782,43 @@ event tracer_diffusion (i++) {
   foreach() {
     double theta1vh, theta2vh;
 # ifdef VARPROP
-    theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.;
+    // theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.; //idk why it's *epsilon
+    theta1vh = fS[] > F_ERR ? rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.;
     theta2vh = rhoGv_G[]*cpGv_G[];
 # else
-    theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.;
+    // theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.; // idk why it's *epsilon
+    theta1vh = fS[] > F_ERR ? rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.;
     theta2vh = rhoG*cpG;
 # endif
 
     theta1[] = cm[]*max(fS[]*theta1vh, F_ERR);
     theta2[] = cm[]*max(fG[]*theta2vh, F_ERR);
   }
+
+#ifdef VARCOEFF
+  foreach()
+    porosity[] = (f[] > F_ERR) ? porosity[]/f[] : 0;
+
+  foreach_face() {
+    double ef = face_value(porosity, 0);
+    lambda1f.x[] = (ef > F_ERR) ? lambda1f.x[] / (rhoG*cpG*ef + rhoS*cpS*(1. - ef)) : 0.;
+    lambda2f.x[] = lambda2f.x[] / (rhoG*cpG);
+  }
+
+  foreach() {
+    theta1[] = cm[] * max(fS[], F_ERR);
+    theta2[] = cm[] * max(fG[], F_ERR);
+  }
+
+  foreach() {
+    sST[] = (f[] > F_ERR) ? sST[] / (rhoG*cpG*porosity[] + rhoS*cpS*(1. - porosity[])) : 0.;
+    sGT[] = sGT[] / (rhoG*cpG);
+  }
+
+  foreach()
+    porosity[] *= f[];
+#endif
+
 # ifdef EXPLICIT_DIFFUSION
     diffusion_explicit (TS, dt, D=lambda1f, r=sST, theta=theta1);
     diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);

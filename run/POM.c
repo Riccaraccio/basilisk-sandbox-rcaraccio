@@ -1,9 +1,6 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
-#define RADIATION_INTERFACE 0
-#define MASS_DIFFUSION_ENTHALPY 1
-#define MOLAR_DIFFUSION 1
-#define FICK_CORRECTED 1 
+#define VARCOEFF            1
 
 #ifndef GAS_VELOCITY
 # define GAS_VELOCITY 0.5
@@ -11,7 +8,8 @@
 
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
-#include "opensmoke-properties.h"
+#define MULTICOMPONENT
+#include "constant-properties.h"
 #include "two-phase.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
@@ -32,13 +30,12 @@ u.t[right]   = dirichlet(0.);
 p[right]     = neumann(0.);
 psi[right]   = dirichlet(0.);
 
-int maxlevel = 7; int minlevel = 3;
+int maxlevel = 6; int minlevel = 3;
 
 int main() {
   lambdaS = 0.5*2; lambdaG = 0.10931; //N2 at 2000 K and 1 atm
   cpS = 2000;     cpG = 1284; //N2 at 2000 K and 1 atm
 
-  lambdaSmodel = L_CONST;
   TS0 = 600.; TG0 = 2000.;
   rhoS = 1078; rhoG = 0.1745; //rhoG equimolar mix N2 and CH2O at 2000 K and 1 atm
   muG = 6.54e-5; // N2 at 2000 K and 1 atm

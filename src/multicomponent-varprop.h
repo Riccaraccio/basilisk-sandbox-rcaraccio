@@ -134,8 +134,18 @@ extern face vector ufsave;
 face vector u_prime[];
 #ifndef STOP_TRACER_ADVECTION
 event tracer_advection (i++) {
+
+#ifdef VARPROP
+  update_properties();
+#else
+  update_properties_constant();
+#endif
+
   // lose tracer form and extrapolate fields
   foreach() {
+    f[] = clamp (f[], 0., 1.);
+    f[] = (f[] > F_ERR) ? f[] : 0.;
+    fS[] = f[]; fG[] = 1. - f[];
     porosity[] = (f[] > F_ERR) ? porosity[]/f[] : 0.;
 #ifdef SOLVE_TEMPERATURE
     TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
@@ -288,21 +298,15 @@ void update_mole_fields() {
 }
 
 event tracer_diffusion (i++) {
-  
+
   //Check the mass fractions Can be removed for performance
   check_and_correct_fractions (YGList_S, NGS, false, "YGList_S-1");
   check_and_correct_fractions (YGList_G, NGS, true,  "YGList_G-1");
   check_and_correct_fractions (YSList,   NSS, false, "YSList-1");
 
-#ifdef VARPROP
-  update_properties();
-#endif
 
-  foreach() {
-    f[] = clamp (f[], 0., 1.);
-    f[] = (f[] > F_ERR) ? f[] : 0.;
-    fS[] = f[]; fG[] = 1. - f[];
 #ifdef SOLVE_TEMPERATURE
+  foreach() {
     TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
     TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
 #endif
@@ -314,7 +318,9 @@ event tracer_diffusion (i++) {
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
   }
 
+#ifdef MOLAR_DIFFUSION
   update_mole_fields();
+#endif
 
   //Compute face gradients
   face_fraction (fS, fsS);

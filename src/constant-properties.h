@@ -40,7 +40,7 @@ extern scalar* DmixGList_S;
 extern scalar* DmixGList_G;
 #endif
 
-event properties (i++) {
+void update_properties_constant (void) {
   //Navier-Stokes equation are solved using the gas properties on the whole domain
   foreach_face() {
     alphav.x[] = fm.x[]/rhoG;
@@ -77,4 +77,8 @@ event properties (i++) {
     }
   }
 #endif
+}
+
+event properties (i++) {
+  update_properties_constant();
 }

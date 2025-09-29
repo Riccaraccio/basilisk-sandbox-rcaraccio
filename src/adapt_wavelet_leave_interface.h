@@ -4,6 +4,10 @@
 This is a copy of Oystein Lande's function ([adapt_wavelet_leave_interface.h](/sandbox/oystelan/adapt_wavelet_leave_interface.h)). All credit to him!
 */
 
+#ifndef F_ERR
+# define F_ERR 1.e-4
+#endif
+
 astats adapt_wavelet_leave_interface (scalar * slist,     // list of scalars
                                       scalar * vol_frac,  // the volume fraction scalar
                                       double * max,       // tolerance for each scalar
@@ -94,7 +98,8 @@ astats adapt_wavelet_leave_interface (scalar * slist,     // list of scalars
         }
         // arnbo: always set interface cells to the finest level
         for (scalar vf in vol_frac) {
-                if (vf[] > 0.0001 && vf[] < 0.9999 && level < maxlevel) {
+                // if (vf[] > 0.0001 && vf[] < 0.9999 && level < maxlevel) {
+                if (vf[] > F_ERR && vf[] < 1.-F_ERR && level < maxlevel) {
                   cell.flags |= too_coarse;
                   cell.flags &= ~too_fine;
                 cell.flags &= ~just_fine;

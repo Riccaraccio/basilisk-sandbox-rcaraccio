@@ -5,7 +5,7 @@ This is a copy of Oystein Lande's function ([adapt_wavelet_leave_interface.h](/s
 */
 
 #ifndef F_ERR
-# define F_ERR 1.e-4
+# define F_ERR 1.e-10
 #endif
 
 astats adapt_wavelet_leave_interface (scalar * slist,     // list of scalars

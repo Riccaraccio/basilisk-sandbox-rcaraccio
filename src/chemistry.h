@@ -96,13 +96,9 @@ event cleanup (t = end) {
   OpenSMOKE_CleanODESolver ();
 }
 
-scalar QRgas_field[];
 event reset_sources (i++) {
   foreach()
     omega[] = 0.;
-
-  foreach()
-    QRgas_field[] = 0.;
 }
 
 event chemistry (i++) {
@@ -219,7 +215,6 @@ event chemistry (i++) {
 
 #ifdef SOLVE_TEMPERATURE
       TS[] = y0ode[NGS+NSS+1]*f[];
-      QRgas_field[] += sources[NGS+NSS+1];
 // # ifdef VARPROP
 //       DTDtS[] += sources[NGS+NSS+1]*cm[];
 // # endif
@@ -266,7 +261,6 @@ event chemistry (i++) {
         }
 #ifdef SOLVE_TEMPERATURE
         TG[] = y0ode[NGS]*(1.-f[]);
-        QRgas_field[] += data.sources[NGS+1];
 #endif
       }
     }

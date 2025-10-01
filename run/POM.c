@@ -6,6 +6,14 @@
 # define GAS_VELOCITY 0.5
 #endif
 
+#ifndef INIT_TEMP
+# define INIT_TEMP 650.
+#endif
+
+#ifndef H_EXT
+# define H_EXT 1.
+#endif
+
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #define MULTICOMPONENT
@@ -36,7 +44,7 @@ int main() {
   lambdaS = 0.5*2; lambdaG = 0.10931; //N2 at 2000 K and 1 atm
   cpS = 2000;     cpG = 1284; //N2 at 2000 K and 1 atm
 
-  TS0 = 600.; TG0 = 2000.;
+  TS0 = INIT_TEMP; TG0 = 2000.;
   rhoS = 1078; rhoG = 0.1745; //rhoG equimolar mix N2 and CH2O at 2000 K and 1 atm
   muG = 6.54e-5; // N2 at 2000 K and 1 atm
   eps0 = 0.1;
@@ -73,6 +81,9 @@ event init(i=0) {
 
 #ifdef SOLVE_TEMPERATURE
   TG[right]   = dirichlet (TG0);
+  TS[top] = neumann (0.)*f[] + neumann (0.)*(1.-f[]);
+  const double Text = 400.;
+  TS[top] = neumann (((TS[]-Text*f[])*H_EXT)*f[]);
 #endif
 
   for (int jj=0; jj<NGS; jj++) {
@@ -95,16 +106,17 @@ event end_timestep (i++) {
 }
 
 event output (t += 0.01) {
-  fprintf (stderr, "%g\n", t);
+  fprintf(stderr, "%g\n", t);
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
+  static FILE *fp = fopen(name, "w");
 
-  double Tint_avg = avg_interface (TInt, f);
-  
+  double Tint_avg = avg_interface(TInt, f);
+
   double Tliq_avg = 0., fSum = 0.;
-  foreach(reduction(+:Tliq_avg) reduction(+:fSum)) {
+  foreach (reduction(+ : Tliq_avg) reduction(+ : fSum))
+  {
     Tliq_avg += TS[];
     fSum += f[];
   }
@@ -112,11 +124,11 @@ event output (t += 0.01) {
 
   double OmegaTot = statsf(omega).sum;
 
-  fprintf (fp, "%g %g %g %g %g %g\n", t, delta, RR, Tint_avg, Tliq_avg, OmegaTot);
+  fprintf(fp, "%g %g %g %g %g %g\n", t, delta, RR, Tint_avg, Tliq_avg, OmegaTot);
   fflush(fp);
 }
 
-event movie (t += 0.1) {
+event movie (t += 1) {
   clear();
   view (tx = -0.5, ty = -0.5);
   draw_vof ("f", lw = 2.5);
@@ -141,7 +153,7 @@ event movie (t += 0.1) {
 event adapt (i++) {
   #if TREE
   adapt_wavelet_leave_interface ({T, u.x, u.y}, {f},
-    (double[]){1.e-2, 1.e-2, 1.e-2}, maxlevel, minlevel, 1);
+    (double[]){1.e-2, 1.e-2, 1.e-2}, maxlevel, minlevel, 2);
   #endif
 }
 

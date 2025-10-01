@@ -10,8 +10,9 @@
 # define INIT_TEMP 650.
 #endif
 
+const double Text = INIT_TEMP;
 #ifndef H_EXT
-# define H_EXT 1.
+# define H_EXT 0.
 #endif
 
 #include "axi.h"
@@ -81,9 +82,7 @@ event init(i=0) {
 
 #ifdef SOLVE_TEMPERATURE
   TG[right]   = dirichlet (TG0);
-  TS[top] = neumann (0.)*f[] + neumann (0.)*(1.-f[]);
-  const double Text = 400.;
-  TS[top] = neumann (((TS[]-Text*f[])*H_EXT)*f[]);
+  TS[top] = neumann (-((TS[]-Text*f[])*H_EXT)*f[]);
 #endif
 
   for (int jj=0; jj<NGS; jj++) {
@@ -157,7 +156,7 @@ event adapt (i++) {
   #endif
 }
 
-event stop (t = 500);
+event stop (t = 300);
 
 /** 
 ~~~gnuplot

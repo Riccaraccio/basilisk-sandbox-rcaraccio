@@ -1,6 +1,6 @@
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
-#define RADIATION_INTERFACE 0.8
+#define RADIATION_INTERFACE 0.9
 #define MOLAR_DIFFUSION 1
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
@@ -8,7 +8,7 @@
 double D0 = 2e-2; //2cm
 double H0 = 3e-2; //3cm
 
-// #include "grid/multigrid.h"
+#include "grid/multigrid.h"
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -18,8 +18,9 @@ double H0 = 3e-2; //3cm
 #include "darcy.h"
 #include "view.h"
 #include "superquadric.h"
+#include "gravity.h"
 
-double Uin = 0.11; //0.11 m/s or 2Nl/min over 8e-4 m^2 area
+double Uin = 0.11; //0.11 m/s or 2Nl/min over 8e-4 m^2 area; 0.201 for 1323K 
 
 u.n[left]     = dirichlet (Uin);
 u.t[left]     = dirichlet (0.);
@@ -44,9 +45,13 @@ double tend = 800.; //800s
 
 int main() {
 
-  // int n_proc = 6;
-  // size((1.602e-2)*n_proc);
-  // dimensions(nx=n_proc, ny=1);
+  #if TREE
+  L0 = 3.5*H0;
+  #else
+  int n_proc = 6;
+  size((1.602e-2)*n_proc);
+  dimensions(nx=n_proc, ny=1);
+  #endif
 
   eps0 = 0.4;
   rho1 = 1., rho2 = 1.;
@@ -56,12 +61,13 @@ int main() {
   rhoS = 1200.;
   lambdaSmodel = L_KK;
 
-  L0 = 3.5*H0;
+  G.x = -9.81;
+
   DT = 1e-1;
   origin(-L0/3, 0.);
   Da = (coord){1e-10, 1e-12};
 
-  zeta_policy = ZETA_CONST;
+  zeta_policy = ZETA_RATE;
   kinfolder = "biomass/Solid-only-2407";
   // kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
@@ -73,7 +79,9 @@ double r0, h0;
 FILE *fp;
 
 event init (i = 0) {
+  #if TREE
   mask (y > 6e-3+D0/2 ? top : none);
+  #endif
 
   fraction (f, superquadric(x, y, 20, 0.5*H0, 0.5*D0));
 
@@ -137,12 +145,14 @@ event init (i = 0) {
 }
 
 event adapt (i++) {
+  #if TREE
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
   adapt_wavelet_leave_interface ({T, u.x, u.y, porosity, inert}, {f},
-    (double[]){1.e-2, 1.e-2, 1.e-2, 1e0, 1e-1}, maxlevel, minlevel, padding=1);
+    (double[]){1.e-2, 1.e-2, 1.e-2, 1e0, 1e-1}, maxlevel, minlevel, padding=2);
+  #endif
 }
 
-event output (t += 1) {
+event end_timestep (t += 0.1) {
   if (pid() == 0)
     fprintf (stderr, "%g\n", t);
 
@@ -166,8 +176,12 @@ event output (t += 1) {
   foreach_region (p, regionh, samplingh, reduction(+:h))
     h += f[];
 
+  double avgTInt = avg_interface (TInt, f);
+
+  double hConvRad = totHeatFlux/(avgTInt - TG0 + 1e-10); //W/m2/K
+
   if (pid() == 0) {
-    fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, h/h0);
+    fprintf(fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, h/h0, hConvRad, avgTInt);
     fflush(fp);
   }
 }

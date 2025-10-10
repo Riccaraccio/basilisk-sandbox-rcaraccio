@@ -19,105 +19,6 @@
 #include "int-temperature.h"
 #include "int-concentration.h"
 
-/*
-//function to check the variables and dump the simulation if they are out of range
-void check_variables() {
-  bool status = true;
-
-  //check f
-  foreach()
-    if (f[] < 0. || f[] > 1.) {
-      fprintf(stderr, "f out of range: %g\n", f[]);
-      status = false;
-    }
-
-  //check solid temperature
-  if (status) {
-    foreach() {
-      if (f[] > F_ERR) {
-        if (TS[] < 100. || TS[] > 1000.) {
-          fprintf(stderr, "Solid temperature out of range: %g\n", TS[]);
-          status = false;
-        }
-      }
-    }
-  }
-    
-  //check gas temperature
-  if (status) {
-    foreach() {
-      if (f[] < 1.- F_ERR) {
-        if (TG[] < 100. || TG[] > 1000.) {
-          fprintf(stderr, "Gas temperature out of range: %g\n", TG[]);
-          status = false;
-        }
-      }
-    }
-  }
-
-  //check solid mass fractions
-  if (status) {
-    foreach() {
-      if (f[] > F_ERR) {
-        for (int jj=0; jj<NGS; jj++) {
-          scalar YG_S = YGList_S[jj];
-          if (YG_S[] < 0. || YG_S[] > 1.) {
-            fprintf(stderr, "Solid mass fraction out of range: %g\n", YG_S[]);
-            status = false;
-          }
-        }
-      }
-    }
-  }
-
-  //check external gas mass fractions
-  if (status) {
-    foreach() {
-      if (f[] < 1.- F_ERR) {
-        for (int jj=0; jj<NGS; jj++) {
-          scalar YG_G = YGList_G[jj];
-          if (YG_G[] < 0. || YG_G[] > 1.) {
-            fprintf(stderr, "Gas mass fraction out of range: %g\n", YG_G[]);
-            status = false;
-          }
-        }
-      }
-    }
-  }
-
-  //check internal gas mass fractions
-  if (status) {
-    foreach() {
-      if (f[] > F_ERR) {
-        for (int jj=0; jj<NGS; jj++) {
-          scalar YG= YGList_S[jj];
-          if (YG[] < 0. || YG[] > 1.) {
-            fprintf(stderr, "Gas mass fraction out of range: %g\n", YG[]);
-            status = false;
-          }
-        }
-      }
-    }
-  }
- 
-  //check porosity
-  if (status) {
-    foreach() {
-      if (f[] > F_ERR) {
-        if (porosity[] < 0. || porosity[] > 1.) {
-          fprintf(stderr, "Porosity out of range: %g\n", porosity[]);
-          status = false;
-        }
-      }
-    }
-  }
-  
-  if (!status) {
-    dump();
-    exit(1);
-  }
-}
-*/
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
@@ -134,6 +35,17 @@ extern face vector ufsave;
 face vector u_prime[];
 #ifndef STOP_TRACER_ADVECTION
 event tracer_advection (i++) {
+foreach() {
+    f[] = clamp (f[], 0., 1.);
+    f[] = (f[] > F_ERR) ? f[] : 0.;
+    f[] = (f[] < 1.-F_ERR) ? f[] : 1.;
+    fS[] = f[]; fG[] = 1. - f[];
+  }
+#if TREE
+  for (int l = 1; l < depth(); l++)
+    foreach_level (l)
+      f[] = (f[] > 0.5) ? 1. : 0.;
+#endif
 
 #ifdef VARPROP
   update_properties();
@@ -143,9 +55,6 @@ event tracer_advection (i++) {
 
   // lose tracer form and extrapolate fields
   foreach() {
-    f[] = clamp (f[], 0., 1.);
-    f[] = (f[] > F_ERR) ? f[] : 0.;
-    fS[] = f[]; fG[] = 1. - f[];
     porosity[] = (f[] > F_ERR) ? porosity[]/f[] : 0.;
 #ifdef SOLVE_TEMPERATURE
     TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
@@ -304,7 +213,6 @@ event tracer_diffusion (i++) {
   check_and_correct_fractions (YGList_G, NGS, true,  "YGList_G-1");
   check_and_correct_fractions (YSList,   NSS, false, "YSList-1");
 
-
 #ifdef SOLVE_TEMPERATURE
   foreach() {
     TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
@@ -368,7 +276,7 @@ event tracer_diffusion (i++) {
     }
   }
 
-  //find the interface concentration foreach species
+  //find the interface concentration for each species
   intConcentration();
 
 #ifdef MOLAR_DIFFUSION // calculate the mole fractions at the interface
@@ -586,8 +494,8 @@ event tracer_diffusion (i++) {
 #endif //MASS_DIFFUSION_ENTHALPY
 
 #if defined VARPROP && !defined NO_EXPANSION
-if (i > 10)
   update_divergence_density();
+  // update_divergence();
 #endif
 
 #ifdef FICK_CORRECTED

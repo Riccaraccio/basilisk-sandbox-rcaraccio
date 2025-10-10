@@ -26,52 +26,9 @@ enum solid_thermal_conductivity_model lambdaSmodel;
 
 scalar rhoGv_G0[], rhoGv_S0[];
 extern scalar porosity;
-// scalar DTDtS[], DTDtG[];
+scalar DTDtS[], DTDtG[];
 // scalar * DYDtG_G = NULL;    // [NSS]
 // scalar * DYDtG_S = NULL;    // [NGS]
-
-// scalar Hcheck[];
-//scalar rhoSvInt[], rhoGvInt_G[], rhoGvInt_S[];
-
-/*
-void update_properties_constant (void) {
-  foreach() {
-    rhoSv[] = rhoS;
-    rhoSv0[] = rhoS;
-    rho1vInt[] = rhoS;
-    cpSv[] = cpS;
-    lambdaSv[] = lambdaS;
-
-    rhoGv_G[] = rhoG;
-    rhoGv0_G[] = rhoG;
-    muGv_G[] = muG;
-    cpGv_G[] = cpG;
-    lambdaGv_G[] = lambdaG;
-
-    foreach_elem (Dmix2List_G, jj) {
-      scalar DmixGv = DmixGList_G[jj];
-      DmixGv[] = DmixG;
-    }
-    
-    rhoGv_S[] = rhoG;
-    rhoGv0_S[] = rhoG;
-    muGv_S[] = muG;
-    cpGv_S[] = cpG;
-    lambdaGv_S[] = lambdaG;
-
-    foreach_elem (Dmix2List_S, jj) {
-      scalar DmixGv = DmixGList_S[jj];
-      DmixGv[] = DmixG;
-    }
-  }
-
-  boundary ({rhoSv,rhoSv0,rhoSvInt,muSv,cpSv,lambdaSv,
-      rhoGv_G, rhoGv0_G, muGv_G, cpGv_G, lambdaGv_G,
-      rhoGv_S, rhoGv0_S, muGv_S, cpGv_S, lambdaGv_S});
-  boundary (DmixGList_G);
-  boundary (DmixGList_S);
-}
-*/
 
 void update_properties_initial (void) {
   foreach() {
@@ -220,11 +177,8 @@ void update_properties_initial (void) {
 trace
 void update_properties (void) {
 
-  foreach() {
-    // rhoGv_S0[] = rhoGv_S[];
-    // rhoGv_G0[] = rhoGv_G[];
+  foreach()
     rhoGv_S0[] = rhoGv_S[]*f[] + (1.-f[])*rhoGv_G[]; //field looks nicer done in one field
-  }
 
   // Reset all the properties fields
   // reset ({rhoGv_S, rhoGv_G, rhoSv,
@@ -234,34 +188,23 @@ void update_properties (void) {
   // reset (DmixGList_S, 0.);
   // reset (DmixGList_G, 0.);
   // reset ({MWmixG_S, MWmixG_G}, 0.);
-  
-  const double Pref_const = 1.01325e5; // Pa
+
   foreach() {
-
-    double f_val = f[];
-    double one_minus_f = 1. - f_val;
     ThermoState tsGh, tsSh;
-    double xG[NGS], yG[NGS];
-    double MWmix;
-    double P_local = Pref_const + p[];
     double Diff_coeff[NGS];
-
-    if (f_val > T_PROP) {
-      double inv_f = 1./f_val;
-      double porosity_val = porosity[]*inv_f;
-      double TS_val = TS[]*inv_f;
-      double por_f_pow = pow(porosity_val, 4./3.);
-
+    if (f[] > T_PROP) {
+      double xG[NGS], yG[NGS];
+      double MWmixG;
       // Update internal gas properties
-      foreach_elem (YGList_S, jj) {
+      for (int jj=0; jj<NGS; jj++) {
         scalar YG = YGList_S[jj];
-        yG[jj] = YG[]*inv_f;
+        yG[jj] = YG[]/f[];
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmix, yG);
-      MWmixG_S[] = MWmix;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+      MWmixG_S[] = MWmixG;
 
-      tsGh.T = TS_val;
-      tsGh.P = P_local;
+      tsGh.T = TS[]/f[];
+      tsGh.P = Pref+p[];
       tsGh.x = xG;
 
       rhoGv_S[] = tpG.rhov (&tsGh);
@@ -269,7 +212,6 @@ void update_properties (void) {
       lambdaGv_S[] = tpG.lambdav (&tsGh);
       muGv_S[] = tpG.muv (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
-
 #ifdef MASS_DIFFUSION_ENTHALPY
       double cpG[NGS];
       tpG.cpvs (&tsGh, cpG);
@@ -282,21 +224,22 @@ void update_properties (void) {
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
         #ifdef CONST_DIFF
-        DmixGv[] = CONST_DIFF*por_f_pow;
+        DmixGv[] = CONST_DIFF*pow(porosity[]/f[], 4./3.);
         #else
-        DmixGv[] = Diff_coeff[jj]*por_f_pow;
+        DmixGv[] = Diff_coeff[jj]*pow(porosity[]/f[], 4./3.);
         #endif
       }
       
       // Update internal solid properties
       double xS[NSS], yS[NSS];
-      foreach_elem (YSList, jj) {
+      double MWmixS;
+      for (int jj=0; jj<NSS; jj++) {
         scalar YS = YSList[jj];
-        yS[jj] = YS[]*inv_f;
+        yS[jj] = YS[]/f[];
       }
-      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmix, yS);
+      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, yS);
 
-      tsSh.T = TS_val;
+      tsSh.T = TS[]/f[];
       tsSh.P = Pref+p[];
       tsSh.x = xS;
 
@@ -325,7 +268,7 @@ void update_properties (void) {
           scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
           double char_fraction = char_field[] / f[];
           foreach_dimension()
-              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) + 13.5 * 5.67e-8 * pow(TS_val, 3) * 80e-06 / RADIATION_INTERFACE;
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / RADIATION_INTERFACE;
           break;
         }
 
@@ -357,20 +300,19 @@ void update_properties (void) {
       }
     }
 
-    if (one_minus_f > T_PROP) {
-      double inv_one_minus_f = 1./one_minus_f;
-      double TG_val = TG[]*inv_one_minus_f;
-
+    if (f[] < 1. - T_PROP) {
       // Update external gas properties
-      foreach_elem (YGList_G, jj) {
+      double xG[NGS], yG[NGS];
+      double MWmixG;
+      for (int jj=0; jj<NGS; jj++) {
         scalar YG = YGList_G[jj];
-        yG[jj] = YG[]*inv_one_minus_f;
+        yG[jj] = YG[]/(1.-f[]);
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmix, yG);
-      MWmixG_G[] = MWmix;
+      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+      MWmixG_G[] = MWmixG;
 
-      tsGh.T = TG_val;
-      tsGh.P = P_local;
+      tsGh.T = TG[]/(1.-f[]);
+      tsGh.P = Pref+p[];
       tsGh.x = xG;
 
       rhoGv_G[] = tpG.rhov (&tsGh);
@@ -454,12 +396,10 @@ event init (i = 0) //Should be done in the default event but is executed before 
 //   delete (DYDtG_S), free (DYDtG_S), DYDtG_S = NULL;
 // }
 
-// event reset_sources (i++)
-// {
-//   foreach() {
-//     DTDtG[] = 0.;
-//     DTDtS[] = 0.;
-
+event reset_sources (i++) {
+  foreach() {
+    DTDtG[] = 0.;
+    DTDtS[] = 0.;
 
 //     for (int jj=0; jj<NGS; jj++) {
 //       scalar DYDtGjj = DYDtG_G[jj];
@@ -469,43 +409,48 @@ event init (i = 0) //Should be done in the default event but is executed before 
 //       scalar DYDtGjj = DYDtG_S[jj];
 //       DYDtGjj[] = 0.;
 //     }
-//   }
-// }
+  }
+}
 
 // event properties (i++) {
 //   update_properties();
 // }
 
-// void update_divergence (void) { // Unused, but kept for reference
+void update_divergence (void) {
 
 //   // ENSURE THAT THE TRACER FORM IS LOST
 //   /**
 //   We define the variables used to compute the lagrangian derivative
 //   on each level. */
 
-//   restriction ({T,TS,TG});
+  restriction ({T,TS,TG});
 //   restriction (YSList);
 //   restriction (YGList_G);
 //   restriction (YGList_S);
+// #ifdef MOLAR_DIFFUSION
+//   restriction (XGList_G);
+//   restriction (XGList_S);
+// #endif
 
 //   /**
 //   We calculate the Lagrangian derivative of the temperature fields. */
 
-//   face vector lambdagradTS[], lambdagradTG[];
-//   foreach_face() {
-//     lambdagradTS.x[] = face_value(lambdaGv_S, 0)*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
-//     lambdagradTG.x[] = face_value(lambdaGv_G, 0)*face_gradient_x (TG, 0)*fm.x[]*fsG.x[];
-//   }
+  face vector lambdagradTS[], lambdagradTG[];
+  foreach_face() {
+    // lambdagradTS.x[] = face_value(lambdaGv_S, 0)*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
+    lambdagradTS.x[] = face_value(lambda1v.x, 0)*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
+    lambdagradTG.x[] = face_value(lambda2v.x, 0)*face_gradient_x (TG, 0)*fm.x[]*fsG.x[];
+  }
 
-//   foreach() {
-//     foreach_dimension()
-//       DTDtS[] += (lambdagradTS.x[1] - lambdagradTS.x[])/Delta;
-//     // DTDtS[] += sST[];
+  foreach() {
+    foreach_dimension()
+      DTDtS[] += (lambdagradTS.x[1] - lambdagradTS.x[])/Delta;
+    DTDtS[] += sST[];
 
-//     foreach_dimension()
-//       DTDtG[] += (lambdagradTG.x[1] - lambdagradTG.x[])/Delta;
-//     // DTDtG[] += sGT[];
-//   }
+    foreach_dimension()
+      DTDtG[] += (lambdagradTG.x[1] - lambdagradTG.x[])/Delta;
+    DTDtG[] += sGT[];
+  }
 
 //   // EXTERNAL GAS PHASE
 //   /**
@@ -674,81 +619,44 @@ event init (i = 0) //Should be done in the default event but is executed before 
 //   We calculate the one-field divergence by volume-averaging the liquid and the
 //   gas-phase contributions. */
 
-//   foreach() {
-//     double divu1 = 0., divu2 = 0.;
+  foreach() {
+    double divu1 = 0., divu2 = 0.;
 
-//     // Add internal gas temperature contribution
-//     divu1 += (TS[]*rhoGv_S[]*cpGv_S[] > 0.) ?
-//       1./(TS[]*rhoGv_S[]*cpGv_S[])*DTDtS[] : 0.;
+    // Add internal gas temperature contribution
+    divu1 += (TS[]*rhoGv_S[]*cpGv_S[] > 0.) ?
+      1./(TS[]*(rhoGv_S[]*cpGv_S[]*porosity[]/f[] + rhoSv[]*cpSv[]*(1-porosity[]/f[])))*DTDtS[] : 0.;
 
-//     // Add external gas temperature contribution
-//     divu2 += (TG[]*rhoGv_G[]*cpGv_G[] > 0.) ?
-//       1./(TG[]*rhoGv_G[]*cpGv_G[])*DTDtG[] : 0.;
+    // Add external gas temperature contribution
+    divu2 += (TG[]*rhoGv_G[]*cpGv_G[] > 0.) ?
+      1./(TG[]*rhoGv_G[]*cpGv_G[])*DTDtG[] : 0.;
 
-//     // Add internal gas chemical species contribution
-//     double divu1species = 0.;
-//     for (int jj=0; jj<NGS; jj++) {
-//       scalar DYDtGjj = DYDtG_S[jj];
-//       divu1species += 1./gas_MWs[jj]*DYDtGjj[];
-//     }
-//     // divu1 += (rhoGv_S[] > 0.) ? MWmixG_S[]/rhoGv_S[]*divu1species : 0.; //TODO
+    // // Add internal gas chemical species contribution
+    // double divu1species = 0.;
+    // for (int jj=0; jj<NGS; jj++) {
+    //   scalar DYDtGjj = DYDtG_S[jj];
+    //   divu1species += 1./gas_MWs[jj]*DYDtGjj[];
+    // }
+    // divu1 += (rhoGv_S[] > 0.) ? MWmixG_S[]/rhoGv_S[]*divu1species : 0.; //TODO
 
-//     // Add external gas chemical species contribution
-//     double divu2species = 0.;
-//     for (int jj=0; jj<NGS; jj++) {
-//       scalar DYDtGjj = DYDtG_G[jj];
-//       divu2species += 1./gas_MWs[jj]*DYDtGjj[];
-//     }
-//     // divu2 += (rhoGv_G[] > 0.) ? MWmixG_G[]/rhoGv_G[]*divu2species : 0.; //TODO
+    // Add external gas chemical species contribution
+    // double divu2species = 0.;
+    // for (int jj=0; jj<NGS; jj++) {
+    //   scalar DYDtGjj = DYDtG_G[jj];
+    //   divu2species += 1./gas_MWs[jj]*DYDtGjj[];
+    // }
+    // divu2 += (rhoGv_G[] > 0.) ? MWmixG_G[]/rhoGv_G[]*divu2species : 0.; //TODO
     
-//     // Volume averaged contributions
-//     drhodt[] = divu1*f[] + divu2*(1. - f[]);
+    // Volume averaged contributions
+    drhodt[] = divu1*f[] + divu2*(1. - f[]);
 
-//     // Adjust sign for internal convention
-//     drhodt[] *= -1.;
-//   }
-// }
+    // Adjust sign for internal convention
+    drhodt[] *= -1.;
+  }
+}
 
+scalar testdrhodt[];
 void update_divergence_density (void) {
-  
-  // vector grhoG[], grhoS[];
-  // gradients ({rhoGv_S, rhoGv_G}, {grhoS, grhoG});
 
-  // scalar DrhoDtS[], DrhoDtG[];
-  // foreach() {
-  //   DrhoDtS[] = (rhoGv_S[] - rhoGv_S0[])/dt;
-  //   DrhoDtG[] = (rhoGv_G[] - rhoGv_G0[])/dt;
-  // } 
-
-  // // face vector rhoG_Sflux[], rhoG_Gflux[];
-  // // tracer_fluxes (rhoGv_S, uf, rhoG_Sflux, dt, zeroc);
-  // // tracer_fluxes (rhoGv_G, uf, rhoG_Gflux, dt, zeroc);
-
-  // // foreach() {
-  // //   foreach_dimension() {
-  // //     DrhoDtS[] += (rhoG_Sflux.x[] - rhoG_Sflux.x[1] - rhoGv_S[]*(uf.x[] - uf.x[1]))/Delta;
-  // //     DrhoDtG[] += (rhoG_Gflux.x[] - rhoG_Gflux.x[1] - rhoGv_G[]*(uf.x[] - uf.x[1]))/Delta;
-  // //   }
-  // // }
-
-  // foreach() {
-  //   foreach_dimension()
-  //     DrhoDtS[] += u.x[]*grhoS.x[];
-  //     DrhoDtG[] += u.x[]*grhoG.x[];
-  // }
-
-  // foreach() {
-  //   DrhoDtS[] = DrhoDtS[]*cm[];
-  //   DrhoDtG[] = DrhoDtG[]*cm[];
-
-  //   double one_over_rhoS = (rhoGv_S[] > 0.) ? 1./rhoGv_S[] : 0.;
-  //   double one_over_rhoG = (rhoGv_G[] > 0.) ? 1./rhoGv_G[] : 0.;
-
-  //   if (iter > 1) {
-  //     drhodt[] = (one_over_rhoS*DrhoDtS[]*f[] + one_over_rhoG*DrhoDtG[]*(1. - f[]));
-  //   }
-  // }
-  
   scalar rhot[];
   foreach()
     rhot[] = rhoGv_S[]*f[] + rhoGv_G[]*(1. - f[]);

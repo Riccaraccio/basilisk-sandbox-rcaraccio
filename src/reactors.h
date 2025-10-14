@@ -1,5 +1,4 @@
 /*
-** TO BE REVISED **
 Solves the system of ODEs for the chemical species reactions
 
 The system of ODEs is solved using the *batch* method.
@@ -113,75 +112,66 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
 
 void solid_batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
 
-  /**
-  Unpack data for the ODE system. */
-
   UserDataODE data = *(UserDataODE *)args;
-  double rhos = data.rhos;
-  double rhog = data.rhog;
-  double cps = data.cps;
-  double cpg = data.cpg;
-  double Pressure = data.P;
-  double z = data.zeta;
-  double* sources = data.sources;
-
   double epsilon = y[NGS+NSS];
   double Temperature = y[NGS+NSS+1];
 
   epsilon = clamp(epsilon, 0., 1.);
 
   OpenSMOKE_SolProp_SetTemperature (Temperature);
-  OpenSMOKE_SolProp_SetPressure (Pressure);
+  OpenSMOKE_SolProp_SetPressure (data.P);
   OpenSMOKE_GasProp_SetTemperature (Temperature);
-  OpenSMOKE_GasProp_SetPressure (Pressure);
+  OpenSMOKE_GasProp_SetPressure (data.P);
 
-  double gasmass[NGS]; double totgasmass = 0.;
-  for (int jj=0; jj<NGS; jj++) {
-    gasmass[jj] = y[jj] < 0. ? 0. : y[jj];
-    totgasmass += gasmass[jj];
-  }
-
+  double totgasmass = 0.;
   double gasmassfracs[NGS], gasmolefracs[NGS];
   for (int jj=0; jj<NGS; jj++) {
-    gasmassfracs[jj] = gasmass[jj]/totgasmass;
+    double mass = fmax (0., y[jj]);
+    totgasmass += mass;
+    gasmassfracs[jj] = mass;
   }
 
-  double MWMix; 
-  OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWMix, gasmassfracs);
+  double inv_totgasmass = (totgasmass > 0.) ? 1./totgasmass : 0.;
+  for (int jj=0; jj<NGS; jj++)
+    gasmassfracs[jj] *= inv_totgasmass;
 
-  double ctot = Pressure/(R_GAS*1000)/Temperature; // kmol/m3
+  double MWgasMix;
+  OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWgasMix, gasmassfracs);
+
+  double ctot = data.P/(R_GAS*1000*Temperature); // kmol/m3
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
     rgas[jj] = 0.;
   }
 #ifdef VARPROP
-  rhog = ctot*MWMix;
-  cpg = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
+  data.rhog = ctot*MWgasMix;
+  data.cpg = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
 #endif
 
-  double solidmass[NSS]; double totsolidmass = 0.;
+  double totsolmass = 0.;
+  double solmassfracs[NSS];
   for (int jj=0; jj<NSS; jj++) {
-    solidmass[jj] = y[jj+NGS] < 0. ? 0. : y[jj+NGS];
-    totsolidmass += solidmass[jj];
+    double mass = fmax (0., y[jj+NGS]);
+    totsolmass += mass;
+    solmassfracs[jj] = mass;
   }
 
-  double solmassfracs[NSS];
   double csolid[NSS], rsolid[NSS];
+  double inv_totsolmass = (totsolmass > 0.) ? 1./totsolmass : 0.;
   for (int jj=0; jj<NSS; jj++) {
-    solmassfracs[jj] = solidmass[jj]/totsolidmass;
-    csolid[jj] = rhos*solmassfracs[jj]/sol_MWs[jj];
+    solmassfracs[jj] *= inv_totsolmass;
+    csolid[jj] = data.rhos*solmassfracs[jj]/sol_MWs[jj];
     rsolid[jj] = 0.;
   }
 
   #ifdef VARPROP
   double solmolefracs[NSS], MWsolidMix;
   OpenSMOKE_SolidMoleFractions_From_SolidMassFractions(solmolefracs, &MWsolidMix, solmassfracs);
-  cps = OpenSMOKE_SolProp_HeatCapacity (solmolefracs);
+  data.cps = OpenSMOKE_SolProp_HeatCapacity (solmolefracs);
   #endif
 
-  OpenSMOKE_SolProp_KineticConstants ();
-  OpenSMOKE_SolProp_ReactionRates (cgas,csolid);
+  OpenSMOKE_SolProp_ReactionRates (cgas,csolid); 
   OpenSMOKE_SolProp_FormationRates (rgas, rsolid); //[kmol/m3_solid/s]
 
   double rgas_pure[NGS], QRgas = 0.;
@@ -189,7 +179,6 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
     rgas_pure[jj] = 0.;
 
 #ifdef GAS_PHASE_REACTIONS
-  OpenSMOKE_GasProp_KineticConstants ();
   OpenSMOKE_GasProp_ReactionRates (cgas);
   OpenSMOKE_GasProp_FormationRates (rgas_pure); //[kmol/m3_gas/s]
   QRgas = OpenSMOKE_GasProp_HeatRelease (rgas_pure);
@@ -197,33 +186,31 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]* (rgas[jj]*(1-epsilon) + rgas_pure[jj]*epsilon);
-    sources[jj] = dy[jj]*epsilon;
+    // data.sources[jj] = dy[jj]*epsilon; //to be checked
   }
 
   for (int jj=0; jj<NSS; jj++) {
     dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-epsilon);
+    // data.sources[jj+NGS] = dy[jj+NGS]*(1-epsilon); //to be checked
   }
 
-  double totsolidreaction = 0.;
-  for (int jj=0; jj<NSS; jj++) {
-    totsolidreaction += (sol_MWs[jj]*rsolid[jj]);
-  }
+  double totsolreaction = 0.;
+  for (int jj=0; jj<NSS; jj++)
+    totsolreaction += sol_MWs[jj]*rsolid[jj];
 
   //epsilon equation
-  dy[NGS+NSS] = -totsolidreaction*(1-epsilon)*(1-z)/rhos;
-  sources[NGS+NSS] = -totsolidreaction;
+  dy[NGS+NSS] = -totsolreaction*(1-epsilon)*(1-data.zeta)/data.rhos;
+  data.sources[NGS+NSS] = -totsolreaction;
 
   //Temperature equation
   double QRsol = OpenSMOKE_SolProp_HeatRelease (rgas, rsolid);
 
-  // dy[NGS+NSS+1] = (QRsol*(1-epsilon)*f + QRgas*(1-f +epsilon*f))/(rhog*cpg*(1-f +epsilon*f) + rhos*cps*(1-epsilon)*f);
-  dy[NGS+NSS+1] = (QRsol*(1-epsilon) + QRgas*epsilon)/((rhog*cpg*epsilon) + rhos*cps*(1-epsilon));
-  // sources[NGS+NSS+1] = dy[NGS+NSS+1]*(rhog*cpg*epsilon + rhos*cps*(1-epsilon));
-  sources[NGS+NSS+1] = QRgas*epsilon;
+  dy[NGS+NSS+1] = (QRsol*(1-epsilon) + QRgas*epsilon)/((data.rhog*data.cpg*epsilon) + data.rhos*data.cps*(1-epsilon));
+  data.sources[NGS+NSS+1] = QRsol*(1-epsilon) + QRgas*epsilon;
   #ifdef TURN_OFF_HEAT_OF_REACTION
   dy[NGS+NSS+1] *= 0.;
-  // sources[NGS+NSS+1] *= 0.;
-#endif
+  data.sources[NGS+NSS+1] *= 0.;
+  #endif
 }
 
 void gas_batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
@@ -271,7 +258,7 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   //Temperature equation
   dy[NGS] = QRgas/(rhog*cpg);
   double* sources = data.sources;
-  sources[NGS+1] = QRgas;
+  sources[NGS] = QRgas;
 #ifdef TURN_OFF_HEAT_OF_REACTION
   dy[NGS] *= 0.;
 #endif

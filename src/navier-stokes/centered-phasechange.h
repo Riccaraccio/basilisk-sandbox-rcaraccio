@@ -19,9 +19,6 @@ mgstats project_sf (face vector uf, scalar p,
     foreach_dimension()
       div[] += uf.x[1] - uf.x[];
     div[] /= dt*Delta;
-  }
-
-  foreach() {
     div[] += gasSource[]/dt;
 #ifndef NO_EXPANSION
     div[] += drhodt[]/dt;

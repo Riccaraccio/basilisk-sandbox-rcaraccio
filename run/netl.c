@@ -1,6 +1,10 @@
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
-#define RADIATION_INTERFACE 0
+
+#ifndef RADIATION_INTERFACE
+# define RADIATION_INTERFACE 0.9 
+#endif
+
 #define MOLAR_DIFFUSION 1
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
@@ -15,7 +19,7 @@
 #include "view.h"
 
 double Uin = 0.32; //inlet velocity
-double tend = 30; //simulation time
+double tend = 0.02; //simulation time
 
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
@@ -35,7 +39,7 @@ p[right]      = dirichlet (0.);
 pf[right]     = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
-int maxlevel = 9; int minlevel = 2;
+int maxlevel = 7; int minlevel = 2;
 double D0 = 0.7e-3;
 double solid_mass0 = 0.;
 
@@ -52,7 +56,7 @@ int main() {
 
   zeta_policy = ZETA_REACTION;
 
-  L0 = 10*D0;
+  L0 = 5*D0;
   origin (-L0/2, 0);
   Da = (coord){1e-12, 1e-12};
 
@@ -60,6 +64,7 @@ int main() {
 
   shift_prod = true;
   kinfolder = "biomass/Solid-only-2507";
+  // kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
   run();
 }
@@ -70,6 +75,7 @@ event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")]  = 1.;
 
   // Residues composition
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.2714;
@@ -89,6 +95,9 @@ event init(i=0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
+  fprintf (stderr, "initial mass = %g\n", solid_mass0);
+  fprintf (stderr, "initial radius = %g\n", cbrt(3./2.*statsf(f).sum)); 
+
   TG[left] = dirichlet (TG0);
   TG[right] = neumann (0);
   TG[top] = neumann (0);
@@ -106,8 +115,9 @@ event init(i=0) {
     u.x[] = f[] > F_ERR ? 0. : Uin;
 }
 
-event output (t += 0.1) {
+event output (t += 0.01) {
   fprintf (stderr, "%g\n", t);
+  fflush (stderr);
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
@@ -145,30 +155,34 @@ event output (t += 0.1) {
 #if TREE
 event adapt (i++) {
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
-  scalar product = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
-  adapt_wavelet_leave_interface ({T, u.x, u.y, inert, product}, {f},
-    (double[]){1.e-2, 1.e-2, 1.e-2, 1e-2, 1e-2}, maxlevel, minlevel, 2);
+  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("LVG")];
+  adapt_wavelet_leave_interface ({T, u.x, u.y, inert, fuel}, {f},
+    (double[]){1.e0, 1.e-1, 1.e-1, 1e-1, 1e-1}, maxlevel, minlevel, 2);
   unrefine (x > L0*2/5);
 }
-
 #endif
 
-event movie (i += 10) {
-  clear();
-  box();
-  view (ty=-L0*3/2, width=1920, height=640, fov=7);
-  draw_vof("f", lw=2);
-  squares ("T", min=300, max=800, linear=true);
-  vectors ("u", scale=1e-5, level=maxlevel-2);
-  mirror ({0.,1.}) {
-    draw_vof ("f", lw=2);
-    squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
-  }
-  save ("movie.mp4");
-}
+// event movie (t += 0.5) {
+//   clear();
+//   box();
+//   view (ty=-L0*3/2, width=1920, height=640, fov=7);
+//   draw_vof("f", lw=2);
+//   squares ("T", min=300, max=800, linear=true);
+//   vectors ("u", scale=1e-5, level=maxlevel-2);
+//   mirror ({0.,1.}) {
+//     draw_vof ("f", lw=2);
+//     squares ("C6H10O5_G+C6H10O5_S", min=0., max=0.3, linear=true);
+//   }
+//   save ("movie.mp4");
+// }
 
-// event stop (t = tend);
-event stop (i = 10);
+// event outputfields (t = {0, 5, 10, 20, 30}) {
+//   char name[80];
+//   sprintf (name, "Fields-%d", (int)(t));
+//   dump(name);
+// }
+
+event stop (t = tend);
 
 /** 
 ~~~gnuplot

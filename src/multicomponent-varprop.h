@@ -494,8 +494,8 @@ event tracer_diffusion (i++) {
 #endif //MASS_DIFFUSION_ENTHALPY
 
 #if defined VARPROP && !defined NO_EXPANSION
-  update_divergence_density();
-  // update_divergence();
+  update_divergence();
+  // update_divergence_density();
 #endif
 
 #ifdef FICK_CORRECTED

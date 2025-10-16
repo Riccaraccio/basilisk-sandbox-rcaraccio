@@ -114,22 +114,11 @@ event chemistry (i++) {
   //Solve solid phase chemistry
   foreach ()
     if (f[] > F_ERR) {
-
-      for(int jj=0; jj<NSS; jj++) {
-        scalar YS = YSList[jj];
-        YS[] /= f[];
-      }
-
-      for(int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList_S[jj];
-        YG[] /= f[];
-      }
       porosity[] /= f[];
 
       double y0ode[NEQ]; // We solve in terms of mass because the volume is variable
       UserDataODE data;
       data.P = Pref + p[];
-      data.T = TS[]/f[];
 #ifdef VARPROP
       data.rhos = rhoSv[];
       data.rhog = rhoGv_S[];
@@ -160,14 +149,14 @@ event chemistry (i++) {
 
       for (int jj=0; jj<NGS; jj++) {
         scalar YG = YGList_S[jj];
-        gasmass[jj] = YG[]*rhoGvh*porosity[];
+        gasmass[jj] = YG[]/f[]*rhoGvh*porosity[];
         y0ode[jj] = gasmass[jj];
       }
 
       double solidmass[NSS];
       for (int jj=0; jj<NSS; jj++) {
         scalar YS = YSList[jj];
-        solidmass[jj] = YS[]*rhoS*(1-porosity[]);
+        solidmass[jj] = YS[]/f[]*rhoS*(1-porosity[]);
         y0ode[jj+NGS] = solidmass[jj];
       }
 
@@ -185,9 +174,8 @@ event chemistry (i++) {
 #endif
 
       double totgasmass = 0;
-      for (int jj=0; jj<NGS; jj++) {
+      for (int jj=0; jj<NGS; jj++)
         totgasmass += y0ode[jj];
-      }
 
       for (int jj=0; jj<NGS; jj++) {
         scalar YG = YGList_S[jj];
@@ -195,9 +183,8 @@ event chemistry (i++) {
       }
 
       double totsolidmass = 0;
-      for (int jj=0; jj<NSS; jj++) {
+      for (int jj=0; jj<NSS; jj++)
         totsolidmass += y0ode[jj+NGS];
-      }
 
       for (int jj=0; jj<NSS; jj++) { 
         scalar YS = YSList[jj];
@@ -206,18 +193,18 @@ event chemistry (i++) {
 
       porosity[] = y0ode[NGS+NSS]*f[];
 
-// #ifdef VARPROP
-//       for (int jj=0; jj<NGS; jj++) {
-//         scalar DYDtGjj = DYDtG_S[jj];
-//         DYDtGjj[] += sources[jj]*cm[];
-//       }
-// #endif
+#ifdef VARPROP
+      for (int jj=0; jj<NGS; jj++) {
+        scalar DYDtGjj = DYDtG_S[jj];
+        DYDtGjj[] += sources[jj]*cm[];
+      }
+#endif
 
 #ifdef SOLVE_TEMPERATURE
       TS[] = y0ode[NGS+NSS+1]*f[];
-// # ifdef VARPROP
-//       DTDtS[] += sources[NGS+NSS+1]*cm[];
-// # endif
+# ifdef VARPROP
+      DTDtS[] += sources[NGS+NSS+1]*cm[];
+# endif
 #endif
       omega[] = sources[NGS+NSS];
     }
@@ -225,7 +212,7 @@ event chemistry (i++) {
 // Pure gas phase reactions
 #ifdef GAS_PHASE_REACTIONS
     foreach() {
-      if (f[] < 1.-F_ERR) {
+      if (f[] < F_ERR) {
 
         double y0ode[NGS + 1]; // NGS + T
         for (int jj=0; jj<NGS; jj++) {
@@ -236,8 +223,8 @@ event chemistry (i++) {
 
         UserDataODE data;
         data.P = Pref + p[];
-        data.T = TG[]/(1.-f[]);
-        double sources[NGS+1];
+        data.T = y0ode[NGS];
+        double sources[NGS + 1];
         data.sources = sources;
 #ifdef VARPROP
         data.rhog = rhoGv_G[];
@@ -256,15 +243,23 @@ event chemistry (i++) {
 
         for (int jj=0; jj<NGS; jj++) {
           scalar YG = YGList_G[jj];
-          YG[] = (y0ode[jj] > 1e-8) ? y0ode[jj]*(1.-f[]) : 0.;
+          YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1.-f[]) : 0.;
           YG[] = y0ode[jj]*(1.-f[]);
+
+#ifdef VARPROP
+          scalar DYDtGjj = DYDtG_G[jj];
+          DYDtGjj[] += sources[jj]*cm[];
+#endif
         }
+
 #ifdef SOLVE_TEMPERATURE
         TG[] = y0ode[NGS]*(1.-f[]);
+# ifdef VARPROP
+        DTDtG[] += sources[NGS]*cm[];
+# endif
 #endif
       }
     }
-#endif
-
+#endif // GAS_PHASE_REACTIONS
 }
-#endif
+#endif // TURN_OFF_REACTIONS

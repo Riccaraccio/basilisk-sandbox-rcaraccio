@@ -186,12 +186,12 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]* (rgas[jj]*(1-epsilon) + rgas_pure[jj]*epsilon);
-    // data.sources[jj] = dy[jj]*epsilon; //to be checked
+    data.sources[jj] = dy[jj]; //to be checked
   }
 
   for (int jj=0; jj<NSS; jj++) {
     dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-epsilon);
-    // data.sources[jj+NGS] = dy[jj+NGS]*(1-epsilon); //to be checked
+    data.sources[jj+NGS] = dy[jj+NGS]; //to be checked, unused i think
   }
 
   double totsolreaction = 0.;
@@ -219,14 +219,10 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   Unpack data for the ODE system. */
 
   UserDataODE data = *(UserDataODE *)args;
-  double rhog = data.rhog;
-  double cpg = data.cpg;
-  double Pressure = data.P;
-
   double Temperature = y[NGS];
 
   OpenSMOKE_GasProp_SetTemperature (Temperature);
-  OpenSMOKE_GasProp_SetPressure (Pressure);
+  OpenSMOKE_GasProp_SetPressure (data.P);
 
   double gasmassfracs[NGS], gasmolefracs[NGS];
   for (int jj=0; jj<NGS; jj++)
@@ -235,30 +231,29 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   double MWMix;
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWMix, gasmassfracs);
 
-
-  double ctot = Pressure/(R_GAS*1000)/Temperature; // kmol/m3
+  double ctot = data.P/(R_GAS*1000*Temperature); // kmol/m3
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
     rgas[jj] = 0.;
   }
 #ifdef VARPROP
-  rhog = ctot*MWMix;
-  cpg = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
+  data.rhog = ctot*MWMix;
+  data.cpg = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
 #endif
-  OpenSMOKE_GasProp_KineticConstants ();
   OpenSMOKE_GasProp_ReactionRates (cgas);
   OpenSMOKE_GasProp_FormationRates (rgas); //[kmol/m3_gas/s]
 
   double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas);
 
-  for (int jj=0; jj<NGS; jj++)
-    dy[jj] = gas_MWs[jj]*rgas[jj];
+  for (int jj=0; jj<NGS; jj++) {
+    dy[jj] = gas_MWs[jj]*rgas[jj]/data.rhog;
+    data.sources[jj] = dy[jj]*data.rhog;
+  }
 
   //Temperature equation
-  dy[NGS] = QRgas/(rhog*cpg);
-  double* sources = data.sources;
-  sources[NGS] = QRgas;
+  dy[NGS] = QRgas/(data.rhog*data.cpg);
+  data.sources[NGS] = QRgas;
 #ifdef TURN_OFF_HEAT_OF_REACTION
   dy[NGS] *= 0.;
 #endif

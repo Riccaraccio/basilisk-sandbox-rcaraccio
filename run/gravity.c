@@ -36,7 +36,7 @@ u.t[bottom] = dirichlet (0.);
 p[bottom]   = neumann (0.);
 
 
-int maxlevel = 7; int minlevel = 3;
+int maxlevel = 8; int minlevel = 4;
 double D0 = 2e-2;
 double solid_mass0 = 0., moisture0 = 0.;
 
@@ -52,11 +52,11 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  zeta_policy = ZETA_SHRINK;
+  zeta_policy = ZETA_SWELLING;
 
   G.x = -9.81;
 
-  L0 = 5*D0;
+  L0 = 10*D0;
   origin (-L0/2, 0);
 
   DT = 1e-1;
@@ -83,7 +83,6 @@ event init(i=0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-  TG[left] = dirichlet (TG0);
   TG[right] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
 
@@ -92,11 +91,9 @@ event init(i=0) {
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
       YG[right] = dirichlet (1.);
       YG[top] = dirichlet (1.);
-      YG[right] = dirichlet (0.);
     } else {
       YG[right] = dirichlet (0.);
       YG[top] = dirichlet (0.);
-      YG[left] = dirichlet (0.);
     }
   }
 }
@@ -126,6 +123,8 @@ event adapt (i++) {
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
   adapt_wavelet_leave_interface ({T, u.x, u.y, inert}, {f},
     (double[]){1.e-2, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 1);
+
+  unrefine (x < -L0/3);
 }
 #endif
 

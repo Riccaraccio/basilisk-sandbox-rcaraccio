@@ -2,7 +2,6 @@ coord G = {0.,0.,0.}, Z = {0.,0.,0.};
 
 #include "curvature.h"
 
-
 event defaults (i = 0) {  
   if (is_constant(a.x)) {
     a = new face vector;

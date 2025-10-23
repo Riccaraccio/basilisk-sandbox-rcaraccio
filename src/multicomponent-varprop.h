@@ -696,12 +696,10 @@ event tracer_diffusion (i++) {
   foreach() {
     double theta1vh, theta2vh;
 # ifdef VARPROP
-    // theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.; //idk why it's *epsilon
-    theta1vh = fS[] > F_ERR ? rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.;
+    theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.;
     theta2vh = rhoGv_G[]*cpGv_G[];
 # else
-    // theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.; // idk why it's *epsilon
-    theta1vh = fS[] > F_ERR ? rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.;
+    theta1vh = fS[] > F_ERR ? porosity[]/fS[]*rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.;
     theta2vh = rhoG*cpG;
 # endif
 

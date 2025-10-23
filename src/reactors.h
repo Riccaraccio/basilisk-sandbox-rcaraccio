@@ -4,7 +4,7 @@ Solves the system of ODEs for the chemical species reactions
 The system of ODEs is solved using the *batch* method.
 */
 
-//#include "radiation.h" not included for now
+#include "radiation.h"
 
 #define R_GAS 8.31446261815324
 
@@ -244,6 +244,11 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   OpenSMOKE_GasProp_ReactionRates (cgas);
   OpenSMOKE_GasProp_FormationRates (rgas); //[kmol/m3_gas/s]
 
+  OpenSMOKE_OpticallyThinProperties otp;
+  otp.T = Temperature;
+  otp.P = data.P;
+  otp.x = gasmolefracs;
+
   double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas);
 
   for (int jj=0; jj<NGS; jj++) {
@@ -252,8 +257,8 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   }
 
   //Temperature equation
-  dy[NGS] = QRgas/(data.rhog*data.cpg);
-  data.sources[NGS] = QRgas;
+  dy[NGS] = (QRgas +  divq_rad (&otp))/(data.rhog*data.cpg);
+  data.sources[NGS] = dy[NGS]*data.rhog*data.cpg;
 #ifdef TURN_OFF_HEAT_OF_REACTION
   dy[NGS] *= 0.;
 #endif

@@ -93,7 +93,7 @@ void update_properties_initial (void) {
           scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
           double char_fraction = char_field[] / f[];
           foreach_dimension()
-              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) + porosity[]/f[] * lambdaGv_S[];
           break;
         }
         
@@ -103,7 +103,8 @@ void update_properties_initial (void) {
           scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
           double char_fraction = char_field[] / f[];
           foreach_dimension()
-              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) + 13.5 * 5.67e-8 * pow(TS0, 3) * 80e-06 / RADIATION_INTERFACE;
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) 
+                              + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / 0.95 + porosity[]/f[] * lambdaGv_S[];
           break;
         }
 
@@ -258,7 +259,7 @@ void update_properties (void) {
           scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
           double char_fraction = char_field[] / f[];
           foreach_dimension()
-              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) + porosity[]/f[] * lambdaGv_S[];
           break;
         }
         
@@ -268,7 +269,8 @@ void update_properties (void) {
           scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
           double char_fraction = char_field[] / f[];
           foreach_dimension()
-              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / RADIATION_INTERFACE;
+              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) 
+                              + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / 0.95 + porosity[]/f[] * lambdaGv_S[];
           break;
         }
 
@@ -339,9 +341,8 @@ void update_properties (void) {
 # endif
       }
 
-      double lambda_g = lambdaGv_G[];
       foreach_dimension()
-        lambda2v.x[] = lambda_g;
+        lambda2v.x[] = lambdaGv_G[];
     }
   }
 }

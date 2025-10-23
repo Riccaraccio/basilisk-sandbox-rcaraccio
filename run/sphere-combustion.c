@@ -26,16 +26,20 @@ u.t[top]    = neumann (0.);
 p[top]      = dirichlet (0.);
 psi[top]    = dirichlet (0.);
 
-int maxlevel = 6; int minlevel = 4;
+int maxlevel = 8; int minlevel = 3;
 double D0 = 9.5e-3;
 double solid_mass0 = 0.;
 
 int main() {
   
-  lambdaS = 0.1987*10;
-  lambdaSmodel = L_CONST;
-  TS0 = 500.; TG0 = 1500.;
-  rhoS = 970;
+  lambdaS = 0.1987; lambdaG = 0.076;
+  cpS = 2200; cpG = 1167;
+  #ifdef VARPROP
+  lambdaSmodel = L_HUANG;
+  #endif
+  TS0 = 300.; TG0 = 1050.;
+  rhoS = 970; rhoG = 0.674;
+  muG = 3.53e-5;
   eps0 = 0.4;
 
   //dummy properties
@@ -44,10 +48,10 @@ int main() {
 
   zeta_policy = ZETA_SWELLING;
 
-  L0 = 2*D0;
+  L0 = 10*D0;
   origin (0, 0);
 
-    DT = 1e-3;
+  DT = 2.5e-2;
 
   kinfolder = "biomass/dummy-solid-gas";
   shift_prod = true;
@@ -88,10 +92,15 @@ event init(i=0) {
       YG[top] = dirichlet (0.);
     }
   }
+
+  divq_rad = opensmoke_optically_thin;
+}
+
+event end_timestep (i++) {
+  fprintf (stderr, "%g\n", t);
 }
 
 event output (t += 0.1) {
-  fprintf (stderr, "%g\n", t);
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
@@ -110,17 +119,17 @@ event output (t += 0.1) {
   fflush(fp);
 }
 
-double MAX_CFL = 0.1;
-event stability (i++) {
-  if (CFL > MAX_CFL)
-    CFL = MAX_CFL;
-}
-
 #if TREE
 event adapt (i++) {
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
-  adapt_wavelet_leave_interface ({T, u.x, u.y, inert}, {f},
-    (double[]){1.e-2, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 2);
+  scalar product = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+
+  scalar umag[];
+  foreach()
+    umag[] = norm (u);
+
+  adapt_wavelet_leave_interface ({T, u.x, u.y, inert, product, umag}, {f},
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1, 1e-1, 1e-1}, maxlevel, minlevel, 2);
 }
 #endif
 

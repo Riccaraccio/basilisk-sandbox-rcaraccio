@@ -80,6 +80,13 @@ event defaults (i = 0) {
   }
 }
 
+// We set placeholder to set the order of the events
+event set_dtmax (i++, last);
+event stability (i++, last);
+event reset_sources (i++, last);
+event chemistry (i++, last);
+event phasechange (i++, last);
+
 #define project(...) project_sf(__VA_ARGS__)
 #define advection(...) advection_div(__VA_ARGS__)
 #include "navier-stokes/centered.h"

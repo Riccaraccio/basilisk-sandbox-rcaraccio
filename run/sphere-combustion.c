@@ -13,6 +13,7 @@
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
+#include "view.h"
 
 double tend = 60.; //simulation time
 
@@ -48,8 +49,7 @@ int main() {
 
   zeta_policy = ZETA_CONST;
 
-  L0 = 5*D0;
-  origin (0, 0);
+  L0 = 10*D0;
 
   DT = 1e-2;
 
@@ -97,11 +97,7 @@ event init(i=0) {
   divq_rad = opensmoke_optically_thin;
 }
 
-event end_timestep (i++) {
-  fprintf (stderr, "%g %g\n", t, statsf(T).max);
-}
-
-event output (t += 0.1) {
+event output (t += 0.01) {
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
@@ -115,7 +111,7 @@ event output (t += 0.1) {
   //calculate radius
   double radius = cbrt (3./2.*statsf(f).sum);
 
-  fprintf (fp, "%g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2.));
+  fprintf (fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2.), statsf(T).max);
 
   fflush(fp);
 }
@@ -128,6 +124,15 @@ event adapt (i++) {
     (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
 }
 #endif
+
+event movie (t += 0.1) {
+  clear();
+  view (tx = -0.5, ty = -0.5, width = 1080, height = 1080);
+  squares ("T", min=300, max=2000, spread=-1);
+  isoline ("T", val=statsf(T).max);
+  draw_vof("f");
+  save ("movie.mp4");
+}
 
 event stop (t = tend);
 

@@ -109,7 +109,7 @@ event output (t += 0.01) {
     solid_mass += (f[]-porosity[])*rhoS*dv();
 
   //calculate radius
-  double radius = cbrt (3./2.*statsf(f).sum);
+  double radius = cbrt (3.*statsf(f).sum);
 
   fprintf (fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2.), statsf(T).max);
 

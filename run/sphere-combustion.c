@@ -46,12 +46,12 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  zeta_policy = ZETA_SWELLING;
+  zeta_policy = ZETA_CONST;
 
-  L0 = 10*D0;
+  L0 = 5*D0;
   origin (0, 0);
 
-  DT = 2.5e-2;
+  DT = 1e-2;
 
   kinfolder = "biomass/dummy-solid-gas";
   shift_prod = true;
@@ -65,7 +65,8 @@ double r0;
 event init(i=0) {
   fraction (f, circle (x, y, 0.5*D0));
 
-  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
+  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.79;
+  gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.21;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
   foreach()
@@ -97,7 +98,7 @@ event init(i=0) {
 }
 
 event end_timestep (i++) {
-  fprintf (stderr, "%g\n", t);
+  fprintf (stderr, "%g %g\n", t, statsf(T).max);
 }
 
 event output (t += 0.1) {
@@ -121,15 +122,10 @@ event output (t += 0.1) {
 
 #if TREE
 event adapt (i++) {
-  scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
-  scalar product = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
-  scalar umag[];
-  foreach()
-    umag[] = norm (u);
-
-  adapt_wavelet_leave_interface ({T, u.x, u.y, inert, product, umag}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1, 1e-1, 1e-1}, maxlevel, minlevel, 2);
+  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel}, {f},
+    (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
 }
 #endif
 

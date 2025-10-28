@@ -51,10 +51,10 @@ int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) 
 }
 
 void ijc_CoupledTemperature() {
-  gsl_vector *unk = gsl_vector_alloc(1);
 
   foreach() {
     if (f[]>F_ERR && f[] < 1.-F_ERR) {
+      gsl_vector *unk = gsl_vector_alloc(1);
       gsl_vector_set(unk, 0, TInt[]);
 
       UserDataNls data;
@@ -65,7 +65,7 @@ void ijc_CoupledTemperature() {
       fsolve (EqTemperature, unk, &data, "EqTemperature");
 
       TInt[] = gsl_vector_get(unk, 0);
+      gsl_vector_free(unk);
     }
   }
-  gsl_vector_free(unk);
 }

@@ -103,10 +103,10 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
 }
 
 void intConcentration () {
-  gsl_vector* unk = gsl_vector_alloc(NGS);
   foreach() {
     if (f[]>F_ERR && f[]<1.-F_ERR) {
 
+      gsl_vector* unk = gsl_vector_alloc(NGS);
       for (int jj=0; jj<NGS; jj++) {
         scalar YGInt = YGList_Int[jj];
         gsl_vector_set(unk, jj, YGInt[]);
@@ -118,13 +118,13 @@ void intConcentration () {
       foreach_dimension()
         data.c.x = o.x;
 
-      fsolve (EqSpecies, unk, &data, "EqSpecies");
+      fsolve_gsl (EqSpecies, unk, &data, "EqSpecies");
 
       for (int jj = 0; jj < NGS; jj++) {
         scalar YGInt = YGList_Int[jj];
         YGInt[] = gsl_vector_get(unk, jj);
       }
+      gsl_vector_free(unk);
     }
   }
-  gsl_vector_free(unk);
 }

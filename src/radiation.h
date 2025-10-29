@@ -103,7 +103,7 @@ double optically_thin (void * p) {
   /**
   We return the flux of radiant energy. */
 
-  return -4.*STEFAN_BOLTZMANN*sum_pa*( pow (T, 4.) - pow (300., 4.) );
+  return -4.*STEFAN_BOLTZMANN*sum_pa*( pow (T, 4.) - pow (TG0, 4.) );
 }
 
 /**
@@ -126,7 +126,7 @@ double opensmoke_optically_thin (void * p) {
   OpenSMOKE_GasProp_SetPressure (P);
   double kPlanckMix = OpenSMOKE_GasProp_kPlanckMix (x);
 
-  return -4.*STEFAN_BOLTZMANN*kPlanckMix*( pow (T, 4.) - pow (300., 4.) );
+  return -4.*STEFAN_BOLTZMANN*kPlanckMix*( pow (T, 4.) - pow (TG0, 4.) );
 }
 #endif
 

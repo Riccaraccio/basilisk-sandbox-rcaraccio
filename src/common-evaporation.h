@@ -1,4 +1,9 @@
 /**
+ * This is a copy of common-evaporation.h from Edoardo Cipriano's
+ * basilisk sandbox repository. All credits to him.
+ */
+
+/**
 # Common Evaporation
 
 We define tolerances and functions useful

@@ -1,3 +1,12 @@
+/**
+ * # Velocity potential solver for the solid phase velocity field
+ * The calculation of the solid phase velocity field 'ubf' is performed through the
+ * solution of a Poisson equation for the velocity potential 'psi'.
+ * The source term of the Poisson equation is given by the product of the
+ * evaporation rate 'omega', the volume fraction field 'f' and the
+ * shrinkage factor 'zeta', divided by the solid phase density 'rhoS'.
+ */
+
 extern scalar omega;
 extern scalar zeta;
 extern double rhoS;
@@ -15,7 +24,6 @@ extern face vector fsS;
 
 void shift_field (scalar fts, scalar f, int dir);
 
-scalar fts[];
 scalar prod[];
 extern scalar fS;
 
@@ -24,12 +32,18 @@ mgstats project_sv (face vector ubf, scalar psi,
     (const) face vector alpha = unityf,
     int nrelax = 4)
 {
+  /**
+   * We compute the source term for the Poisson equation
+   */
+
   foreach()
     prod[] = omega[]*f[]*zeta[]*cm[]/rhoS;
-  
-  // double intbefore = 0.;
-  // foreach()
-  //   intbefore += prod[];
+ 
+  /**
+   * We optionally shift and/or diffuse the source term to improve stability
+   * when the heat exchange at the interface is high and the reaction rate
+   * is very localized.
+   */
 
   if (shift_prod) 
     shift_field (prod, f, 1);
@@ -47,13 +61,6 @@ mgstats project_sv (face vector ubf, scalar psi,
     diffusion (prod, dt, D=D, theta=theta);
   }
 
-  // double intafter = 0.;
-  // foreach()
-  //   intafter += prod[];
-
-  // double intdiff = intbefore > F_ERR ? (intbefore-intafter) /intbefore : 0.;
-  // fprintf (stderr, "intdiff = %g\n", intdiff);
-
   mgstats mgp = poisson (psi, prod, alpha,
       tolerance = TOLERANCE_SOLID, nrelax = nrelax);
 
@@ -62,6 +69,10 @@ mgstats project_sv (face vector ubf, scalar psi,
 
   return mgp;
 }
+
+/** 
+ * Boundary conditions for the velocity potential
+ */
 
 psi[right] = neumann (neumann_pressure(ghost));
 psi[left]  = neumann (- neumann_pressure(0));

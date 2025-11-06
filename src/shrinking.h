@@ -1,3 +1,11 @@
+/**
+ * # Shrinking model for phase change simulations
+ * This file implements various shrinking/swelling models for the
+ * phase change simulations. The shrinking/swelling factor 'zeta' is
+ * computed based on the selected policy and is used in the phase change
+ * model to account for the volume change due to phase change.
+ */
+
 #include "vofToLs.h"
 #include "velocity-potential.h"
 #include "common-evaporation.h"
@@ -5,154 +13,197 @@
 double eps0 = 0.5;
 double rhoS = 100.;
 double rhoG = 1.;
-double muG = 1e-5;
+double muG  = 1e-5;
 
 extern scalar omega;
 
 scalar porosity[];
 scalar zeta[];
-scalar levelset[];
-scalar o[];
 
-(const) face vector ccc = unityf;
-extern double TG0, TS0;
-extern scalar TS, T;
-vector gTS[];
-scalar modg[];
-double o_max = 0.;
-scalar ls[];
+/**
+ * # Zeta policy
+ * Shrinking/Switching policy enumeration
+ * Used to choose which model to use for the shrinking/swelling factor 'zeta'
+ * in the phase change model.
+ */
 
 enum zeta_types {
-  ZETA_SHRINK,
-  ZETA_SWELLING,
-  ZETA_CONST,
-  ZETA_SMOOTH,
-  ZETA_SHARP,
-  ZETA_LEVELSET,
-  ZETA_REACTION
+  ZETA_SHRINK,   // Pure shrinking regime
+  ZETA_SWELLING, // Fixed interface (no shrinking)
+  ZETA_CONST,    // Constant split between shrinking and swelling
+  ZETA_SMOOTH,   // Smooth transition between states
+  ZETA_SHARP,    // Sharp transition between states
+  ZETA_LEVELSET, // Level set method, split based on distance to interface
+  ZETA_REACTION  // Split based on the local reaction rate
 };
 
 enum zeta_types zeta_policy;
 
+/**
+ * We declare a function to set the shrinking factor 'zeta' based on the
+ * selected policy.
+ */
+
 void set_zeta (enum zeta_types zeta_policy) {
-  #if AXI
-    double radius = pow (3.*statsf(f).sum, 1./3.);
-  #else
-    double radius = sqrt (statsf(f).sum/pi)*2;
-  #endif
-
   switch (zeta_policy) {
-    case ZETA_SHRINK:
-      foreach()
-        zeta[] = 1.;
-      break;
+  case ZETA_SHRINK: {
+    foreach()
+      zeta[] = 1.;
+    break;
+  }
 
-    case ZETA_SWELLING:
-      foreach()
-        zeta[] = 0.;
-      break;
+  case ZETA_SWELLING: {
+    foreach()
+      zeta[] = 0.;
+    break;
+  }
 
-    case ZETA_CONST:
-      foreach()
-        zeta[] = 0.5;
-      break;
+  case ZETA_CONST: {
+    foreach()
+      zeta[] = 0.5;
+    break;
+  }
 
-    case ZETA_SMOOTH:
-      foreach()
-          zeta[] = 1 / (1 + exp(32*radius - 40*sqrt(sq(x)+sq(y)+sq(z))));
-          // zeta[] = 1 / (1 + exp(-(sqrt(sq(x)+sq(y)+sq(z))-radius/2)/pow(radius, 4./3.)));
-      break;
+  case ZETA_SMOOTH: {
+#if AXI
+    double radius = pow (3.*statsf(f).sum, 1./3.);
+#else
+    double radius = sqrt (statsf(f).sum/pi)*2.;
+#endif
+    foreach()
+      zeta[] = 1./(1. + exp(32.*radius - 40.*sqrt(sq(x) + sq(y) + sq(z))));
+    break;
+  }
 
-    case ZETA_SHARP:
-      foreach()
-        zeta[] = (sqrt(sq(x) + sq(y)) > radius*0.8) ? 1. : 0.;
-      break;
+  case ZETA_SHARP: {
+#if AXI
+    double radius = pow (3.*statsf(f).sum, 1./3.);
+#else
+    double radius = sqrt (statsf(f).sum/pi)*2.;
+#endif
+    foreach()
+      zeta[] = (sqrt (sq(x) + sq(y)) > radius*0.8) ? 1. : 0.;
+    break;
+  }
 
-    case ZETA_LEVELSET: {
-      // vof_to_ls (f, levelset, imax=5);
-      // double lmin = statsf(levelset).min;
-      // if (fabs(lmin) > F_ERR)
-      //   foreach() {
-      //     zeta[] = 1 - levelset[]/statsf(levelset).min;
-      //     zeta[] = clamp(zeta[], 0., 1.);
-      //   }
-      
-      // vof_to_ls (f, levelset, imax=60);
-      break;
-    }
-
-    case ZETA_REACTION: {
-      foreach()
-        o[] = omega[]*f[];
-
-      o_max = statsf(o).max;
-
+  case ZETA_LEVELSET: {
+    scalar levelset[];
+    vof_to_ls (f, levelset, imax = 5);
+    double lmin = statsf(levelset).min;
+    if (fabs(lmin) > F_ERR)
       foreach() {
-        zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;
+        zeta[] = 1. - levelset[]/statsf(levelset).min;
         zeta[] = clamp(zeta[], 0., 1.);
       }
-      break;
+
+    vof_to_ls (f, levelset, imax = 60);
+    break;
+  }
+
+  case ZETA_REACTION: {
+    scalar o[];
+    foreach()
+      o[] = omega[]*f[];
+
+    double o_max = statsf(o).max;
+
+    foreach() {
+      zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;
+      zeta[] = clamp (zeta[], 0., 1.);
     }
-    default:
-      fprintf (stderr, "Unknown Shrinking model\n");
-      return;
+    break;
+  }
+
+  default: {
+    fprintf (stderr, "Unknown Shrinking model\n");
+    return;
+  }
   }
 }
 
-event defaults (i=0) {
+/**
+ * The porosity is appended as tracer to the volume fraction field 'f'
+ */
+
+event defaults (i = 0) {
   f.tracers = list_append (f.tracers, porosity);
-  set_zeta (zeta_policy);
-  #if AXI
-    ccc = new face vector;
-    foreach_face()
-      ccc.x[] = fm.x[];
-  #endif
+  set_zeta(zeta_policy);
 }
 
-event reset_sources (i++) {
-  reset ({gasSource}, 0.);
+/**
+ * We reset the gas source term before computing it in the phase change event
+ */
+
+event reset_sources(i++) {
+  reset({gas_source}, 0.);
 }
 
-event chemistry (i++);
+event chemistry(i++);
 
-event phasechange (i++) {
+/**
+ * # Phase change event
+ * After the chemistry event, we compute the gas source term based on the 
+ * reaction rate 'omega'. The solid phase velocity field 'ubf' is computed
+ * through the solution of a Poisson equation for the velocity potential 'psi'.
+ */
 
+event phasechange(i++) {
+  /**
+   * Clean volume fraction and porosity fields
+   */
   foreach() {
-    f[] = clamp(f[], 0.,1.);
+    f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
-    f[] = (f[] > 1.-F_ERR) ? 1. : f[];
-    porosity[] = clamp(porosity[], 0., 1.);
+    f[] = (f[] > 1. - F_ERR) ? 1. : f[];
+    porosity[] = clamp (porosity[], 0., 1.);
     porosity[] = (f[] > F_ERR) ? porosity[] : 0.;
   }
 
-  set_zeta (zeta_policy);
+  set_zeta(zeta_policy);
 
-  // mgpsf = project_sv (ubf, psi, ccc, mgpsf.nrelax); // does not work IDK why
+  // mgpsf = project_sv (ubf, psi, fm, mgpsf.nrelax);
   mgpsf = project_sv (ubf, psi, alpha, mgpsf.nrelax);
 
   foreach() {
     if (f[] > F_ERR) {
-#ifdef VARPROP //*(f-ef)
-      gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoGv_S[] - 1/rhoSv[])*cm[];
+      // porosity is in tracer form, already multiplied by f
+#ifdef VARPROP
+      gas_source[] = -omega[]*(f[] - porosity[])*(1/rhoGv_S[] - 1/rhoSv[])*cm[];
 #else
-      gasSource[] = -omega[]*(f[]-porosity[])*(1/rhoG - 1/rhoS)*cm[];
+      gas_source[] = -omega[]*(f[] - porosity[])*(1/rhoG - 1/rhoS)*cm[];
 #endif
     }
   }
 }
 
+/**
+ * # Interface transport events
+ * We temporarily replace the velocity field 'uf' with the solid phase 
+ * velocity field 'ubf' as this is the actual velocity field used to advect
+ * the interface in the presence of phase change.
+ */
+
 face vector ufsave[];
-event vof(i++) {
+event vof (i++) {
   foreach_face() {
     ufsave.x[] = uf.x[];
     uf.x[] = ubf.x[];
   }
 }
 
+/**
+ * We restore the original velocity field after the interface and tracer 
+ * advection has been performed.
+ */
+
 event tracer_diffusion (i++) {
   foreach_face()
-    uf.x[] = ufsave.x[];
+      uf.x[] = ufsave.x[];
 }
+
+/**
+ * The velocity 'ubf' can also be used to determine the timestep.
+ */
 
 event stability (i++, last) {
   dt = dtnext (timestep (ubf, dtmax));

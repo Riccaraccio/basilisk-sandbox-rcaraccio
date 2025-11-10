@@ -15,7 +15,7 @@ the average velocity in the free fluid region at the outlet, as done in the
 `stop` event.
 */
 
-int maxlevel = 9;        // Maximum refinement level
+int maxlevel = 10;        // Maximum refinement level
 double H = 1.;            // Channel height
 double U0 = 1.17  ;       // Inflow velocity
 double eps0 = 0.7;        // Porosity
@@ -29,7 +29,7 @@ double Re = 1.;           // Reynolds number
 #include "view.h"
 
 /**
-# Boundary conditions
+## Boundary conditions
 + left: inlet only in the free fluid region
 + right: outlet
 + top: wall
@@ -103,7 +103,7 @@ event stability (i++) {
 }
 
 /**
-#Log event
+## Log event
 We log the centerline velocity profile at the end of the simulation.
 We also check the average velocity in the free fluid region at the outlet.
 */
@@ -127,7 +127,7 @@ event stop (t = tend) {
 }
 
 /**
-# Velocity profile plot
+## Velocity profile plot
 ~~~gnuplot
 reset
 set terminal svg size 400,400

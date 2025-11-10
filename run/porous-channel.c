@@ -133,8 +133,8 @@ reset
 set terminal svg size 400,400
 set output "velocity-profile.svg"
 
-set xlabel "U"
-set ylabel "Y"
+set xlabel "u/U"
+set ylabel "y/H"
 set grid
 set size square
 unset key
@@ -143,4 +143,4 @@ set xrange [0:1.5]
 plot "log" u 1:2 w l lw 2 lc "blue", \
      "../../data/porouschannel/velocity-da-02" w p pt 4
 ~~~
-**/
+*/

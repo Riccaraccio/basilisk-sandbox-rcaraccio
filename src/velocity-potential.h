@@ -1,11 +1,11 @@
 /**
- * # Velocity potential solver for the solid phase velocity field
- * The calculation of the solid phase velocity field 'ubf' is performed through the
- * solution of a Poisson equation for the velocity potential 'psi'.
- * The source term of the Poisson equation is given by the product of the
- * evaporation rate 'omega', the volume fraction field 'f' and the
- * shrinkage factor 'zeta', divided by the solid phase density 'rhoS'.
- */
+# Velocity potential solver for the solid phase velocity field
+The calculation of the solid phase velocity field 'ubf' is performed through the
+solution of a Poisson equation for the velocity potential 'psi'.
+The source term of the Poisson equation is given by the product of the
+evaporation rate 'omega', the volume fraction field 'f' and the
+shrinkage factor 'zeta', divided by the solid phase density 'rhoS'.
+*/
 
 extern scalar omega;
 extern scalar zeta;
@@ -27,23 +27,30 @@ void shift_field (scalar fts, scalar f, int dir);
 scalar prod[];
 extern scalar fS;
 
+/**
+## Projection method for the solid phase velocity field
+We solve the Poisson equation for the velocity potential 'psi' and
+then compute the solid phase velocity field 'ubf' as the negative gradient
+of 'psi'.
+*/
+
 trace
 mgstats project_sv (face vector ubf, scalar psi,
     (const) face vector alpha = unityf,
     int nrelax = 4)
 {
   /**
-   * We compute the source term for the Poisson equation
-   */
+  We compute the source term for the Poisson equation
+  */
 
   foreach()
     prod[] = omega[]*f[]*zeta[]*cm[]/rhoS;
  
   /**
-   * We optionally shift and/or diffuse the source term to improve stability
-   * when the heat exchange at the interface is high and the reaction rate
-   * is very localized.
-   */
+  We optionally shift and/or diffuse the source term to improve stability
+  when the heat exchange at the interface is high and the reaction rate
+  is very localized.
+  */
 
   if (shift_prod) 
     shift_field (prod, f, 1);
@@ -70,9 +77,9 @@ mgstats project_sv (face vector ubf, scalar psi,
   return mgp;
 }
 
-/** 
- * Boundary conditions for the velocity potential
- */
+/**
+## Boundary conditions
+*/
 
 psi[right] = neumann (neumann_pressure(ghost));
 psi[left]  = neumann (- neumann_pressure(0));

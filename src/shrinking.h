@@ -1,10 +1,10 @@
 /**
- * # Shrinking model for phase change simulations
- * This file implements various shrinking/swelling models for the
- * phase change simulations. The shrinking/swelling factor 'zeta' is
- * computed based on the selected policy and is used in the phase change
- * model to account for the volume change due to phase change.
- */
+# Shrinking model for phase change simulations
+This file implements various shrinking/swelling models for the
+phase change simulations. The shrinking/swelling factor 'zeta' is
+computed based on the selected policy and is used in the phase change
+model to account for the volume change due to phase change.
+*/
 
 #include "vofToLs.h"
 #include "velocity-potential.h"
@@ -21,10 +21,10 @@ scalar porosity[];
 scalar zeta[];
 
 /**
- * # Zeta policy
- * Shrinking/Switching policy enumeration
- * Used to choose which model to use for the shrinking/swelling factor 'zeta'
- * in the phase change model.
+## Zeta policy
+Shrinking policy enumeration.
+Used to choose which model to use for the shrinking factor 'zeta'
+in the phase change model.
  */
 
 enum zeta_types {
@@ -40,9 +40,9 @@ enum zeta_types {
 enum zeta_types zeta_policy;
 
 /**
- * We declare a function to set the shrinking factor 'zeta' based on the
- * selected policy.
- */
+We declare a function to set the shrinking factor 'zeta' based on the
+selected policy.
+*/
 
 void set_zeta (enum zeta_types zeta_policy) {
   switch (zeta_policy) {
@@ -122,8 +122,8 @@ void set_zeta (enum zeta_types zeta_policy) {
 }
 
 /**
- * The porosity is appended as tracer to the volume fraction field 'f'
- */
+The porosity is appended as tracer to the volume fraction field 'f'
+*/
 
 event defaults (i = 0) {
   f.tracers = list_append (f.tracers, porosity);
@@ -131,8 +131,8 @@ event defaults (i = 0) {
 }
 
 /**
- * We reset the gas source term before computing it in the phase change event
- */
+We reset the gas source term before computing it in the phase change event
+*/
 
 event reset_sources(i++) {
   reset({gas_source}, 0.);
@@ -141,16 +141,16 @@ event reset_sources(i++) {
 event chemistry(i++);
 
 /**
- * # Phase change event
- * After the chemistry event, we compute the gas source term based on the 
- * reaction rate 'omega'. The solid phase velocity field 'ubf' is computed
- * through the solution of a Poisson equation for the velocity potential 'psi'.
- */
+## Phase change event
+After the chemistry event, we compute the gas source term based on the 
+reaction rate 'omega'. The solid phase velocity field 'ubf' is computed
+through the solution of a Poisson equation for the velocity potential 'psi'.
+*/
 
 event phasechange(i++) {
   /**
-   * Clean volume fraction and porosity fields
-   */
+  Clean volume fraction and porosity fields from spurious values.
+  */
   foreach() {
     f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
@@ -161,12 +161,13 @@ event phasechange(i++) {
 
   set_zeta(zeta_policy);
 
-  // mgpsf = project_sv (ubf, psi, fm, mgpsf.nrelax);
-  mgpsf = project_sv (ubf, psi, alpha, mgpsf.nrelax);
+  mgpsf = project_sv (ubf, psi, fm, mgpsf.nrelax);
 
   foreach() {
     if (f[] > F_ERR) {
-      // porosity is in tracer form, already multiplied by f
+      /**
+      porosity is in tracer form, already multiplied by f
+      */
 #ifdef VARPROP
       gas_source[] = -omega[]*(f[] - porosity[])*(1/rhoGv_S[] - 1/rhoSv[])*cm[];
 #else
@@ -177,11 +178,11 @@ event phasechange(i++) {
 }
 
 /**
- * # Interface transport events
- * We temporarily replace the velocity field 'uf' with the solid phase 
- * velocity field 'ubf' as this is the actual velocity field used to advect
- * the interface in the presence of phase change.
- */
+# Interface transport events
+We temporarily replace the velocity field 'uf' with the solid phase 
+velocity field 'ubf' as this is the actual velocity field used to advect
+the interface in the presence of phase change.
+*/
 
 face vector ufsave[];
 event vof (i++) {
@@ -192,9 +193,9 @@ event vof (i++) {
 }
 
 /**
- * We restore the original velocity field after the interface and tracer 
- * advection has been performed.
- */
+We restore the original velocity field after the interface and tracer 
+advection has been performed.
+*/
 
 event tracer_diffusion (i++) {
   foreach_face()
@@ -202,8 +203,8 @@ event tracer_diffusion (i++) {
 }
 
 /**
- * The velocity 'ubf' can also be used to determine the timestep.
- */
+The velocity 'ubf' can also be used to determine the timestep.
+*/
 
 event stability (i++, last) {
   dt = dtnext (timestep (ubf, dtmax));

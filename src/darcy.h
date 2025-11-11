@@ -50,6 +50,7 @@ to account for the Darcy and Forchheimer resistance.
 */
 
 event viscous_term (i++) {
+  correction(dt);
   foreach() {
     if (f[] > F_ERR) {
       double e = porosity[]/f[];
@@ -66,12 +67,13 @@ event viscous_term (i++) {
       #endif
 
       foreach_dimension() {
-        double A = (1./rhoGh)*(muGh*e/Da.x);   // Darcy term
-        double B = F*e/sqrt(Da.x)*Umag;        // Forchheimer term
+        double A = muGh*e/(Da.x*rhoGh);     // Darcy term
+        double B = F*Umag*e/sqrt(Da.x);     // Forchheimer term
         u.x[] *= exp(-(A + B)*dt*f[]);
       }
     }
   }
+  correction(-dt);
 }
 
 /**
@@ -99,12 +101,13 @@ less efficient due to the explicit nature of the terms.
 //     if (ff > F_ERR) {
 //       double ef = face_value(porosity, 0);
 //       double F  = 1.75/pow (150*pow (ef, 3), 0.5);
+//       double Umag = norm (uf);
 
 //       // Darcy contribution, weighted by the face fraction of the interface
 //       av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (muG*ef/Da.x) *uf.x[] *ff; 
 
 //       // Forcheimer contribution
-//       av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*ef*rhoG/pow(Da.x,0.5)) *fabs(uf.x[])*uf.x[] *ff;
+//       av.x[] -= alpha.x[]/(fm.x[] + SEPS)* (F*ef*rhoG/pow(Da.x,0.5)) *Umag  *uf.x[] *ff;
 //     }
 //   }
 // }

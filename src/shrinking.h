@@ -1,9 +1,16 @@
 /**
 # Shrinking model for phase change simulations
-This file implements various shrinking/swelling models for the
-phase change simulations. The shrinking/swelling factor 'zeta' is
+This file implements various shrinking models for the
+phase change simulations. The shrinking factor 'zeta' is
 computed based on the selected policy and is used in the phase change
 model to account for the volume change due to phase change.
+This is needed as the phase change in porous media is an ill-posed problem:
+the solid mass can vary both in terms of porosity change and in terms of
+volume change. 'zeta' is used to saturate the missing degree of freedom.
+Of course, this implies direct correlation between the volume change
+and the choiche of 'zeta'.
+Given that no true physical model exists to determine 'zeta' so far, 
+we implement various models to test their effect on the solution.
 */
 
 #include "vofToLs.h"
@@ -25,7 +32,7 @@ scalar zeta[];
 Shrinking policy enumeration.
 Used to choose which model to use for the shrinking factor 'zeta'
 in the phase change model.
- */
+*/
 
 enum zeta_types {
   ZETA_SHRINK,   // Pure shrinking regime

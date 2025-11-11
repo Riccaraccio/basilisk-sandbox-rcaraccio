@@ -5,7 +5,7 @@ In this sandbox you will find my code related to the simulation of flow in porou
 
 Much love and thanks to the work done by [Edoardo Cipriano](https://basilisk.fr/sandbox/ecipriano/README) from which this works takes lots of inspiration and overall structure.
 
-Please note that the the code realted to phasechange simualation ([Biomass pyrolysis](biomasspyro) and [combustion](biomasscomb)) requries integration with the [OpenSMOKE++ framework](https://www.opensmoke.polimi.it/).
+Please note that the the code realted to phasechange simualation (Biomass pyrolysis and combustion) requries integration with the [OpenSMOKE++ framework](https://www.opensmoke.polimi.it/).
 This library is essential since we need to be able to readily compute reaction rates, species phyiscal properties and efficent chemistry time integration.
 Additionally, given that the library is written in C++, [a C interface to OpenSMOKE++](https://github.com/edocipriano/OpenSMOKEppInterface) was developed by [Edoardo Cipriano](https://basilisk.fr/sandbox/ecipriano/README) and myself.
 

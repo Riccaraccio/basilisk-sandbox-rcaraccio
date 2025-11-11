@@ -1,7 +1,13 @@
 # Riccardo Caraccio
 I am a PhD student working at the [CRECK modeling group](https://www.creckmodeling.polimi.it/), [Politecnico di Milano](https://www.polimi.it/).
 My research activity mainly focuses on the multiscale modeling of biomass pyrolysis and combustion.
-In this sandbox you will find my code related to the simulation of flow in porous media and the simulation of biomass particle.
+In this sandbox you will find my code related to the simulation of flow in porous media and conversion of biomass particle.
+
+Much love and thanks to the work done by [Edoardo Cipriano](https://basilisk.fr/sandbox/ecipriano/README) from which this works takes lots of inspiration and overall structure.
+
+Please note that the the code realted to phasechange simualation ([Biomass pyrolysis]() and [combustion](Biomass combustion)) requries integration with the [OpenSMOKE++ framework](https://www.opensmoke.polimi.it/).
+This library is essential since we need to be able to readily compute reaction rates, species phyiscal properties and efficent chemistry time integration.
+Additionally, given that the library is written in C++, [a C interface to OpenSMOKE++](https://github.com/edocipriano/OpenSMOKEppInterface) was developed by [Edoardo Cipriano](https://basilisk.fr/sandbox/ecipriano/README) and myself.
 
 For further information, curiosities, or errors don't hesitate to contact me at "riccardo.caraccio@polimi.it"
 

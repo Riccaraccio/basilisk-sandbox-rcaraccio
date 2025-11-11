@@ -134,15 +134,15 @@ The porosity is appended as tracer to the volume fraction field 'f'
 
 event defaults (i = 0) {
   f.tracers = list_append (f.tracers, porosity);
-  set_zeta(zeta_policy);
+  set_zeta (zeta_policy);
 }
 
 /**
 We reset the gas source term before computing it in the phase change event
 */
 
-event reset_sources(i++) {
-  reset({gas_source}, 0.);
+event reset_sources (i++) {
+  reset ({gas_source}, 0.);
 }
 
 event chemistry(i++);
@@ -176,16 +176,16 @@ event phasechange(i++) {
       porosity is in tracer form, already multiplied by f
       */
 #ifdef VARPROP
-      gas_source[] = -omega[]*(f[] - porosity[])*(1/rhoGv_S[] - 1/rhoSv[])*cm[];
+      gas_source[] = -omega[]*(f[] - porosity[])*(1./rhoGv_S[] - 1./rhoSv[])*cm[];
 #else
-      gas_source[] = -omega[]*(f[] - porosity[])*(1/rhoG - 1/rhoS)*cm[];
+      gas_source[] = -omega[]*(f[] - porosity[])*(1./rhoG - 1./rhoS)*cm[];
 #endif
     }
   }
 }
 
 /**
-# Interface transport events
+## Interface transport events
 We temporarily replace the velocity field 'uf' with the solid phase 
 velocity field 'ubf' as this is the actual velocity field used to advect
 the interface in the presence of phase change.

@@ -73,10 +73,10 @@ int main() {
   /**
    Domain in 8H x 2H
   */
-  size(8*H);
-  dimensions(nx=8, ny=2);
+  size (8*H);
+  dimensions (nx=8, ny=2);
   
-  origin(0, -H);
+  origin (0, -H);
   init_grid (1 << maxlevel);
 
   run();
@@ -104,8 +104,9 @@ event stability (i++) {
 
 /**
 ## Log event
-We log the centerline velocity profile at the end of the simulation.
-We also check the average velocity in the free fluid region at the outlet.
+We log the velocity profile at near the outflow region.
+We also compute the average velocity in the free fluid region,
+it should be close to 1.
 */
 
 event stop (t = tend) {
@@ -115,15 +116,15 @@ event stop (t = tend) {
   double avg_U = 0.;
   for (double y = -H; y<H; y+=step){
     double Y = y/H;
-    double U = interpolate(u.x, x_interpolate, y)/1.;
-    fprintf(stderr, "%g %g\n", U, Y);
+    double U = interpolate (u.x, x_interpolate, y)/1.;
+    fprintf (stderr, "%g %g\n", U, Y);
 
-    if (y > 0){
+    if (y > 0) {
       counter++;
       avg_U += U;
     }
   }
-  fprintf(stderr, "# Avg u: %g\n", avg_U/counter);
+  fprintf (stderr, "# Avg u: %g\n", avg_U/counter);
 }
 
 /**

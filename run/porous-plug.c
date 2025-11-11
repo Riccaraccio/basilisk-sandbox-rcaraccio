@@ -149,4 +149,18 @@ plot "log" u 1:3 w l lc "blue" t "p", \
 
 unset multiplot
 ~~~
+
+## References
+~~~bib
+@article{speth2013balanced,
+  title={Balanced splitting and rebalanced splitting},
+  author={Speth, Raymond L and Green, William H and MacNamara, Shev and Strang, Gilbert},
+  journal={SIAM Journal on Numerical Analysis},
+  volume={51},
+  number={6},
+  pages={3084--3105},
+  year={2013},
+  publisher={SIAM}
+}
+~~~
 */

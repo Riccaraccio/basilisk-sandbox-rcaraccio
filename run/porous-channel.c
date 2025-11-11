@@ -144,4 +144,18 @@ set xrange [0:1.5]
 plot "log" u 1:2 w l lw 2 lc "blue", \
      "../../data/porouschannel/velocity-da-02" w p pt 4
 ~~~
+## References
+
+~~~bib
+@article{betchen2006,
+  title={A nonequilibrium finite-volume model for conjugate fluid/porous/solid domains},
+  author={Betchen, Lee and Straatman, Anthony G and Thompson, Brian E},
+  journal={Numerical Heat Transfer, Part A: Applications},
+  volume={49},
+  number={6},
+  pages={543--565},
+  year={2006},
+  publisher={Taylor \& Francis}
+}
+~~~
 */

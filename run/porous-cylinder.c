@@ -11,6 +11,8 @@ We run several cases varying the permeability of the porous medium,
 represented by the Darcy number Da. The wake length is measured as the point at
 which *u.x* along the centerline (y=0) becomes zero again after the cylinder.
 
+![Streamlines behind a porous cylinder for Da=0.001](porous-cylinder/streamlines.png)(width="800" height="600")
+
 ## Simulation parameters
 */
 int maxlevel = 9;         // Maximum refinement level
@@ -46,6 +48,7 @@ scalar porosity[], f[];
 double rhoG = 1., muG;
 
 /**
+## Simulation setup
 We declare the list of Darcy numbers to simulate.
 */
 double DaList[] = {1.00E-05, 5.00E-05, 1.00E-04, 5.00E-04, 1.00E-03, 2.50E-03, 5.00E-03};
@@ -53,12 +56,15 @@ unsigned int ii = 0; // Index of the current case
 
 int main() {
 
+  /**
+  We set the fluid properties based on the Reynolds number.
+  */
   muG = R0*2*U0/Re;
   const face vector muv[] = {muG, muG};
   mu = muv;
 
   L0 = side_length*R0*2;
-  origin(-L0/2, 0);
+  origin (-L0/2, 0);
   init_grid (1 << maxlevel);
 
   /**
@@ -82,15 +88,14 @@ event init (i = 0) {
   fraction (f, circle(x, y, R0));
   foreach() {
     porosity[] = f[]*epsi0;
-    u.x[] = U0; 
+    u.x[] = U0;
   }
 }
 
 /**
-#Stability and Adaptation events
+# Stability and Adaptation events
 To ensure numerical stability, we limit the CFL number to a maximum value.
 */
-
 const double max_cfl = 0.1;
 event stability (i++) {
   if (CFL > max_cfl)
@@ -101,6 +106,11 @@ event adapt (i++) {
   adapt_wavelet_leave_interface ({u.x, u.y}, {f}, (double[]){1.e-3, 1.e-3}, maxlevel, 2, padding=2);
 }
 
+/**
+## Embed implementation (commented out)
+Here we use the embed method to represent the cylinder as a solid object.
+This is to obtain the wake length for comparison with the porous cylinder cases.
+*/
 /*
 #include "embed.h"
 #include "navier-stokes/centered.h"
@@ -149,12 +159,11 @@ event adapt (i++) {
 */
 
 /**
-# Movie event
-We visualize the streamlines developing around the cylinder for case <ii>.
+## Movie event
+We visualize the streamlines developing around the cylinder for case 4.
 */
 
-scalar avcd[];
-scalar omega[];
+scalar s[], omega[];
 event movie (t = end) {
   if (ii == 4) {
     foreach ()
@@ -162,18 +171,18 @@ event movie (t = end) {
 
     vorticity(u, omega);
 
-    avcd[top] = dirichlet(0);
-    avcd[bottom] = dirichlet(U0 * L0);
+    s[top] = dirichlet(0);
+    s[bottom] = dirichlet(U0 * L0);
 
-    poisson(avcd, omega);
-    boundary({avcd});
+    poisson(s, omega);
+    boundary({s});
 
     view(quat = {0.000, 0.000, 0.000, 1.000},
          fov = 30, near = 0.01, far = 1000,
          tx = -0.03, ty = -0.05, tz = -0.3,
          width = 1920, height = 1080);
     draw_vof(c = "f");
-    isoline(phi = "avcd", n = 100, min = 9.95, max = 10.05);
+    isoline(phi = "s", n = 50, min = 9.95, max = 10.05);
     save("streamlines.png");
   }
 } 
@@ -195,8 +204,7 @@ event stop (t = tend) {
 }
 
 /**
-
-![Streamlines behind a porous cylinder for Da=0.001](porous-cylinder/streamlines.png)
+## Post-processing script
 ~~~gnuplot wake length
 reset
 set terminal svg size 450,400
@@ -225,7 +233,7 @@ do for [i=1:7] {
 
     # Check if y changes sign between previous and current point
     if (j > 0) {
-      if ((y_prev * y_curr < 0) && (x_curr > 0.6)) {
+      if ((y_prev * y_curr < 0) && (x_curr > 0.55)) {
         # Linear interpolation to find x where y=0
         x_at_zero = x_prev - y_prev * (x_curr - x_prev) / (y_curr - y_prev)
         break

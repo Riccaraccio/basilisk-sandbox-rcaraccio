@@ -24,7 +24,7 @@ double side_length = 15.; // Domain length in terms of R0
 double tend = 10.;        // End time
 
 #include "navier-stokes/centered.h"
-#include "fractions.h"
+#include "two-phase.h"
 #include "darcy.h"
 #include "view.h"
 #include "adapt_wavelet_leave_interface.h"
@@ -44,7 +44,7 @@ u.t[right] = neumann (0.);
 p[right] = dirichlet (0.);
 pf[right] = dirichlet (0.);
 
-scalar porosity[], f[];
+scalar porosity[];
 double rhoG = 1., muG;
 
 /**
@@ -58,14 +58,21 @@ int main() {
 
   /**
   We set the fluid properties based on the Reynolds number.
+  For both phases, we want to use the gas properties.
   */
   muG = R0*2*U0/Re;
-  const face vector muv[] = {muG, muG};
-  mu = muv;
+  rho1 = rho2 = rhoG;
+  mu1 = mu2 = muG;
 
   L0 = side_length*R0*2;
   origin (-L0/2, 0);
   init_grid (1 << maxlevel);
+  f.tracers = list_append (f.tracers, porosity);
+
+  /**
+  We download the reference data from Yu et al. (2011) for comparison.
+  */
+  // system ("wget -q https://raw.githubusercontent.com/Riccaraccio/basilisk-sandbox-rcaraccio/refs/heads/master/data/porouscylinder/yuData");
 
   /**
   We run the cases for each Darcy number in DaList.
@@ -104,6 +111,24 @@ event stability (i++) {
 
 event adapt (i++) {
   adapt_wavelet_leave_interface ({u.x, u.y}, {f}, (double[]){1.e-3, 1.e-3}, maxlevel, 2, padding=2);
+}
+
+/**
+We avoid transport of the interface by setting the velocity to zero in the 
+VOF event. After the interface advection, we restore the original velocity
+field.
+ */
+face vector ufsave[];
+event vof (i++) {
+  foreach_face() {
+    ufsave.x[] = uf.x[];
+    uf.x[] = 0.;
+  }
+}
+
+event tracer_diffusion (i++) {
+  foreach_face()
+    uf.x[] = ufsave.x[];
 }
 
 /**
@@ -163,7 +188,9 @@ event adapt (i++) {
 We visualize the streamlines developing around the cylinder for case 4.
 */
 
-scalar s[], omega[];
+scalar strline[], omega[];
+strline[top] = dirichlet(0);
+strline[bottom] = dirichlet(U0 * L0);
 event movie (t = end) {
   if (ii == 4) {
     foreach ()
@@ -171,25 +198,22 @@ event movie (t = end) {
 
     vorticity(u, omega);
 
-    s[top] = dirichlet(0);
-    s[bottom] = dirichlet(U0 * L0);
-
-    poisson(s, omega);
-    boundary({s});
+    poisson(strline, omega);
+    boundary({strline});
 
     view(quat = {0.000, 0.000, 0.000, 1.000},
          fov = 30, near = 0.01, far = 1000,
          tx = -0.03, ty = -0.05, tz = -0.3,
          width = 1920, height = 1080);
     draw_vof(c = "f");
-    isoline(phi = "s", n = 50, min = 9.95, max = 10.05);
+    isoline(phi = "strline", n = 100, min = U0*L0*0.99, max = U0*L0*1.01);
     save("streamlines.png");
   }
 } 
 
 /**
 At the end of each simulation, we output the centerline velocity profile
-to a file named "case-<ii>.dat", where "<ii>" is the index of the current case.
+to a file named "case-ii.dat", where "ii" is the index of the current case.
 */
 event stop (t = tend) {
   char name[80];

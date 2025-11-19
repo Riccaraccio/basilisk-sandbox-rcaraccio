@@ -19,28 +19,39 @@
 #include "int-temperature.h"
 #include "int-concentration.h"
 
-void check_and_correct_fractions (scalar* YList, int n, bool inverse) { //YList in tracer form
+void check_and_correct_fractions(scalar* YList, int n, bool inverse) {
   foreach() {
-    double sum = 0.;
-
-    for (int jj = 0; jj < n; jj++) {
-      scalar Y = YList[jj];
-      if (!inverse) {
-        Y[] = (f[] > F_ERR) ? Y[]/f[] : 0.;
-      } else {
-        Y[] = ((1.-f[]) > F_ERR) ? Y[]/(1. - f[]) : 0.;
+    double denom = inverse ? (1. - f[]) : f[];
+      
+    if (denom < F_ERR) {
+      for (int jj = 0; jj < n; jj++) {
+        scalar Y = YList[jj];
+        Y[] = 0.;
       }
-      if (Y[] < 1e-10) Y[] = 0.;
-      sum += Y[];
-    }
+    } else {
+      double inv_denom = 1. / denom;
+      double sum = 0.;
 
-    for (int jj = 0; jj < n; jj++) {
-      scalar Y = YList[jj];
-      Y[] = (sum > 1e-10) ? Y[]/sum : 0.;
-      if (!inverse) {
-        Y[] = (f[] > F_ERR) ? Y[]*f[] : 0.;
+      double temp[n];
+
+      for (int jj = 0; jj < n; jj++) {
+        scalar Y = YList[jj];
+        double val = Y[] * inv_denom;
+        temp[jj] = (val < F_ERR) ? 0. : val;
+        sum += temp[jj];
+      }
+
+      if (sum > F_ERR) {
+        double scale = denom / sum;
+        for (int jj = 0; jj < n; jj++) {
+          scalar Y = YList[jj];
+          Y[] = temp[jj] * scale;
+        }
       } else {
-        Y[] = ((1. - f[]) > F_ERR) ? Y[]*(1. - f[]) : 0.;
+        for (int jj = 0; jj < n; jj++) {
+          scalar Y = YList[jj];
+          Y[] = 0.;
+        }
       }
     }
   }

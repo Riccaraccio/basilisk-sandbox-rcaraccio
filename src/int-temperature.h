@@ -4,6 +4,10 @@
 #endif
 #include "fsolve-gsl.h"
 
+#ifndef RADIATION_TEMP
+#define RADIATION_TEMP TG0
+#endif
+
 //Extern variables
 extern scalar fS, fG;
 extern face vector fsS, fsG;
@@ -43,7 +47,7 @@ int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) 
   double lambda2vh = n.x / (n.x + n.y) * lambda2v.x[] + n.y / (n.x + n.y) * lambda2v.y[];
 
   gsl_vector_set(fdata, 0,
-                 -divq_rad_int(TInti, TG0, RADIATION_INTERFACE) 
+                 -divq_rad_int(TInti, RADIATION_TEMP, RADIATION_INTERFACE) 
                  + lambda1vh * gradTSn 
                  + lambda2vh * gradTGn);
   // }
@@ -62,7 +66,7 @@ void ijc_CoupledTemperature() {
       foreach_dimension()
         data.c.x = o.x;
 
-      fsolve (EqTemperature, unk, &data, "EqTemperature");
+      fsolve_gsl (EqTemperature, unk, &data, "EqTemperature");
 
       TInt[] = gsl_vector_get(unk, 0);
       gsl_vector_free(unk);

@@ -39,7 +39,7 @@ astats adapt_wavelet_leave_interface (scalar * slist,     // list of scalars
   astats st = {0, 0};
   scalar * listc = NULL;
   for (scalar s in list)
-    listc = list_add_depend (listc, s)
+    listc = list_add_depend (listc, s);
 
   // refinement
   if (minlevel < 1)

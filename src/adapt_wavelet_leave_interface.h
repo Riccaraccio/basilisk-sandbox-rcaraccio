@@ -39,8 +39,7 @@ astats adapt_wavelet_leave_interface (scalar * slist,     // list of scalars
   astats st = {0, 0};
   scalar * listc = NULL;
   for (scalar s in list)
-    if (!is_constant(s) && s.restriction != no_restriction)
-      listc = list_add (listc, s);
+    listc = list_add_depend (listc, s)
 
   // refinement
   if (minlevel < 1)
@@ -98,20 +97,29 @@ astats adapt_wavelet_leave_interface (scalar * slist,     // list of scalars
         }
         // arnbo: always set interface cells to the finest level
         for (scalar vf in vol_frac) {
-                // if (vf[] > 0.0001 && vf[] < 0.9999 && level < maxlevel) {
-                if (vf[] > F_ERR && vf[] < 1.-F_ERR && level < maxlevel) {
-                  cell.flags |= too_coarse;
-                  cell.flags &= ~too_fine;
+@if _MPI
+          // MPI seems to cause issue with internal points, creating value between 0 and 1
+          // The creation of these artificial interface cells cause problems when
+          // computing interface calculations. Thus, we refine all the cells within the particle
+          // to avoid this issue.
+          // NOTE: This is just a workaround, ideally one would want to investigate further the origin of this issue
+          bool condition = (vf[] > F_ERR && level < maxlevel);
+@else
+          bool condition = (vf[] > F_ERR && vf[] < 1. - F_ERR && level < maxlevel);
+@endif
+          if (condition) {
+            cell.flags |= too_coarse;
+            cell.flags &= ~too_fine;
+            cell.flags &= ~just_fine;
+            if (padding > 0){
+              foreach_neighbor(padding){
+                cell.flags |= too_coarse;
+                cell.flags &= ~too_fine;
                 cell.flags &= ~just_fine;
-                    if (padding > 0){
-                       foreach_neighbor(padding){
-                          cell.flags |= too_coarse;
-                          cell.flags &= ~too_fine;
-                          cell.flags &= ~just_fine;
-                        }
-                    }
-                }
               }
+            }
+          }
+        }
         s[] = sc[c++];
       }
     }

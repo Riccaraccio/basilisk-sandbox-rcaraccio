@@ -19,6 +19,33 @@
 #include "int-temperature.h"
 #include "int-concentration.h"
 
+void check_and_correct_fractions (scalar* YList, int n, bool inverse) { //YList in tracer form
+  foreach() {
+    double sum = 0.;
+
+    for (int jj = 0; jj < n; jj++) {
+      scalar Y = YList[jj];
+      if (!inverse) {
+        Y[] = (f[] > F_ERR) ? Y[]/f[] : 0.;
+      } else {
+        Y[] = ((1.-f[]) > F_ERR) ? Y[]/(1. - f[]) : 0.;
+      }
+      if (Y[] < 1e-10) Y[] = 0.;
+      sum += Y[];
+    }
+
+    for (int jj = 0; jj < n; jj++) {
+      scalar Y = YList[jj];
+      Y[] = (sum > 1e-10) ? Y[]/sum : 0.;
+      if (!inverse) {
+        Y[] = (f[] > F_ERR) ? Y[]*f[] : 0.;
+      } else {
+        Y[] = ((1. - f[]) > F_ERR) ? Y[]*(1. - f[]) : 0.;
+      }
+    }
+  }
+}
+
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
@@ -35,17 +62,26 @@ extern face vector ufsave;
 face vector u_prime[];
 #ifndef STOP_TRACER_ADVECTION
 event tracer_advection (i++) {
+
 foreach() {
     f[] = clamp (f[], 0., 1.);
     f[] = (f[] > F_ERR) ? f[] : 0.;
     f[] = (f[] < 1.-F_ERR) ? f[] : 1.;
     fS[] = f[]; fG[] = 1. - f[];
   }
-#if TREE
-  for (int l = 1; l < depth(); l++)
-    foreach_level (l)
-      f[] = (f[] > 0.5) ? 1. : 0.;
-#endif
+
+//No more needed as this was fixed in adapt_wavelet_leave_interface.h when MPI is used
+// Avoid artifically created interfaces
+// interfacial cell can only exist at maximum refinement level
+// #if TREE
+//   for (int l = 1; l < grid->maxdepth; l++)
+//     foreach_level (l)
+//       f[] = (f[] > 0.5) ? 1. : 0.;
+// #endif
+  
+  check_and_correct_fractions (YGList_S, NGS, false);
+  check_and_correct_fractions (YGList_G, NGS, true);
+  check_and_correct_fractions (YSList,   NSS, false);
 
 #ifdef VARPROP
   update_properties();
@@ -128,47 +164,6 @@ foreach() {
 }
 #endif
 
-void check_and_correct_fractions (scalar* YList, int n, bool inverse, char* name) { //YList in tracer form
-  // bool warning = false;
-  foreach() {
-    double sum = 0.;
-
-    for (int jj = 0; jj < n; jj++) {
-      scalar Y = YList[jj];
-      if (!inverse) {
-        Y[] = (f[] > F_ERR) ? Y[]/f[] : 0.;
-      } else {
-        Y[] = ((1.-f[]) > F_ERR) ? Y[]/(1. - f[]) : 0.;
-      }
-      if (Y[] < 1e-10) Y[] = 0.;
-      sum += Y[];
-    }
-
-    // if ((fabs(sum - 1.) > 1.e-1) && !warning && (sum > 1e-10)) {
-    //   fprintf(stderr, "Warning: sum of mass fractions is not equal to 1 for %s: %g\n", name, sum);
-
-    //   for (int jj = 0; jj < n; jj++) {
-    //     scalar Y = YList[jj];
-    //     fprintf(stderr, "Y[%d] = %g\n", jj, Y[]);
-    //   }
-    //   fprintf(stderr, "f = %g\n", f[]);
-    //   fprintf(stderr, "Inverse = %d\n", inverse);
-    //   fprintf(stderr, "Point: (%g, %g, %g)\n", x, y, z);
-
-    //   // warning = true; // set a flag to avoid multiple warnings
-    // }
-
-    for (int jj = 0; jj < n; jj++) {
-      scalar Y = YList[jj];
-      Y[] = (sum > 1e-10) ? Y[]/sum : 0.;
-      if (!inverse) {
-        Y[] = (f[] > F_ERR) ? Y[]*f[] : 0.;
-      } else {
-        Y[] = ((1. - f[]) > F_ERR) ? Y[]*(1. - f[]) : 0.;
-      }
-    }
-  }
-}
 
 void update_mole_fields() {
   #ifdef MOLAR_DIFFUSION
@@ -209,9 +204,9 @@ void update_mole_fields() {
 event tracer_diffusion (i++) {
 
   //Check the mass fractions Can be removed for performance
-  check_and_correct_fractions (YGList_S, NGS, false, "YGList_S-1");
-  check_and_correct_fractions (YGList_G, NGS, true,  "YGList_G-1");
-  check_and_correct_fractions (YSList,   NSS, false, "YSList-1");
+  check_and_correct_fractions (YGList_S, NGS, false);
+  check_and_correct_fractions (YGList_G, NGS, true);
+  check_and_correct_fractions (YSList,   NSS, false);
 
 #ifdef SOLVE_TEMPERATURE
   foreach() {
@@ -757,6 +752,6 @@ event tracer_diffusion (i++) {
 #endif
   }
 
-  check_and_correct_fractions (YGList_S, NGS, false, "YGList_S-2");
-  check_and_correct_fractions (YGList_G, NGS, true,  "YGList_G-2");
+  check_and_correct_fractions (YGList_S, NGS, false);
+  check_and_correct_fractions (YGList_G, NGS, true);
 }

@@ -77,14 +77,6 @@ void fsolve_gsl (nls_fun fun,
   gsl_vector_free (x);
 }
 
-void fsolve (nls_fun fun,
-    gsl_vector * unk,
-    void * params,
-    char * name = NULL)
-{
-  fsolve_gsl (fun, unk, params, name);
-}
-
 #endif // USE_GSL
 
 

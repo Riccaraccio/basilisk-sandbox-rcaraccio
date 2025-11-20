@@ -182,13 +182,13 @@ void update_properties (void) {
     rhoGv_S0[] = rhoGv_S[]*f[] + (1.-f[])*rhoGv_G[]; //field looks nicer done in one field
 
   // Reset all the properties fields
-  // reset ({rhoGv_S, rhoGv_G, rhoSv,
-  //         muGv_S, muGv_G,
-  //         lambdaGv_S, lambdaGv_G, lambdaSv,
-  //         cpGv_S, cpGv_G, cpSv}, 0.);
-  // reset (DmixGList_S, 0.);
-  // reset (DmixGList_G, 0.);
-  // reset ({MWmixG_S, MWmixG_G}, 0.);
+  reset ({rhoGv_S, rhoGv_G, rhoSv,
+          muGv_S, muGv_G,
+          lambdaGv_S, lambdaGv_G, lambdaSv,
+          cpGv_S, cpGv_G, cpSv}, 0.);
+  reset (DmixGList_S, 0.);
+  reset (DmixGList_G, 0.);
+  reset ({MWmixG_S, MWmixG_G}, 0.);
 
   foreach() {
     ThermoState tsGh, tsSh;

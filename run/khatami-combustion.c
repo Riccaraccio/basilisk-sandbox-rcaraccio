@@ -1,0 +1,162 @@
+#define NO_ADVECTION_DIV 1
+#define SOLVE_TEMPERATURE 1
+#define RADIATION_INTERFACE 0.9
+#define MOLAR_DIFFUSION 1
+#define FICK_CORRECTED 1
+#define MASS_DIFFUSION_ENTHALPY 1
+#define GAS_PHASE_REACTIONS 1
+#define RADIATION_TEMP 1400.
+
+#include "axi.h" 
+#include "navier-stokes/centered-phasechange.h"
+#include "opensmoke-properties.h"
+#include "two-phase.h"
+#include "gravity.h"
+#include "shrinking.h"
+#include "multicomponent-varprop.h"
+#include "darcy.h"
+#include "view.h"
+
+double Uin = 0.077; //free fall velocity = 2*g*r^2/9/nu
+u.n[right]    = neumann (0.);
+u.t[right]    = neumann (0.);
+p[right]      = dirichlet (0.);
+psi[right]    = neumann (0.);
+
+psi[top]    = dirichlet (0.);
+
+u.n[left]    = dirichlet (Uin);
+u.t[left]    = dirichlet (0.);
+p[left]      = neumann (0.);
+psi[left]    = dirichlet (0.);
+
+double tend = 500e-3; //simulation time 100 ms
+int maxlevel = 9; int minlevel = 3;
+double D0 = 1e-3; // 100 um
+double solid_mass0 = 0.;
+
+int main() {
+  
+  lambdaS = 0.1987; lambdaG = 0.076;
+  cpS = 2200; cpG = 1167;
+  #ifdef VARPROP
+  lambdaSmodel = L_HUANG;
+  #endif
+  TS0 = 300.; TG0 = 1340.;
+  rhoS = 850; rhoG = 0.674;
+  muG = 3.53e-5;
+  eps0 = 0.5;
+
+  //dummy properties
+  rho1 = 1., rho2 = 1.;
+  mu1 = 1., mu2 = 1.;
+
+  zeta_policy = ZETA_CONST;
+
+  L0 = 15*D0;
+  G.x = 9.81;
+
+  DT = 1e-4;
+
+  kinfolder = "biomass/dummy-solid-gas";
+  // kinfolder = "biomass/Red-gas-2507";
+  shift_prod = true;
+
+  origin (-L0/2, 0.);
+  init_grid(1 << maxlevel);
+  run();
+}
+
+#define circle(x,y,R)(sq(R) - sq(x) - sq(y))
+
+double r0;
+event init (i= 0) {
+  fraction (f, circle (x, y, 0.5*D0));
+
+  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.79;
+  gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.21;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.;
+
+  foreach()
+    porosity[] = eps0*f[];
+
+  solid_mass0 = 0.;
+  foreach (reduction(+:solid_mass0))
+    solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
+
+  TG[left] = dirichlet (TG0);
+  TG[top] = dirichlet (TG0);
+
+  for (int jj=0; jj<NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
+      YG[left] = dirichlet (0.79);
+      YG[top] = dirichlet (0.79);
+    } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
+      YG[left] = dirichlet (0.21);
+      YG[top] = dirichlet (0.21);
+    }     
+    else {
+      YG[left] = dirichlet (0.);
+      YG[top] = dirichlet (0.);
+    }
+  }
+
+  divq_rad = opensmoke_optically_thin;
+}
+
+event output (t += 1e-3) {
+
+  char name[80];
+  sprintf(name, "OutputData-%d", maxlevel);
+  static FILE * fp = fopen (name, "w");
+
+  //log mass profile
+  double solid_mass = 0.;
+  foreach (reduction(+:solid_mass))
+    solid_mass += (f[]-porosity[])*rhoS*dv();
+
+  //calculate radius
+  double radius = cbrt (3./2.*statsf(f).sum);
+
+  fprintf (fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2.), statsf(T).max);
+
+  fflush(fp);
+}
+
+#if TREE
+event adapt (i++) {
+  // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+
+  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
+    (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
+  
+  unrefine (x > L0/3);
+}
+#endif
+
+// event movie (t += 0.5) {
+//   clear();
+//   view (tx = -0.5, ty = -0.5, width = 1080, height = 1080);
+//   squares ("T", min=300, max=2000, spread=-1);
+//   isoline ("T", val=statsf(T).max);
+//   draw_vof("f");
+//   save ("movie.mp4");
+// }
+
+event stop (t = tend);
+
+/** 
+~~~gnuplot
+~~~
+**/

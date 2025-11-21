@@ -30,9 +30,9 @@ u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
 psi[left]    = dirichlet (0.);
 
-double tend = 600e-3; //simulation time 600 ms
+double tend = 300e-3; //simulation time 300 ms
 int maxlevel = 9; int minlevel = 3;
-double D0 = 1.8e-3; // 100 um
+double D0 = 0.64e-3; // 0.64 mm
 double solid_mass0 = 0.;
 
 int main() {
@@ -43,9 +43,9 @@ int main() {
   lambdaSmodel = L_HUANG;
   #endif
   TS0 = 300.; TG0 = 1350.;
-  rhoS = 200; rhoG = 0.674;
+  rhoS = 1500; rhoG = 0.674;
   muG = 3.53e-5;
-  eps0 = 0.85;
+  eps0 = 0.7;
 
   //dummy properties
   rho1 = 1., rho2 = 1.;
@@ -53,7 +53,7 @@ int main() {
 
   zeta_policy = ZETA_CONST;
 
-  L0 = 20*D0;
+  L0 = 10*D0;
   G.x = 9.81;
 
   DT = 1e-4;
@@ -75,8 +75,8 @@ event init (i= 0) {
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.79;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.21;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.97;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.03; // 3% moisture
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.95;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.05; // 5% moisture
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.;
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.;
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.;
@@ -148,7 +148,7 @@ event adapt (i++) {
 
 event movie (t += 5e-3) {
   clear();
-  view (tx = -0.5, ty = -0.5, width = 1080, height = 1080);
+  view (ty = -0.5, width = 1080, height = 1080);
   squares ("T", min=300, max=2500, spread=-1);
   isoline ("T", val=statsf(T).max);
   draw_vof("f");

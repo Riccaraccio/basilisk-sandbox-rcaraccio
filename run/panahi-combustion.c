@@ -30,9 +30,9 @@ u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
 psi[left]    = dirichlet (0.);
 
-double tend = 300e-3; //simulation time 300 ms
+double tend = 600e-3; //simulation time 300 ms
 int maxlevel = 9; int minlevel = 3;
-double D0 = 0.64e-3; // 0.64 mm
+double D0 = 0.6e-3; // 0.6 mm, average of 3 samples
 double solid_mass0 = 0.;
 
 int main() {
@@ -53,7 +53,7 @@ int main() {
 
   zeta_policy = ZETA_CONST;
 
-  L0 = 10*D0;
+  L0 = 20*D0;
   G.x = 9.81;
 
   DT = 1e-4;
@@ -93,6 +93,8 @@ event init (i= 0) {
   solid_mass0 = 0.;
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
+  
+  fprintf(stderr, "Initial solid mass: %g kg\n", solid_mass0);
 
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);

@@ -1,3 +1,17 @@
+/**
+# Chemistry solver
+This header contains the implementation of the chemistry solver.
+We solve an equation of the form:
+$$\frac{dM_{i}}{dt} = \sum^NR_j R_ji \nu_ji$$
+where M is the mass of species i, R is the reaction rate and nu is the 
+stoichiometric coefficient of species i in reaction j.
+
+We use the OpenSMOKE++ library to solve the ODE system as this offers
+a wide variety of stiff solvers optimized for chemical kinetics.
+
+We also have the option to use an explicit solver for non-stiff problems.
+*/
+
 #include "reactors.h"
 
 extern scalar zeta;
@@ -5,6 +19,12 @@ extern scalar T;
 extern scalar porosity;
 
 #ifndef TURN_OFF_REACTIONS
+
+/**
+# Explicit ODE solvers
+These are simple implementations of explicit ODE solvers: Euler and
+Runge-Kutta 4(5). They can be used for non-stiff problems.
+*/
 void ODESolverEXP (odefunction ode, unsigned int neq, double dt, double* y, void* args) {
 
   double dy[neq];
@@ -110,13 +130,17 @@ event chemistry (i++) {
   odefunction batch = &solid_batch_isothermal_constantpressure;
   unsigned int NEQ = NGS + NSS + 1;
 #endif
-
-  //Solve solid phase chemistry
+  /**
+  # Solid-gas reactions
+  We solve the solid-gas reaction system in each cell where there is
+  solid present (i.e. f > F_ERR). The system is solved in terms of mass
+  because the volume of the solid phase is variable due to porosity changes.
+  */
   foreach ()
     if (f[] > F_ERR) {
       porosity[] /= f[];
 
-      double y0ode[NEQ]; // We solve in terms of mass because the volume is variable
+      double y0ode[NEQ];
       UserDataODE data;
       data.P = Pref + p[];
 #ifdef VARPROP
@@ -168,9 +192,9 @@ event chemistry (i++) {
 
 #ifdef EXPLICIT_REACTIONS
     // ODESolverEXP (batch, NEQ, dt, y0ode, &data);
-    RungeKutta45EXP (batch, NEQ, dt, y0ode, &data);
+      RungeKutta45EXP (batch, NEQ, dt, y0ode, &data);
 #else //default
-    OpenSMOKE_ODESolver (batch, NEQ, dt, y0ode, &data); 
+      OpenSMOKE_ODESolver (batch, NEQ, dt, y0ode, &data); 
 #endif
 
       double totgasmass = 0;
@@ -209,7 +233,12 @@ event chemistry (i++) {
       omega[] = sources[NGS+NSS];
     }
 
-// Pure gas phase reactions
+  /**
+  # Gas-phase reactions
+  We solve the gas-phase reaction system in each cell where there is
+  no solid present (i.e. f < F_ERR). The system is solved in terms of mass
+  fraction as the volume is occupied only by the gas phase.
+  */
 #ifdef GAS_PHASE_REACTIONS
     foreach() {
       if (f[] < F_ERR) {
@@ -238,7 +267,10 @@ event chemistry (i++) {
         data.cpg = cpG;
 # endif
 #endif
-
+        /**
+        Using an explicit solver for gas-phase reactions is not
+        recommended as they are usually stiff.
+        */
         OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dt, y0ode, &data);
 
         for (int jj=0; jj<NGS; jj++) {

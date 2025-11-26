@@ -1,6 +1,9 @@
 /*
-Solves the system of ODEs for the chemical species reactions
-
+# Ideal reactors
+This header file implements different functions for the calculation
+of the differential equation system for chemistry integration.
+Each function calculates the differential dy at the current time t
+given the current variables status.
 The system of ODEs is solved using the *batch* method.
 */
 
@@ -19,11 +22,16 @@ typedef struct {
   double* sources;
 } UserDataODE;
 
+/**
+## Isothermal function
+Deprecated, to be removed
+*/
 
 void solid_batch_isothermal_constantpressure (const double* y, const double dt, double* dy, void* args) {
 
   /**
-  Unpack data for the ODE system. */
+  Unpack data for the ODE system.
+  */
 
   UserDataODE data = *(UserDataODE *)args;
   double rhos = data.rhos;
@@ -38,8 +46,6 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
 
   OpenSMOKE_SolProp_SetTemperature (Temperature);
   OpenSMOKE_SolProp_SetPressure (Pressure);
-
-  //////////////////////////////////////////////////////////////////////////
 
   double gasmass[NGS]; double totgasmass = 0.;
   for (int jj=0; jj<NGS; jj++) {
@@ -61,8 +67,6 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
     cgas[jj] = ctot*gasmolefracs[jj];
   }
 
-  //////////////////////////////////////////////////////////////////////////
-
   double solidmass[NSS]; double totsolidmass = 0.;
   for (int jj=0; jj<NSS; jj++) {
     solidmass[jj] = y[jj+NGS];
@@ -76,8 +80,6 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
     solmassfracs[jj] = (totsolidmass < F_ERR) ? 0. : solidmass[jj]/totsolidmass;
     csolid[jj] = rhos*solmassfracs[jj]/sol_MWs[jj];
   }
-
-  //////////////////////////////////////////////////////////////////////////
 
   OpenSMOKE_SolProp_KineticConstants ();
   OpenSMOKE_SolProp_ReactionRates (cgas,csolid);
@@ -102,7 +104,7 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
 }
 
 /**
-## *batch_nonisothermal_constantpressure()*: solve chemical species reactions
+## *solid_batch_nonisothermal_constantpressure()*: solve chemical species reactions
 
 * *y*: vector (length = NS+1) containing the initial values of the system
 * *dt*: simulation time step
@@ -186,12 +188,12 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]* (rgas[jj]*(1-epsilon) + rgas_pure[jj]*epsilon);
-    data.sources[jj] = dy[jj]; //to be checked
+    data.sources[jj] = gas_MWs[jj]*rgas_pure[jj]*epsilon; //to be checked
   }
 
   for (int jj=0; jj<NSS; jj++) {
     dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-epsilon);
-    data.sources[jj+NGS] = dy[jj+NGS]; //to be checked, unused i think
+    // data.sources[jj+NGS] = dy[jj+NGS]; //unused
   }
 
   double totsolreaction = 0.;

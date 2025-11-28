@@ -1,8 +1,16 @@
-#if TREE
-
 /**
-This is a copy of Oystein Lande's function ([adapt_wavelet_leave_interface.h](/sandbox/oystelan/adapt_wavelet_leave_interface.h)). All credit to him!
+This is a copy of Oystein Lande's function ([adapt_wavelet_leave_interface.h](/sandbox/oystelan/adapt_wavelet_leave_interface.h)) 
+with some small tweaks.
+Mainly, MPI seems to cause issue with internal points, creating value between 0 and 1
+during the adaptivity step. The creation of these artificial interface cells 
+cause problems when computing interface calculations. A simple workaround is to 
+refine all the  cells within the particle to avoid this issue.
+This does not add excessive computational cost as the particle is usually small
+compared to the domain size.  
+Additionally, we use F_ERR macro to identify interface cells, to be consistent with other 
+parts of this sandbox.
 */
+#if TREE
 
 #ifndef F_ERR
 # define F_ERR 1.e-10
@@ -97,12 +105,14 @@ astats adapt_wavelet_leave_interface (scalar * slist,     // list of scalars
         }
         // arnbo: always set interface cells to the finest level
         for (scalar vf in vol_frac) {
+          /**
+          MPI seems to cause issue with internal points, creating value between 0 and 1
+          The creation of these artificial interface cells cause problems when
+          computing interface calculations. Thus, we refine all the cells within the particle
+          to avoid this issue.
+          NOTE: This is just a workaround, ideally one would want to investigate further the origin of this issue
+          */
 @if _MPI
-          // MPI seems to cause issue with internal points, creating value between 0 and 1
-          // The creation of these artificial interface cells cause problems when
-          // computing interface calculations. Thus, we refine all the cells within the particle
-          // to avoid this issue.
-          // NOTE: This is just a workaround, ideally one would want to investigate further the origin of this issue
           bool condition = (vf[] > F_ERR && level < maxlevel);
 @else
           bool condition = (vf[] > F_ERR && vf[] < 1. - F_ERR && level < maxlevel);

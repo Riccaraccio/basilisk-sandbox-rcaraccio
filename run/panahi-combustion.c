@@ -11,28 +11,31 @@
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
-#include "gravity.h"
+#include "superquadric.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "view.h"
 
-double Uin = 0.01; //free fall velocity = 2*g*r^2/9/nu + gas velocity
+// double Uin = 0.01; //free fall velocity = 2*g*r^2/9/nu + gas velocity
+// 2D shows no difference in results with Uin = 0. So we set Uin = 0.
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
-psi[right]    = neumann (0.);
+psi[right]    = dirichlet (0.);
 
+u.n[top]    = neumann (0.);
+u.t[top]    = neumann (0.);
+p[top]      = dirichlet (0.);
 psi[top]    = dirichlet (0.);
 
-u.n[left]    = dirichlet (Uin);
-u.t[left]    = dirichlet (0.);
-p[left]      = neumann (0.);
-psi[left]    = dirichlet (0.);
-
 double tend = 600e-3; //simulation time 300 ms
-int maxlevel = 9; int minlevel = 3;
-double D0 = 0.6e-3; // 0.6 mm, average of 3 samples
+int maxlevel = 10; int minlevel = 3;
+double aspect_ratio = 1.; // aspect ratio of the particle
+bool is_sphere = true; // true: sphere, false: cylinder
+double average_mass = 5.3e-8; //average biomass particle mass 53 mg
+
+double D0, H0;
 double solid_mass0 = 0.;
 
 int main() {
@@ -53,16 +56,29 @@ int main() {
 
   zeta_policy = ZETA_CONST;
 
-  L0 = 20*D0;
-  G.x = 9.81;
-
-  DT = 1e-4;
+  DT = 2e-5;
 
   kinfolder = "biomass/dummy-solid-gas";
   // kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
 
-  origin (-L0/2, 0.);
+  // Calculate D0 and H0 based on average mass and aspect ratio
+  double particle_volume = average_mass / ((1.-eps0)*rhoS);
+  if (is_sphere && aspect_ratio != 1.) {
+    fprintf (stderr, "Error: aspect ratio must be 1 for a sphere.\n");
+    return 1;
+  }
+
+  if (is_sphere) {
+    D0 = cbrt (particle_volume*6/M_PI);
+    fprintf (stderr, "Calculated sphere diameter D0: %e m\n", D0*1e3);
+  } else {
+    D0 = cbrt (4*particle_volume/(M_PI*aspect_ratio));
+    H0 = aspect_ratio * D0;
+    fprintf (stderr, "Calculated cylinder diameter D0: %e mm, height H0: %e mm\n", D0*1e3, H0*1e3);
+  }
+
+  L0 = 15*max(D0, H0);
   init_grid(1 << maxlevel);
   run();
 }
@@ -71,12 +87,17 @@ int main() {
 
 double r0;
 event init (i= 0) {
-  fraction (f, circle (x, y, 0.5*D0));
+  if (is_sphere)
+    fraction (f, circle (x, y, 0.5*D0));
+  else
+    fraction (f, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.79;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.21;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.95;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.93;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.05; // 5% moisture
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.02; // 2% ash
+
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.;
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.;
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.;
@@ -96,20 +117,20 @@ event init (i= 0) {
   
   fprintf(stderr, "Initial solid mass: %g kg\n", solid_mass0);
 
-  TG[left] = dirichlet (TG0);
+  TG[right] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
-      YG[left] = dirichlet (0.79);
+      YG[right] = dirichlet (0.79);
       YG[top] = dirichlet (0.79);
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
-      YG[left] = dirichlet (0.21);
+      YG[right] = dirichlet (0.21);
       YG[top] = dirichlet (0.21);
     }     
     else {
-      YG[left] = dirichlet (0.);
+      YG[right] = dirichlet (0.);
       YG[top] = dirichlet (0.);
     }
   }
@@ -128,8 +149,8 @@ event output (t += 1e-3) {
   foreach (reduction(+:solid_mass))
     solid_mass += (f[]-porosity[])*rhoS*dv();
 
-  //calculate radius
-  double radius = cbrt (3./2.*statsf(f).sum);
+  //calculate radius, only meaningful for spherical particles
+  double radius = cbrt (3.*statsf(f).sum);
 
   fprintf (fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2.), statsf(T).max);
 
@@ -142,15 +163,13 @@ event adapt (i++) {
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
-  
-  unrefine (x > L0/3);
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
 }
 #endif
 
 event movie (t += 5e-3) {
   clear();
-  view (ty = -0.5, width = 1080, height = 1080);
+  view (ty = -0.5, tx = -0.5, width = 1080, height = 1080);
   squares ("T", min=300, max=2500, spread=-1);
   isoline ("T", val=statsf(T).max);
   draw_vof("f");

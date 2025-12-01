@@ -30,9 +30,9 @@ p[top]      = dirichlet (0.);
 psi[top]    = dirichlet (0.);
 
 double tend = 600e-3; //simulation time 300 ms
-int maxlevel = 10; int minlevel = 3;
-double aspect_ratio = 1.; // aspect ratio of the particle
-bool is_sphere = true; // true: sphere, false: cylinder
+int maxlevel = 9; int minlevel = 3;
+double aspect_ratio = 4.; // aspect ratio of the particle
+bool is_sphere = false; // true: sphere, false: cylinder
 double average_mass = 5.3e-8; //average biomass particle mass 53 mg
 
 double D0, H0;
@@ -78,7 +78,7 @@ int main() {
     fprintf (stderr, "Calculated cylinder diameter D0: %e mm, height H0: %e mm\n", D0*1e3, H0*1e3);
   }
 
-  L0 = 15*max(D0, H0);
+  L0 = 9*max(D0, H0);
   init_grid(1 << maxlevel);
   run();
 }
@@ -149,10 +149,22 @@ event output (t += 1e-3) {
   foreach (reduction(+:solid_mass))
     solid_mass += (f[]-porosity[])*rhoS*dv();
 
+  double BIOMASS_mass = 0.;
+  scalar YBIOMASS = YSList[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")];
+  foreach (reduction(+:BIOMASS_mass))
+    if (f[] > F_ERR)
+      BIOMASS_mass += YBIOMASS[]*(1. - porosity[]/f[])*rhoS*dv();
+
+  double CHAR_mass = 0.;
+  scalar YCHAR = YSList[OpenSMOKE_IndexOfSolidSpecies ("CHAR")];
+  foreach (reduction(+:CHAR_mass))
+    if (f[] > F_ERR)
+      CHAR_mass += YCHAR[]*(1. - porosity[]/f[])*rhoS*dv();
+      
   //calculate radius, only meaningful for spherical particles
   double radius = cbrt (3.*statsf(f).sum);
 
-  fprintf (fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2.), statsf(T).max);
+  fprintf (fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2.), statsf(T).max, BIOMASS_mass/solid_mass0, CHAR_mass/solid_mass0);
 
   fflush(fp);
 }
@@ -163,7 +175,7 @@ event adapt (i++) {
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
+    (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
 }
 #endif
 

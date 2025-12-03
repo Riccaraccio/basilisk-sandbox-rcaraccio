@@ -7,6 +7,14 @@
 #define GAS_PHASE_REACTIONS 1
 #define RADIATION_TEMP 1400.
 
+#ifndef ASPECT_RATIO
+# define ASPECT_RATIO 4. // aspect ratio of the particle
+#endif
+
+#ifndef IS_SPHERE
+# define IS_SPHERE false // true: sphere, false: cylinder
+#endif
+
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -31,8 +39,8 @@ psi[top]    = dirichlet (0.);
 
 double tend = 600e-3; //simulation time 300 ms
 int maxlevel = 9; int minlevel = 3;
-double aspect_ratio = 4.; // aspect ratio of the particle
-bool is_sphere = false; // true: sphere, false: cylinder
+double aspect_ratio = ASPECT_RATIO; // aspect ratio of the particle
+bool is_sphere = IS_SPHERE; // true: sphere, false: cylinder
 double average_mass = 5.3e-8; //average biomass particle mass 53 mg
 
 double D0, H0;
@@ -92,21 +100,21 @@ event init (i= 0) {
   else
     fraction (f, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
 
-  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.79;
-  gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.21;
+  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
+  gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.235;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.93;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.05; // 5% moisture
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.02; // 2% ash
 
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.4832;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.1200;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1652;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.0003;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0000;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.1668;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0005;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0190;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.0450;
 
   foreach()
     porosity[] = eps0*f[];
@@ -123,11 +131,11 @@ event init (i= 0) {
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
-      YG[right] = dirichlet (0.79);
-      YG[top] = dirichlet (0.79);
+      YG[right] = dirichlet (0.765);
+      YG[top] = dirichlet (0.765);
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
-      YG[right] = dirichlet (0.21);
-      YG[top] = dirichlet (0.21);
+      YG[right] = dirichlet (0.235);
+      YG[top] = dirichlet (0.235);
     }     
     else {
       YG[right] = dirichlet (0.);

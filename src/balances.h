@@ -1,14 +1,14 @@
+/**
+# Mass balances
+This file contains functions to compute and log mass balances in two-phase flow simulations with phase change in porous media.
+*/
+
 #ifndef BALANCES
 # define BALANCES
 #endif
 
 extern int maxlevel;
 extern scalar f, porosity;
-
-/* FIXME
-VARIABLE DENSITY GIVES MASS CONSERVING PROBLEMS DURING INITIAL HEATING PHASE.
-EVEN WITH THERMAL EXPANSION, THE MASS IS NOT CONSERVED.
-*/
 
 struct MassBalances 
 {
@@ -77,7 +77,8 @@ static double face_flux_bid (Point point, scalar Y, int bid, bool unity=false) {
 static void diffusion_boundary (Point point, int bid) {
 #ifdef MULTICOMPONENT
   double ff = face_value_bid (point, f, bid);
-  foreach_elem (YGList_G, jj) {
+  double jG[NGS], jGtot = 0.;
+  for (int jj = 0; jj < NGS; jj++) {
     if (ff < 1.-F_ERR) {
       scalar YG = YGList_G[jj];
       double gradYG = face_gradient_bid (point, YG, bid);
@@ -91,13 +92,30 @@ static void diffusion_boundary (Point point, int bid) {
       rhoGh = rhoG;
   #endif
 
-  #if AXI
-      mb.gas_mass_bdnow[jj] -= rhoGh*Dmix2v*gradYG*Delta*dt*y;
-  #else
-      mb.gas_mass_bdnow[jj] -= rhoGh*Dmix2v*gradYG*Delta*dt;
-  #endif
+      jG[jj] = rhoGh*Dmix2v*gradYG;
+      #if FICK_CORRECTED
+      jGtot += jG[jj];
+      #endif
     }
-    
+  }
+
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    jG[jj] -= jGtot*face_value_bid(point, YG, bid);
+  #if AXI
+      mb.gas_mass_bdnow[jj] -= jG[jj]*Delta*dt*y;
+  #else
+      mb.gas_mass_bdnow[jj] -= jG[jj]*Delta*dt;
+  #endif
+  }
+
+  //reset the aux arrays
+  for (int jj = 0; jj < NGS; jj++) {
+    jG[jj] = 0.;
+  }
+  jGtot = 0.;
+
+  for (int jj = 0; jj < NGS; jj++) {
     if (ff > F_ERR) {
       scalar YG = YGList_S[jj];
       double gradYG = face_gradient_bid (point, YG, bid);
@@ -110,13 +128,21 @@ static void diffusion_boundary (Point point, int bid) {
   #else
       rhoGh = rhoG;
   #endif
-
-  #if AXI
-      mb.gas_mass_bdnow[jj] -= rhoGh*Dmix2v*gradYG*Delta*dt*y*ff;
-  #else
-      mb.gas_mass_bdnow[jj] -= rhoGh*Dmix2v*gradYG*Delta*dt*ff;
+      jG[jj] = rhoGh*Dmix2v*gradYG;
+  #if FICK_CORRECTED
+      jGtot += jG[jj];
   #endif
     }
+  }
+
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_S[jj];
+    jG[jj] -= jGtot*face_value_bid(point, YG, bid);
+  #if AXI
+      mb.gas_mass_bdnow[jj] -= jG[jj]*Delta*dt*y*ff;
+  #else
+      mb.gas_mass_bdnow[jj] -= jG[jj]*Delta*dt*ff;
+  #endif
   }
 #endif
 }
@@ -216,8 +242,11 @@ static void compute_initial_state (void) {
 
     mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
     
+    /**
+    We have the option to use the analytical expressions for the initial 
+    masses in the case of a spherical particle.
+    */
     #ifdef BALANCES_SPHERE
-    // overwrite using equation for sphere
     mb.tot_sol_mass_start = 3.14159265358979323846*sq(0.5)/4*(1-eps0)*rhoS;
     mb.tot_gas_mass_start = 3.14159265358979323846*sq(0.5)/4*(eps0-1)*rhoG + L0*L0*rhoG;
     mb.tot_mass_start = mb.tot_sol_mass_start + mb.tot_gas_mass_start;
@@ -264,18 +293,18 @@ static void compute_balances(void) {
       mb.tot_gas_mass += porosity[]*rhoGh*dv(); //ef
     }
     //External gas mass
-    if (f[] < 1.-F_ERR) {
+    if (f[] < 1. - F_ERR) {
       double rhoGh;
       #ifdef VARPROP
       rhoGh = rhoGv_G[];
       #else
       rhoGh = rhoG;
       #endif
-      mb.tot_gas_mass += (1-f[])*rhoGh*dv(); //(1-f)
+      mb.tot_gas_mass += (1. - f[])*rhoGh*dv(); //(1-f)
     }
 
 #ifdef MULTICOMPONENT
-    for (int jj=0; jj<NGS; jj++) {
+    for (int jj = 0; jj < NGS; jj++) {
       scalar YG_G = YGList_G[jj];
       scalar YG_S = YGList_S[jj];
 
@@ -289,20 +318,20 @@ static void compute_balances(void) {
         mb.gas_mass[jj] += porosity[]*rhoGh*(YG_S[]/f[])*dv(); //ef/f*(YG*f) = ef*YG
       }
      
-      if (f[] < 1.-F_ERR) {
+      if (f[] < 1. - F_ERR) {
         double rhoGh;
         #ifdef VARPROP
         rhoGh = rhoGv_G[];
         #else
         rhoGh = rhoG;
         #endif
-        mb.gas_mass[jj] += (1-f[])*rhoGh*(YG_G[]/(1-f[]))*dv(); //(1-ef)/(1-f)*(YG*(1-f)) = (1-ef)*YG
+        mb.gas_mass[jj] += (1. - f[])*rhoGh*(YG_G[]/(1. - f[]))*dv(); //(1-ef)/(1-f)*(YG*(1-f)) = (1-ef)*YG
       }
     }
 
     //compute individual solid species mass
     if (f[] > F_ERR) {
-      for (int jj=0; jj<NSS; jj++) {
+      for (int jj = 0; jj < NSS; jj++) {
         scalar YS = YSList[jj];
         mb.sol_mass[jj] += (f[] - porosity[])*rhoS*(YS[]/f[])*dv(); // (f-ef)*(YS*f/f) = f*(1-e)*YS
       }
@@ -421,6 +450,8 @@ event init (i = 0) {
 
   fprintf(mb.fb, "\n");
   fflush(mb.fb);
+  
+  compute_initial_state();
 }
 
 event cleanup(t = end) {
@@ -435,9 +466,7 @@ event cleanup(t = end) {
   free(mb.sol_mass);
 }
 
-event chemistry(i++, last) {
-  if (!mb.tot_gas_mass_start && !mb.tot_sol_mass_start)
-    compute_initial_state();
+event chemistry (i++) {
 
   compute_balances();
 

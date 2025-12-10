@@ -7,6 +7,7 @@
 #define GAS_PHASE_REACTIONS 1
 #define RADIATION_TEMP 1400.
 
+#include "grid/multigrid.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -24,20 +25,20 @@ p[top]      = dirichlet (0.);
 psi[top]    = dirichlet (0.);
 
 double tend = 600e-3; //simulation time 300 ms
-int maxlevel = 8; int minlevel = 3;
+int maxlevel = 4; int minlevel = 3;
 double average_mass = 5.3e-8; //average biomass particle mass 53 mg
 
 double D0;
 double solid_mass0 = 0.;
 
 int main() {
-  
+
   lambdaS = 0.1987; lambdaG = 0.076;
   cpS = 2200; cpG = 1167;
   #ifdef VARPROP
   lambdaSmodel = L_HUANG;
   #endif
-  TS0 = 300.; TG0 = 1350.;
+  TS0 = 600.; TG0 = 1350.;
   rhoS = 1500; rhoG = 0.674;
   muG = 3.53e-5;
   eps0 = 0.7;
@@ -48,7 +49,7 @@ int main() {
 
   zeta_policy = ZETA_CONST;
 
-  DT = 2e-5;
+  DT = 1e-5;
 
   kinfolder = "biomass/dummy-solid-gas";
   // kinfolder = "biomass/Red-gas-2507";
@@ -58,7 +59,14 @@ int main() {
   double particle_volume = average_mass / ((1.-eps0)*rhoS);
   D0 = cbrt (4*particle_volume/(M_PI*aspect_ratio));
 
-  L0 = 15*D0;
+  #if TREE
+    L0 = 40*D0;
+  #else
+    int n_proc = 16;
+    size (40*D0/n_proc);
+    dimensions (nx=1, ny=n_proc);
+  #endif
+
   init_grid(1 << maxlevel);
   run();
 }
@@ -102,7 +110,7 @@ event init (i = 0) {
       YG[top] = dirichlet (0.765);
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
       YG[top] = dirichlet (0.235);
-    }     
+    }
     else {
       YG[top] = dirichlet (0.);
     }
@@ -157,14 +165,14 @@ event adapt (i++) {
 }
 #endif
 
-// event movie (t += 5e-3) {
-//   clear();
-//   view (ty = -0.5, tx = -0.5, width = 1080, height = 1080);
-//   squares ("T", min=300, max=2500, spread=-1);
-//   isoline ("T", val=statsf(T).max);
-//   draw_vof("f");
-//   save ("movie.mp4");
-// }
+event movie (t += 5e-3) {
+  clear();
+  view (ty = -0.5, tx = -0.5, width = 1080, height = 1080);
+  squares ("T", min=300, max=2500, spread=-1);
+  isoline ("T", val=statsf(T).max);
+  draw_vof("f");
+  save ("movie.mp4");
+}
 
 event stop (t = tend);
 

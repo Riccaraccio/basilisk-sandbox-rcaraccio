@@ -16,9 +16,11 @@
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
+#include "view.h"
 
-double Uin = 0.1;
-double tend = 600.; //simulation time
+double Uin = 0.25;
+double tend = 800.; //simulation time
+//double tend = 5; //simulation time
 
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
@@ -68,8 +70,13 @@ double solid_mass0;
 event init(i = 0) {
   
   if (TWO_PARTICLES) {
-    fraction (f, circle (x - D0, y, 0.5*D0) *
-                 -circle (x + D0, y, 0.75*D0));
+    vertex scalar phi[];
+    foreach_vertex() {
+      double theta = atan2(y, x + D0), r = sqrt (sq(x + D0) + sq(y));
+      phi[] = (0.25 + 0.05*cos(6*theta))*D0*0.75/0.3 - r;
+      phi[] *= -circle(x - D0, y, 0.5*D0);
+    }
+    fractions (phi, f);
   } else {
     fraction (f, circle (x, y, 0.5*D0));
   }
@@ -128,158 +135,33 @@ event adapt (i++) {
 }
 #endif
 
-event outputfields (t = {100, 200, 300, 600}) {
-  char name[80];
-  sprintf (name, "OutputFields-%d", (int)(t));
-  static FILE * fs = fopen (name, "w");
-
-  output_field ({T, f, u.x, u.y}, fs);
-  fflush (fs);
-}
-
-event stop (t = tend);
+//event stop (t = tend) {
+//  clear();
+//  view (ty=-0.5, width = 1400., height=1400.);
+//  squares ("T", min=300, max=773, linear=true, spread=-1);
+//  draw_vof ("f", lw=2);
+//  cells();
+//  save ("final-temperature.png");
+//}
 
 /** 
 ~~~gnuplot
 reset
-#set terminal svg size 450, 450
-#set output "huang-mass.svg"
-
-set terminal epslatex size 3.6, 3.6 color colortext
-set output "huang-mass.tex"
+set terminal svg size 450, 450
+#set terminal epslatex size 3.6, 3.6 color colortext
+set output "mass.svg"
 
 set xlabel "Time [s]"
 set ylabel "Normalized mass [-]"
 set grid
-set xrange [0:650]
+set xrange [0:600]
 set xtics 100
 set yrange [0:1.1]
 set ytics 0.2
-set key top right box width 2.2
+set key top right box
 set size square
 
-plot  "OutputData-20-773" u 1:2 w l lw 6 lc "black" t "2 cm", \
-      "../../data/huang-particleflow/20/773-mass" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      "OutputData-30-773" u 1:2 w l lw 6 lc "dark-green" t "3 cm", \
-      "../../data/huang-particleflow/30/773-mass" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle
-~~~
-~~~gnuplot
-reset
-set terminal svg size 450, 450
-set output "huang-shrink-20.svg"
-
-#set terminal epslatex size 3.6, 3.6 color colortext
-#set output "huang-shrink-20.tex"
-
-set xlabel "Time [s]"
-set ylabel "Shrinking factor [-]"
-set grid
-set xrange [0:650]
-set xtics 100
-set yrange [0.5:1.05]
-set ytics 0.1
-set key bottom right box width 2.2
-set size square 
-
- plot "../../data/huang-particleflow/20/673-shrinking" u 1:2 w p pt 64 ps 1.2 lw 3 lc "black" notitle, \
-      "../../data/huang-particleflow/20/773-shrinking" u 1:2 w p pt 64 ps 1.2 lw 3 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/20/873-shrinking" u 1:2 w p pt 64 ps 1.2 lw 3 lc "blue" notitle, \
-      "../../data/huang-particleflow/20/973-shrinking" u 1:2 w p pt 64 ps 1.2 lw 3 lc "orange" notitle, \
-      "OutputData-20-673" u 1:6 w l lw 3 lc "black" t "673K", \
-      "OutputData-20-773" u 1:6 w l lw 3 lc "dark-green" t "773K", \
-      "OutputData-20-873" u 1:6 w l lw 3 lc "blue" t "873K", \
-      "OutputData-20-973" u 1:6 w l lw 3 lc "orange" t "973K"
-~~~
-
-~~~gnuplot
-reset
-set terminal svg size 450, 450
-set output "huang-shrink-30.svg"
-
-#set terminal epslatex size 3.6, 3.6 color colortext
-#set output "huang-shrink-30.tex"
-
-set xlabel "Time [s]"
-set ylabel "Shrinking factor [-]"
-set grid
-set xrange [0:650]
-set xtics 100
-set yrange [0.5:1.05]
-set ytics 0.1
-set key bottom right box width 2.2
-set size square 
-
-plot  "../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 64 ps 1.2 lw 3 lc "black" notitle, \
-      "../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 64 ps 1.2 lw 3 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 64 ps 1.2 lw 3 lc "blue" notitle, \
-      "../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 64 ps 1.2 lw 3 lc "orange" notitle, \
-      "OutputData-30-673" u 1:6 w l lw 3 lc "black" t "673K", \
-      "OutputData-30-773" u 1:6 w l lw 3 lc "dark-green" t "773K", \
-      "OutputData-30-873" u 1:6 w l lw 3 lc "blue" t "873K", \
-      "OutputData-30-973" u 1:6 w l lw 3 lc "orange" t "973K"
-~~~
-
-~~~gnuplot
-reset
-#set terminal svg size 450, 450
-#set output "huang-t-core.svg"
-
-set terminal epslatex size 3.6, 3.6 color colortext
-set output "huang-t-core.tex"
-
-set xlabel "Time [s]"
-set ylabel "Temperature [K]"
-set grid
-set xrange [0:650]
-set xtics 100
-set yrange [200:850]
-set ytics 100
-set key bottom right box width 2.1
-set size square
-
-plot "OutputData-20-773" u 1:3 w l lw 6 lc "black" t "2 cm", \
-     "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 64 ps 2 lw 5 lc "black" notitle, \
-     "OutputData-30-773" u 1:3 w l lw 6 lc "dark-green" t "3 cm", \
-     "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 64 ps 2 lw 5 lc "dark-green" notitle
-~~~
-
-~~~gnuplot
-reset
-set terminal svg size 450, 450
-set output "huang-t-r2.svg"
-set xlabel "Time [s]"
-set ylabel "Temperature [K]"
-set grid
-set xrange [0:650]
-set xtics 100
-set yrange [200:850]
-set ytics 100
-set key bottom right box width 2.1
-set size square
-
-plot "OutputData-20-773" u 1:4 w l lw 3 lc "black" t "2 cm", \
-     "../../data/huang-particleflow/20/773-T-r2" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
-     "OutputData-30-773" u 1:4 w l lw 3 lc "dark-green" t "3 cm", \
-     "../../data/huang-particleflow/30/773-T-r2" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
-~~~
-
-~~~gnuplot
-reset
-set terminal svg size 450, 450
-set output "huang-t-surf.svg"
-set xlabel "Time [s]"
-set ylabel "Temperature [K]"
-set grid
-set xrange [0:650]
-set xtics 100
-set yrange [200:850]
-set ytics 100
-set key bottom right box width 2.1
-set size square
-
-plot "OutputData-20-773" u 1:5 w l lw 3 lc "black" t "2 cm", \
-     "../../data/huang-particleflow/20/773-T-surf" u 1:2 w p pt 4 ps 1.2 lc "black" notitle, \
-     "OutputData-30-773" u 1:5 w l lw 3 lc "dark-green" t "3 cm", \
-     "../../data/huang-particleflow/30/773-T-surf" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
+plot  "log-one" u 1:2 w l lw 6 dt 1 lc "black" t "one particle", \
+      "log-two" u 1:2 w l lw 6 dt 3 lc "black" t "two particles"
 ~~~
 **/

@@ -6,7 +6,7 @@
 #define MASS_DIFFUSION_ENTHALPY 1
 
 #ifndef T_ENV
-# define T_ENV 673
+# define T_ENV 773
 #endif
 
 #include "grid/multigrid.h"
@@ -58,7 +58,7 @@ int main() {
   zeta_policy = ZETA_REACTION;
 
 #if TREE
-  L0 = 4e-2;
+  L0 = 4e-2*3;
 #else
   int n_proc = 3;
   size((4e-2)*n_proc);
@@ -68,7 +68,6 @@ int main() {
 
   DT = 1e-1;
 
-  // kinfolder = "biomass/dummy-solid";
   shift_prod = true;
   kinfolder = "biomass/Solid-only-2507";
   init_grid(1 << maxlevel);
@@ -79,10 +78,12 @@ int main() {
 
 double r0;
 event init(i=0) {
+#if TREE
+  mask (y > 4e-2 ? top : none);
+#endif
   fraction (f, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
   // No ultimate analysis was found, average from smilar chinese hardwood
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.4229;
@@ -101,8 +102,6 @@ event init(i=0) {
   solid_mass0 = 0.;
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
-
-  moisture0 = solid_mass0*sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")];
 
   TG[left] = dirichlet (TG0);
   TG[right] = neumann (0);
@@ -144,14 +143,6 @@ event output (t += 1) {
   //calculate radius
   double radius = cbrt (3./2.*statsf(f).sum);
 
-  //log moisture profile
-  double moisture = 0.;
-  scalar Ymoist = YSList[OpenSMOKE_IndexOfSolidSpecies ("MOIST")];
-  foreach (reduction(+:moisture)) {
-    if (f[] > F_ERR)
-      moisture += (f[]-porosity[])*rhoS*Ymoist[]/f[]*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
-  }
-
   //average temperature of the surface
   double Tsurf_avg = 0.; 
   int count = 0;
@@ -174,9 +165,9 @@ event output (t += 1) {
   foreach_region (p, region, sampling, reduction(+:r))
     r += f[];
 
-  fprintf (fp, "%g %g %g %g %g %g %g %g\n", 
+  fprintf (fp, "%g %g %g %g %g %g %g\n", 
             t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf_avg, 
-            radius/(D0/2.), moisture/moisture0, r/r0);
+            radius/(D0/2.), r/r0);
 
   fflush(fp);
 }
@@ -185,10 +176,9 @@ event output (t += 1) {
 event adapt (i++) {
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
   adapt_wavelet_leave_interface ({T, u.x, u.y, inert}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 1);
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
 }
 #endif
-
 
 event stop (t = tend);
 
@@ -210,11 +200,14 @@ set yrange [0:1.1]
 set ytics 0.2
 set key top right box width 2.2
 set size square
+array dummy[1] = [0]
 
-plot  "OutputData-20-773" u 1:2 w l lw 6 lc "black" t "2 cm", \
+plot  "OutputData-20-773" u 1:2 w l lw 6 lc "black" notitle, \
       "../../data/huang-particleflow/20/773-mass" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      "OutputData-30-773" u 1:2 w l lw 6 lc "dark-green" t "3 cm", \
-      "../../data/huang-particleflow/30/773-mass" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle
+      "OutputData-30-773" u 1:2 w l lw 6 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/30/773-mass" u 1:2 w p pt 65 ps 2 lw 3 lc "dark-green" notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 3 lc "black" t "2 cm", \
+      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 3 lc "dark-green" t "3 cm"
 ~~~
 ~~~gnuplot
 reset
@@ -233,15 +226,24 @@ set yrange [0.5:1.05]
 set ytics 0.1
 set key bottom right box width 2.2
 set size square 
+array dummy[1] = [0]
 
- plot "../../data/huang-particleflow/20/673-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      "../../data/huang-particleflow/20/773-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/20/873-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
-      "../../data/huang-particleflow/20/973-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "orange" notitle, \
-      "OutputData-20-673" u 1:6 w l lw 6 lc "black" t "673$K$", \
-      "OutputData-20-773" u 1:6 w l lw 6 lc "dark-green" t "773$K$", \
-      "OutputData-20-873" u 1:6 w l lw 6 lc "blue" t "873$K$", \
-      "OutputData-20-973" u 1:6 w l lw 6 lc "orange" t "973$K$"
+plot  "../../data/huang-particleflow/20/673-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
+      "../../data/huang-particleflow/20/773-shrinking" u 1:2 w p pt 65 ps 2 lw 3 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/20/873-shrinking" u 1:2 w p pt 66 ps 2 lw 3 lc "blue" notitle, \
+      "../../data/huang-particleflow/20/973-shrinking" u 1:2 w p pt 69 ps 2 lw 3 lc "orange" notitle, \
+      "OutputData-20-673" u 1:6 w l lw 6 lc "black" notitle, \
+      "OutputData-20-773" u 1:6 w l lw 6 lc "dark-green" notitle, \
+      "OutputData-20-873" u 1:6 w l lw 6 lc "blue" notitle, \
+      "OutputData-20-973" u 1:6 w l lw 6 lc "orange" notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 6 lc "black" t "673K", \
+      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 6 lc "dark-green" t "773K", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 2 lw 6 lc "blue" t "873K", \
+      dummy u (NaN):(NaN) w lp pt 69 ps 2 lw 6 lc "orange" t "973K"
+
+~~~
+
+~~~gnuplot
 reset
 #set terminal svg size 450, 450
 #set output "huang-shrink-30.svg"
@@ -258,16 +260,20 @@ set yrange [0.5:1.05]
 set ytics 0.1
 set key bottom right box width 2.2
 set size square 
+array dummy[1] = [0]
 
 plot  "../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      "../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
-      "../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "orange" notitle, \
-      "OutputData-30-673" u 1:6 w l lw 6 lc "black" t "673$K$", \
-      "OutputData-30-773" u 1:6 w l lw 6 lc "dark-green" t "773$K$", \
-      "OutputData-30-873" u 1:6 w l lw 6 lc "blue" t "873$K$", \
-      "OutputData-30-973" u 1:6 w l lw 6 lc "orange" t "973$K$"
-
+      "../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 65 ps 2 lw 3 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 66 ps 2 lw 3 lc "blue" notitle, \
+      "../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 69 ps 2 lw 3 lc "orange" notitle, \
+      "OutputData-30-673" u 1:6 w l lw 6 lc "black" notitle, \
+      "OutputData-30-773" u 1:6 w l lw 6 lc "dark-green" notitle, \
+      "OutputData-30-873" u 1:6 w l lw 6 lc "blue" notitle, \
+      "OutputData-30-973" u 1:6 w l lw 6 lc "orange" notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 6 lc "black" t "673K", \
+      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 6 lc "dark-green" t "773K", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 2 lw 6 lc "blue" t "873K", \
+      dummy u (NaN):(NaN) w lp pt 69 ps 2 lw 6 lc "orange" t "973K"
 ~~~
 
 ~~~gnuplot
@@ -285,13 +291,16 @@ set xrange [0:650]
 set xtics 100
 set yrange [200:850]
 set ytics 100
-set key bottom right box width 2.1
+set key bottom right box width 2.2
 set size square
+array dummy[1] = [0]
 
-plot "OutputData-20-773" u 1:3 w l lw 6 lc "black" t "2 cm", \
-     "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 64 ps 2 lw 5 lc "black" notitle, \
-     "OutputData-30-773" u 1:3 w l lw 6 lc "dark-green" t "3 cm", \
-     "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 64 ps 2 lw 5 lc "dark-green" notitle
+plot "OutputData-20-773" u 1:3 w l lw 6 lc "black" notitle, \
+     "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
+     "OutputData-30-773" u 1:3 w l lw 6 lc "dark-green" notitle, \
+     "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 65 ps 2 lw 3 lc "dark-green" notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 3 lc "black" t "2 cm", \
+      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 3 lc "dark-green" t "3 cm"
 ~~~
 
 ~~~gnuplot

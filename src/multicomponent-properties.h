@@ -639,30 +639,29 @@ void update_divergence (void) {
   }
 }
 
-void update_divergence_density (void) {
+void update_divergence_density_u (void) {
 
   scalar rhot[];
   foreach()
     rhot[] = rhoGv_S[]*f[] + rhoGv_G[]*(1. - f[]);
   
-  vector grho[];
-  gradients ({rhot}, {grho});
+  scalar eps[];
+  foreach()
+    eps[] = porosity[] + (1. - f[]);
   
   scalar DrhoDt[];
-  foreach() {
-    DrhoDt[] = (rhot[] - rhoGv_S0[])/dt;
+  foreach()
+    DrhoDt[] = (rhot[] - rhoGv_S0[])*eps[]/dt;
+  
+  vector grho[];
+  gradients ({rhot}, {grho});
 
-  // //This does not work, idk why
-  // face vector rhoGflux[];
-  // tracer_fluxes (rhot, uf, rhoGflux, dt, zeroc);
-
-  // foreach()
-  //   foreach_dimension()
-  //     DrhoDt[] += (rhoGflux.x[] - rhoGflux.x[1] - rhot[]*(uf.x[] - uf.x[1]))/Delta;
-
+  foreach()
     foreach_dimension()
       DrhoDt[] += u.x[]*grho.x[];
 
+
+  foreach(){
     DrhoDt[] = DrhoDt[]*cm[];
 
     double one_over_rho = (rhot[] > 0.) ? 1./rhot[] : 0.;
@@ -671,5 +670,43 @@ void update_divergence_density (void) {
       drhodt[] = DrhoDt[]*one_over_rho;
     }
   }
+}
+
+void update_divergence_density_uf (void) {
+  
+  scalar rhot[];
+  foreach()
+    rhot[] = rhoGv_S[]*f[] + rhoGv_G[]*(1. - f[]);
+  
+  scalar eps[];
+  foreach()
+    eps[] = porosity[] + (1. - f[]);
+  scalar DrhoDt[];
+
+  foreach()
+    DrhoDt[] = (rhot[] - rhoGv_S0[])*eps[]/dt;
+  
+  face vector rhoGflux[];
+  tracer_fluxes (rhot, uf, rhoGflux, dt, zeroc);
+
+  foreach() 
+    foreach_dimension()
+      DrhoDt[] += (rhoGflux.x[1] - rhoGflux.x[] - rhot[]*(uf.x[1] - uf.x[]))/Delta;
+
+  foreach(){
+    DrhoDt[] = DrhoDt[]*cm[];
+
+    double one_over_rho = (rhot[] > 0.) ? 1./rhot[] : 0.;
+
+    if (iter > 1) {
+      drhodt[] = DrhoDt[]*one_over_rho;
+    }
+  }
+}
+
+void update_divergence_density (void) {
+  // Choose one of the two methods to compute drhodt
+  update_divergence_density_u();
+  // update_divergence_density_uf();
 }
 #endif

@@ -45,13 +45,15 @@ double tend = 800.; //800s
 
 int main() {
 
-  #if TREE
+#if TREE
   L0 = 3.5*H0;
-  #else
+  origin(-L0/3, 0.);
+#else
   int n_proc = 6;
   size((1.602e-2)*n_proc);
   dimensions(nx=n_proc, ny=1);
-  #endif
+  origin(-L0/3, 0.);
+#endif
 
   eps0 = 0.4;
   rho1 = 1., rho2 = 1.;
@@ -63,13 +65,11 @@ int main() {
 
   G.x = -9.81;
 
-  DT = 1e-1;
-  origin(-L0/3, 0.);
+  DT = 1;
   Da = (coord){1e-10, 1e-12};
 
-  zeta_policy = ZETA_RATE;
+  zeta_policy = ZETA_REACTION;
   kinfolder = "biomass/Solid-only-2407";
-  // kinfolder = "biomass/dummy-solid";
   init_grid(1 << maxlevel);
   run();
 }
@@ -102,8 +102,6 @@ event init (i = 0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]  = 0.0349;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]  = 0.0080;
 
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
-
   TG[top] = dirichlet (TG0);
   TG[left] = dirichlet (TG0);
 
@@ -122,20 +120,22 @@ event init (i = 0) {
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
   //radial shrinking
-  r0 = 0;
+  r0 = 0.;
   coord pr;
-  coord regionr[2] = {{0,0},{0,1.6e-2}};
+  coord regionr[2] = {{0, 0},{0, 1.6e-2}};
   coord samplingr = {1, 1.6e-2/(L0/(1<<maxlevel))};
   foreach_region (pr, regionr, samplingr, reduction(+:r0))
-    r0 += f[];
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
+      r0 = y + Delta*(f[] - 0.5);
+
 
   //axial shrinking
-  h0 = 0;
+  h0 = 0.;
   coord ph;
   coord regionh[2] = {{-L0/3,0},{L0/3*2,0}};
   coord samplingh = {(1<<maxlevel), 1};
   foreach_region (ph, regionh, samplingh, reduction(+:h0))
-    h0 += f[];
+    h0 += f[]*Delta;
 
   if (pid() == 0) {
     char name[80];
@@ -148,11 +148,11 @@ event adapt (i++) {
   #if TREE
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
   adapt_wavelet_leave_interface ({T, u.x, u.y, porosity, inert}, {f},
-    (double[]){1.e-2, 1.e-2, 1.e-2, 1e0, 1e-1}, maxlevel, minlevel, padding=2);
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e0, 1e-1}, maxlevel, minlevel, padding=2);
   #endif
 }
 
-event end_timestep (t += 0.1) {
+event end_timestep (t += 1) {
   if (pid() == 0)
     fprintf (stderr, "%g\n", t);
 
@@ -167,21 +167,18 @@ event end_timestep (t += 0.1) {
   coord regionr[2] = {{0,0},{0,1.6e-2}};
   coord samplingr = {1, 1.6e-2/(L0/(1<<maxlevel))};
   foreach_region (p, regionr, samplingr, reduction(+:r))
-    r += f[];
-  
+    if (f[] > F_ERR && f[] < 1.-F_ERR)
+      r = y + Delta*(f[] - 0.5);
+
   //axial shrinking
   double h = 0.;
   coord regionh[2] = {{-L0/3,0},{L0/3*2,0}};
   coord samplingh = {(1<<maxlevel), 1};
   foreach_region (p, regionh, samplingh, reduction(+:h))
-    h += f[];
-
-  double avgTInt = avg_interface (TInt, f);
-
-  double hConvRad = totHeatFlux/(avgTInt - TG0 + 1e-10); //W/m2/K
+    h += f[]*Delta;
 
   if (pid() == 0) {
-    fprintf(fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, h/h0, hConvRad, avgTInt);
+    fprintf(fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, r/r0, h/h0);
     fflush(fp);
   }
 }
@@ -200,23 +197,23 @@ event end_timestep (t += 0.1) {
 //   save ("movie.mp4");
 // }
 
-event outputfields (t = {100, 200, 300, 400}) {
-  char name[80];
-  sprintf (name, "Fields-%d", (int)(t));
-  static FILE * fs = fopen (name, "w");
+// event outputfields (t = {100, 200, 300, 400}) {
+//   char name[80];
+//   sprintf (name, "Fields-%d", (int)(t));
+//   static FILE * fs = fopen (name, "w");
 
-  scalar p1[], p2[];
-  scalar ps1 = YGList_S[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
-  scalar ps2 = YGList_S[OpenSMOKE_IndexOfSpecies ("CO2")];
-  scalar pg1= YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
-  scalar pg2= YGList_G[OpenSMOKE_IndexOfSpecies ("CO2")];
-  foreach() {
-    p1[] = ps1[] + pg1[];
-    p2[] = ps2[] + pg2[];
-  }
+//   scalar p1[], p2[];
+//   scalar ps1 = YGList_S[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+//   scalar ps2 = YGList_S[OpenSMOKE_IndexOfSpecies ("CO2")];
+//   scalar pg1= YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+//   scalar pg2= YGList_G[OpenSMOKE_IndexOfSpecies ("CO2")];
+//   foreach() {
+//     p1[] = ps1[] + pg1[];
+//     p2[] = ps2[] + pg2[];
+//   }
 
-  output_field ({T, f, u.x, u.y, omega, zeta, porosity, p1, p2}, fs);
-}
+//   output_field ({T, f, u.x, u.y, omega, zeta, porosity, p1, p2}, fs);
+// }
 
 event stop (t = tend);
 
@@ -286,8 +283,8 @@ set grid
 err_mass_time_r = 20
 err_mass_time_l = 0.
 
-plot  "OutputData-7-08" u 1:2 w l lw 6 lc "black" notitle, \
-      "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 64 ps 2 lw 5 lc "black" notitle
+plot  "OutputData-7-rate" u 1:2 w l lw 6 lc "black" notitle, \
+      "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 64 ps 2 lw 6 lc "black" notitle
       #"data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Mass Gentile"
 ~~~
 
@@ -309,11 +306,14 @@ err_shrink_time_l = 0.
 err_shrink_value_u = 0.
 err_shrink_value_d = 0.05
 err_mass_time = 20
+array dummy[1] = [0]
 
-plot "OutputData-7-08" u 1:3 w l lw 6 lc "dark-green" t "Radial", \
-     "OutputData-7-08" u 1:4 w l lw 6 lc "black" t "Axial", \
+plot "OutputData-7-const" u 1:3 w l lw 6 lc "dark-green" notitle, \
+     "OutputData-7-const" u 1:4 w l lw 6 lc "black" notitle, \
      "data/radial-exp" u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 64 ps 2 lw 5 lc "dark-green" notitle, \
-     "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 64 ps 2 lw 5 lc "black" notitle
+     "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 65 ps 2 lw 5 lc "black" notitle, \
+     dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 5 lc "dark-green" t "Radial", \
+     dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 5 lc "black" t "Axial"
      #"data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "dark-green" t "Radial Gentile", \
      #"data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Axial Gentile"
 ~~~

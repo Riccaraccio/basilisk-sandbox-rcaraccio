@@ -65,11 +65,15 @@ This function updates the physical properties used in the Navier-Stokes equation
 to have constant gas properties throughout the domain.
 */
 void update_properties_constant (void) {
+  scalar mu_centered[];
+  foreach()
+    mu_centered[] = muG/(porosity[]*f[] + (1. - f[]));
+
   foreach_face() {
     alphav.x[] = fm.x[]/rhoG;
     {
       face vector muv = mu;
-      muv.x[] = muG*fm.x[];
+      muv.x[] = face_value(mu_centered, 0)*fm.x[];
     }
   }
 

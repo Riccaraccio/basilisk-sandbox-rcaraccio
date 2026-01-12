@@ -3,14 +3,13 @@
 
 #include "grid/multigrid.h"
 #include "navier-stokes/centered-phasechange.h"
-// #include "fractions.h"
 #include "two-phase.h"
 #include "constant-properties.h"
 #include "darcy.h"
 
 double uin = 1.;
 double Re = 1.;
-int maxlevel = 8;
+int maxlevel = 9;
 double epsi0 = 0.7;
 double H = 1.;
 
@@ -36,10 +35,10 @@ pf[bottom] = neumann (0.);
 
 scalar porosity[];
 double rhoG, muG;
+face vector muv[];
 
 int main () {
   muG = 1e-2;
-  const face vector muv[] = {muG, muG};
   mu = muv;
   mu1 = mu2 = 1.;
   rho1 = rho2 = 1.;
@@ -63,14 +62,9 @@ event init (i = 0) {
   }
 }
 
-event logprofile (t = end) {
+void logprofile () {
   for (double x = 0.; x < L0; x += L0/(1<<maxlevel))
-    fprintf (stderr, "%g %g %g %g %g\n", x/H, 
-                                   interpolate (u.x, x, 0.5*H), 
-                                   interpolate (p, x, 0.5*H),
-                                  //  interpolate (u.x, x, 0.5*H)/interpolate (eps, x, 0.5*H), 
-                                  //  interpolate (p, x, 0.5)/interpolate (eps, x, 0.5*H)
-                                  );
+    fprintf (stderr, "%g %g %g\n", x/H, interpolate (u.x, x, 0.5*H), interpolate (p, x, 0.5*H));
 }
 
 const double max_cfl = 0.1;
@@ -98,8 +92,21 @@ event tracer_diffusion (i++) {
       uf.x[] = ufsave.x[];
 }
 
+scalar un[];
+#define CONVERGENCE_TOLERANCE 1e-10
 
-event stop (t = 1);
+event steadystate (i++) {
+  double du = change (u.x, un);
+  if (i > 1 && du < CONVERGENCE_TOLERANCE) {
+    fprintf (stderr, "# Converged.\n");
+    logprofile ();
+    return 1;
+  }
+}
+
+event stop (t = 1) {
+  logprofile ();
+}
 
 /** 
 ~~~gnuplot velocity profile
@@ -119,7 +126,7 @@ set ylabel "Velocity [m/s]"
 set yrange [1.2:1.6]
 set xrange [0:8]
 plot "log" u 1:2 w l lc "blue",\
-     "../../data/porous-plug/velocity" w p pt 4
+     "../../data/porous-tube/velocity" w p pt 4
 #plot "log" u 1:4 w l lc "blue"
 
 set size square
@@ -130,7 +137,7 @@ set ylabel "Pressure"
 set yrange [0:350]
 set xrange [0:8]
 plot "log" u 1:3 w l lc "blue",\
-     "../../data/porous-plug/pressure" w p pt 4
+     "../../data/porous-tube/pressure" w p pt 4
 #plot "log" u 1:5 w l lc "blue"
 
 unset multiplot

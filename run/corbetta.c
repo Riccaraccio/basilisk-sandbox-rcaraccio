@@ -125,7 +125,7 @@ event output (t+=1) {
     solid_mass += (f[]-porosity[])*rhoS*dv();
 
   //calculate radius
-  double radius = pow (3.*statsf(f).sum, 1./3.);
+  double radius = cbrt (3.*statsf(f).sum);
 
   //save temperature profile
   double Tcore  = interpolate (T, 0., 0.);
@@ -136,7 +136,7 @@ event output (t+=1) {
     Tsurf = TemperatureProfile_GetT(t);
   #endif
 
-  fprintf (fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf, radius/D0/2);
+  fprintf (fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, Tcore, Tr2, Tsurf, radius/(D0/2));
   fflush(fp);
 }
 
@@ -184,7 +184,7 @@ event snapshots (t += 1) {
 // }
 
 
-event stop (i = 1);
+event stop (t = 1000);
 
 /** 
 ~~~gnuplot temperature profiles
@@ -202,12 +202,18 @@ set key bottom right box width 1
 set xrange [0:1000]
 set yrange [300:850]
 set grid
-plot  "data/corbetta-core.txt"  u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
-      "data/corbetta-r2.txt"    u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
-      "data/corbetta-surf.txt"  u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      datafile u 1:3 w l lw 6 lc "dark-green" t "core", \
-      datafile u 1:4 w l lw 6 lc "blue" t "half-radius", \
-      datafile u 1:5 w l lw 6 lc "black" t "surface"
+
+array dummy[1] = [0]
+
+plot  "data/corbetta-core.txt"  u 1:2 w p pt 64 ps 2 lw 4 lc "dark-green" notitle, \
+      "data/corbetta-r2.txt"    u 1:2 w p pt 65 ps 2 lw 4 lc "blue" notitle, \
+      "data/corbetta-surf.txt"  u 1:2 w p pt 66 ps 2 lw 4 lc "black" notitle, \
+      datafile u 1:3 w l lw 6 lc "dark-green" notitle, \
+      datafile u 1:4 w l lw 6 lc "blue" notitle, \
+      datafile u 1:5 w l lw 6 lc "black" notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 4 lc "dark-green" t "Core", \
+      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 4 lc "blue" t "Half radius", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 2 lw 4 lc "black" t "Surface"
 ~~~
 
 ~~~gnuplot species profiles
@@ -230,8 +236,8 @@ set key top right box width 2.2
 set grid
 set xrange [0:600]
 set yrange [0:0.5]
-plot  centered_diff(datafile, 32, 1000, 25) u 1:2 w l lw 2 lc "dark-green" t "sym CO_{2}", \
-      "data/expCO2" u 1:2 w p pt 4 lc "dark-green" t "exp CO_{2}", \
+plot  centered_diff(datafile, 32, 1000, 25) u 1:2 w l lw 2 lc "dark-green" t "sym CO\ts{2}", \
+      "data/expCO2" u 1:2 w p pt 4 lc "dark-green" t "exp CO{2}", \
       centered_diff(datafile, 31, 1000, 25) u 1:2 w l lw 2 lc "blue" t "sym CO", \
       "data/expCO" u 1:2 w p pt 4 lc "blue" t "exp CO", \
       centered_diff(datafile, 19, 1000, 25) u 1:2 w l lw 2 lc "black" t "sym HCHO", \
@@ -279,7 +285,7 @@ datafile = "balances-7-rate"
 
 #set title "Zeta Rate"
 set xlabel "Time [s]"
-set ylabel "Production rate [mg/s/g_{init}]"
+set ylabel "Production rate [$mg/s/g_{init}$]"
 set key top right box width 2.2
 set size square 
 set grid
@@ -287,13 +293,17 @@ set xrange [0:600]
 set xtics 200
 set ytics 0.1
 set yrange [0:0.5]
+array dummy[1] = [0]
 
-plot  "data/expCO2"   u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
-      "data/expCO"    u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
-      "data/expHCHO"  u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      centered_diff(datafile, 32, 1000, 25) u 1:2 w l lw 6 lc "dark-green" t "CO_{2}", \
-      centered_diff(datafile, 31, 1000, 25) u 1:2 w l lw 6 lc "blue" t "CO", \
-      centered_diff(datafile, 19, 1000, 25) u 1:2 w l lw 6 lc "black" t "HCHO"
+plot  "data/expCO2"   u 1:2 w p pt 64 ps 3 lw 6 lc "dark-green" notitle, \
+      "data/expCO"    u 1:2 w p pt 65 ps 3 lw 6 lc "blue" notitle, \
+      "data/expHCHO"  u 1:2 w p pt 66 ps 3 lw 6 lc "black" notitle, \
+      centered_diff(datafile, 32, 1000, 25) u 1:2 w l lw 6 lc "dark-green" notitle, \
+      centered_diff(datafile, 31, 1000, 25) u 1:2 w l lw 6 lc "blue" notitle, \
+      centered_diff(datafile, 19, 1000, 25) u 1:2 w l lw 6 lc "black" notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 3 lw 6 lc "dark-green" t "CO\\textsubscript{2}", \
+      dummy u (NaN):(NaN) w lp pt 65 ps 3 lw 6 lc "blue" t "CO", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 3 lw 6 lc "black" t "HCHO"
 
 set xlabel "Time [s]"
 #set ylabel "Production rate [mg/s/g_{init}]"
@@ -306,10 +316,12 @@ set xtics 200
 set ytics 0.1
 set yrange [0:0.4]
       
-plot  "data/expCH3COOH" u 1:2 w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
-      "data/expCH3OH"   u 1:2 w p pt 64 ps 2 lw 3 lc "blue" notitle, \
-      centered_diff(datafile, 7, 1000, 25)  u 1:2 w l lw 6 lc "dark-green" t "CH_{3}COOH", \
-      centered_diff(datafile, 18, 1000, 25) u 1:2 w l lw 6 lc "blue" t "CH_{3}OH"
+plot  "data/expCH3COOH" u 1:2 w p pt 64 ps 3 lw 6 lc "dark-green" notitle, \
+      "data/expCH3OH"   u 1:2 w p pt 65 ps 3 lw 6 lc "blue" notitle, \
+      centered_diff(datafile, 7, 1000, 25)  u 1:2 w l lw 6 lc "dark-green" notitle, \
+      centered_diff(datafile, 18, 1000, 25) u 1:2 w l lw 6 lc "blue" notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 3 lw 6 lc "dark-green" t "CH\\textsubscript{3}COOH", \
+      dummy u (NaN):(NaN) w lp pt 65 ps 3 lw 6 lc "blue" t "CH\\textsubscript{3}OH"
 
 set xlabel "Time [s]"
 #set ylabel "Production rate [$mg/s/g_{init}$]"
@@ -322,12 +334,15 @@ set xtics 200
 set ytics 0.01
 set yrange [0:0.05]
 
-plot  "data/expH2"  u 1:($2*10) w p pt 64 ps 2 lw 3 lc "dark-green" notitle, \
-      "data/expCH4" u 1:2       w p pt 64 ps 2 lw 3 lc "blue" notitle, \
-      "data/expHCOOH" u 1:2     w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      centered_diff(datafile, 33, 1000*10, 25) u 1:2 w l lw 6 lc "dark-green" t "H_{2}*10", \
-      centered_diff(datafile, 34, 1000, 25)    u 1:2 w l lw 6 lc "blue" t "CH_{4}", \
-      centered_diff(datafile, 20, 1000, 25)    u 1:2 w l lw 6 lc "black" t "HCOOH"
+plot  "data/expH2"  u 1:($2*10) w p pt 64 ps 3 lw 6 lc "dark-green" notitle, \
+      "data/expCH4" u 1:2       w p pt 65 ps 3 lw 6 lc "blue" notitle, \
+      "data/expHCOOH" u 1:2     w p pt 66 ps 3 lw 6 lc "black" notitle, \
+      centered_diff(datafile, 33, 1000*10, 25) u 1:2 w l lw 6 lc "dark-green" notitle, \
+      centered_diff(datafile, 34, 1000, 25)    u 1:2 w l lw 6 lc "blue" notitle, \
+      centered_diff(datafile, 20, 1000, 25)    u 1:2 w l lw 6 lc "black" notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 3 lw 6 lc "dark-green" t "H\\textsubscript{2} $\\times 10$", \
+      dummy u (NaN):(NaN) w lp pt 65 ps 3 lw 6 lc "blue" t "CH\\textsubscript{4}", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 3 lw 6 lc "black" t "HCOOH"
 
 unset multiplot
 ~~~

@@ -62,7 +62,7 @@ event viscous_term (i++) {
       muGh = muGv_S[];
       rhoGh = rhoGv_S[];
       #else
-      muGh = muG;
+      muGh = muG/e;
       rhoGh = rhoG;
       #endif
 

@@ -24,7 +24,7 @@ equations. */
 #endif
 
 #ifndef FSOLVE_ABSTOL
-# define FSOLVE_ABSTOL 1.e-7
+# define FSOLVE_ABSTOL 1.e-8
 #endif
 
 typedef int (* nls_fun) (const gsl_vector * x, void * params, gsl_vector * f);

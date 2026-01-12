@@ -43,11 +43,27 @@ mgstats project_sf (face vector uf, scalar p,
 #endif
   }
 
-  mgstats mgp = poisson (p, div, alpha,
+#ifdef POROUS_ADVECTION
+  scalar centered_alpha[];
+  foreach()
+  #ifdef VARPROP
+    centered_alpha[] = (porosity[] + (1. - f[]))/rhov[];
+  #else
+    centered_alpha[] = (porosity[] + (1. - f[]))/rhoG;
+  #endif
+
+  face vector alpha_eff[];
+  foreach_face()
+    alpha_eff.x[] = face_value(centered_alpha, 0);
+#else
+  #define alpha_eff alpha
+#endif
+
+  mgstats mgp = poisson (p, div, alpha_eff,
        tolerance = TOLERANCE/sq(dt), nrelax = nrelax);
 
   foreach_face()
-    uf.x[] -= dt*alpha.x[]*face_gradient_x (p, 0);
+    uf.x[] -= dt*alpha_eff.x[]*face_gradient_x (p, 0);
 
   return mgp;
 }
@@ -144,7 +160,7 @@ event defaults (i = 0) {
 
 event advection_term (i++, last) {
   prediction();
-  mgpf = project (uf, pf, alpha, dt/2., mgpf.nrelax);
+  mgpf = project_sf (uf, pf, alpha, dt/2., mgpf.nrelax);
 
   /**
   porosity is a tracer field appended to f. Here we need the one-field form

@@ -15,15 +15,20 @@ the average velocity in the free fluid region at the outlet, as done in the
 `stop` event.
 */
 
+#define POROUS_ADVECTION 1
+
 int maxlevel = 10;        // Maximum refinement level
 double H = 1.;            // Channel height
-double U0 = 1.17  ;       // Inflow velocity
+double U0 = 1.17;       // Inflow velocity for Da = 1e-2
+//double U0 = 1.05;       // Inflow velocity for Da = 1e-3
 double eps0 = 0.7;        // Porosity
-double tend = 1.;         // End time
+double tend = 10.;         // End time
 double Re = 1.;           // Reynolds number
 
+scalar eps[];
+
 #include "grid/multigrid.h"
-#include "navier-stokes/centered.h"
+#include "navier-stokes/centered-phasechange.h"
 #include "fractions.h"
 #include "darcy.h"
 #include "view.h"
@@ -57,6 +62,7 @@ pf[bottom] = neumann (0.);
 
 scalar porosity[], f[];
 double rhoG = 1., muG;
+face vector muv[];
 
 int main() {
 
@@ -65,10 +71,10 @@ int main() {
   region.
   */
   muG = H*1.*rhoG/Re;
-  const face vector muv[] = {muG, muG};
+  // const face vector muv[] = {muG, muG};
   mu = muv;
 
-  Da = (coord) {1.e-2/sq(H), 1.e-2/sq(H)};
+  Da = (coord) {1.e-2*sq(H), 1.e-2*sq(H)};
 
   /**
    Domain in 8H x 2H
@@ -89,7 +95,15 @@ event init (i = 0) {
   fraction (f, -y);
   foreach() {
     porosity[] = f[]*eps0;
+    eps[] = eps0*f[] + (1. - f[]);
   }
+
+  scalar centered_mu[];
+  foreach()
+    centered_mu[] = muG/eps[];
+
+  foreach_face()
+    muv.x[] = face_value(centered_mu, 0);
 }
 
 /**
@@ -109,22 +123,42 @@ We also compute the average velocity in the free fluid region,
 it should be close to 1.
 */
 
-event stop (t = tend) {
+void write_results() {
   double step = 2*H/(1 << maxlevel);
-  double x_interpolate = 0.99*8*H;
+  double x_interpolate = 0.999*8*H;
   int counter = 0;
+
+  // Compute average velocity in free fluid region
   double avg_U = 0.;
+  for (double y = 0; y<H; y+=step){
+    double U = interpolate (u.x, x_interpolate, y);
+    counter++;
+    avg_U += U;
+  }
+  avg_U /= counter;
+
   for (double y = -H; y<H; y+=step){
     double Y = y/H;
-    double U = interpolate (u.x, x_interpolate, y)/1.;
-    fprintf (stderr, "%g %g\n", U, Y);
-
-    if (y > 0) {
-      counter++;
-      avg_U += U;
-    }
+    double U = interpolate (u.x, x_interpolate, y);
+    fprintf (stderr, "%g %g\n", U/avg_U, Y);
   }
-  fprintf (stderr, "# Avg u: %g\n", avg_U/counter);
+  fprintf (stderr, "# Avg u: %g\n", avg_U);
+}
+
+scalar un[];
+#define CONVERGENCE_TOLERANCE 1e-10
+
+event steadystate (i++) {
+  double du = change (u.x, un);
+  if (i > 1 && du < CONVERGENCE_TOLERANCE) {
+    fprintf (stderr, "# Steady state reached after %d iterations %g time \n", i, t);
+    write_results();
+    return 1;
+  }
+}
+
+event stop (t = tend) {
+  write_results();
 }
 
 /**
@@ -132,17 +166,20 @@ event stop (t = tend) {
 ~~~gnuplot
 reset
 set terminal svg size 400,400
-set output "velocity-profile.svg"
+#set terminal epslatex color size 3.6, 3.6
+set output "porous-channel-da-02.svg"
 
 set xlabel "u/U"
 set ylabel "y/H"
 set grid
+set xtics 0.25
 set size square
 unset key
 
 set xrange [0:1.5]
-plot "log" u 1:2 w l lw 2 lc "blue", \
-     "../../data/porouschannel/velocity-da-02" w p pt 4
+plot  "log" u 1:2 w l lw 3 lc "black" t "Simulation", \
+      "../../data/porouschannel/velocity-da-02" w p pt 64 ps 1.2 lw 3 lc "black" t "Betchen et al. (2006)"
+
 ~~~
 ## References
 

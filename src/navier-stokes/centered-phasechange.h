@@ -44,17 +44,13 @@ mgstats project_sf (face vector uf, scalar p,
   }
 
 #ifdef POROUS_ADVECTION
-  scalar centered_alpha[];
+  scalar eps[];
   foreach()
-  #ifdef VARPROP
-    centered_alpha[] = (porosity[] + (1. - f[]))/rhov[];
-  #else
-    centered_alpha[] = (porosity[] + (1. - f[]))/rhoG;
-  #endif
+    eps[] = porosity[] + (1. - f[]);
 
   face vector alpha_eff[];
   foreach_face()
-    alpha_eff.x[] = face_value(centered_alpha, 0);
+    alpha_eff.x[] = face_value(eps, 0)*alpha.x[];
 #else
   #define alpha_eff alpha
 #endif

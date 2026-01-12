@@ -3,9 +3,11 @@
 This test case verifies the mass conservation in a two-phase flow with phase change.
 See [src/shrinking.h](src/shrinking.h) for details on why shrinking models are needed.
 We check the error at different grid resolutions and for different porosity update strategies:
+
 - Only shrinking (zeta_policy = 0)
 - Constant-volume (zeta_policy = 1)
 - Smooth function (zeta_policy = 3)
+
 Analytical solution is possible in this simplified configuration, and used to compute the error.
 */
 
@@ -235,9 +237,9 @@ plot  '$SHRINK_DATA' u 1:2 w p pt 2 ps 2 lc "dark-green" t "Only shrinking",\
 
 ~~~gnuplot Error in solid mass
 reset
-set terminal svg size 450, 450
-#set terminal epslatex size 3.6, 3.6 color colortext
-set output "solid-mass-error-maxlevel.svg"
+#set terminal svg size 450, 450
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "solid-mass-error-maxlevel.tex"
 
 analytical = exp(-1)
 
@@ -305,25 +307,25 @@ set format y "10^{%T}"
 set key top right box opaque
 set logscale x 2
 set logscale y
-set yr [1e-5:0.7]
+set yr [1e-5:0.8]
 set xr [2**4:2**8]
 set size square
 set grid
-set title "Solid mass conservation"
+#set title "Solid mass conservation"
 
-plot  '$SHRINK_DATA'    u 1:2 w p pt 2  ps 2 lw 3 lc "dark-green" t "Only shrinking",\
-      '$SWELLING_DATA'  u 1:2 w p pt 8  ps 2 lw 3 lc "black" t "Constant-volume",\
-      '$SMOOTH_DATA'    u 1:2 w p pt 4  ps 2 lw 3 lc "blue" t "Smooth function", \
-      f4(x) lw 2 lc "red" title "1^{st} order",\
-      f5(x) lw 2 lc "orange" title "2^{nd} order"
+plot  '$SHRINK_DATA'    u 1:2 w p pt 65  ps 3.5 lw 6 lc "dark-green" t "Only shrinking",\
+      '$SWELLING_DATA'  u 1:2 w p pt 66  ps 3.5 lw 6 lc "black" t "Constant-volume",\
+      '$SMOOTH_DATA'    u 1:2 w p pt 64  ps 3.5 lw 6 lc "blue" t "Smooth function", \
+      f4(x) lw 6 lc "red" title "$1^{st}$ order",\
+      f5(x) lw 6 dt 2 lc "red" title "$2^{nd}$ order"
       #f3(x) lw 3 lc "blue" title sprintf("fit: %.2f x^{%.2f}", A3, B3)
 ~~~
 
 ~~~gnuplot Error in gas mass
 reset
-set terminal svg size 450, 450
-#set terminal epslatex size 3.6, 3.6 color colortext
-set output "gas-mass-error-maxlevel.svg"
+#set terminal svg size 450, 450
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "gas-mass-error-maxlevel.tex"
 
 analytical = 1-exp(-1)
 
@@ -360,11 +362,11 @@ set format y "10^{%T}"
 set logscale x 2
 set logscale y
 #set yr [0.001:1]
-set yr [1e-5:0.7]
+set yr [1e-5:0.8]
 set xr [2**4:2**8]
 set size square
 set grid
-set title "Gas mass conservation"
+#set title "Gas mass conservation"
 
 A0 = 0.01
 B0 = -1
@@ -397,77 +399,73 @@ fit f0(x) '$SHRINK_DATA' using 1:2 via A0, B0
 fit f1(x) '$SWELLING_DATA' using 1:2 via A1, B1
 fit f3(x) '$SMOOTH_DATA' using 1:2 via A3, B3
 
-plot  '$SHRINK_DATA'   u 1:2 w p pt 2 ps 2 lw 3 lc "dark-green" t "Only shrinking",\
-      '$SWELLING_DATA' u 1:2 w p pt 8 ps 2 lw 3 lc "black" t "Constant-volume",\
-      '$SMOOTH_DATA'   u 1:2 w p pt 4 ps 2 lw 3 lc "blue" t "Smooth function", \
-      f4(x) lw 2 lc "red" title "1^{st} order"
+plot  '$SHRINK_DATA'   u 1:2 w p pt 65 ps 3.5 lw 6 lc "dark-green" t "Only shrinking",\
+      '$SWELLING_DATA' u 1:2 w p pt 66 ps 3.5 lw 6 lc "black" t "Constant-volume",\
+      '$SMOOTH_DATA'   u 1:2 w p pt 64 ps 3.5 lw 6 lc "blue" t "Smooth function", \
+      f4(x) lw 6 lc "red" title "$1^{st}$ order"
       #f3(x) lw 3 lc "blue" title sprintf("fit: %.2f x^{%.2f}", A3, B3)
-
 ~~~
-#~~~gnuplot Maps for Shrink
-#reset
-#set terminal svg size 450, 450
-##set margin 0., 0., 0., 0.
-#set output "massb-shrink-map.svg"
-##set terminal epslatex size 3.6, 3.6 color colortext
-##set output "massb-shrink-map.tex"
-#set pm3d map interpolate 3,3
-##load "/root/gnuplot-palettes/ylgn.pal"
-#load "/root/gnuplot-palettes/jet.pal"
-#
-#set multiplot
-#
-#set xr [0:1]
-#set yr [0:1]
-#set size square
-#unset key
-#unset xtics 
-#unset ytics
-#unset colorbox
-#set border lw 2.5
-#set cbrange [0:0.8]
-#splot "OutputFields-0" u 1:2:7
-#
-#set contour base
-#set cntrparam levels discrete 0.5
-#set cntrparam bspline
-#set cntrlabel onecolor
-#
-#unset surface
-#splot "OutputFields-0" u 1:2:8 lt 3 lc "black" lw 2, "OutputFields-init" u 1:2:8 lt 3 dt 2  lc "white" lw 2
-#unset multiplot
-#~~~
 
-#~~~gnuplot Maps for Swelling
-#reset
-#set terminal svg size 450, 450
-##set terminal epslatex size 3.6, 3.6 color colortext
-#set output "massb-swelling-map.svg"
-#set pm3d map interpolate 0,0
-##load "/root/gnuplot-palettes/ylgn.pal"
-#load "/root/gnuplot-palettes/jet.pal"
-#
-#set multiplot
-#
-#set xr [0:1]
-#set yr [0:1]
-#set size square
-#unset key
-#unset xtics 
-#unset ytics
-#unset colorbox
-#set cbrange [0:0.8]
-#splot "OutputFields-1" u 1:2:7
-#
-#set contour base
-#set cntrparam levels discrete 0.5
-#set cntrparam bspline
-#set cntrlabel onecolor
-#
-#unset surface
-#splot "OutputFields-1" u 1:2:8 lt 3 lc "black" lw 2, "OutputFields-init" u 1:2:8 lt 3 dt 2  lc "white" lw 2
-#unset multiplot
-#~~~
+~~~gnuplot Maps for Shrink
+reset
+set terminal svg size 450, 450
+#set terminal epslatex size 3.6, 3.6 color colortext
+set output "massb-shrink-map.svg"
+set pm3d map interpolate 3,3
+load "/root/gnuplot-palettes/jet.pal"
+
+set multiplot
+
+set xr [0:1]
+set yr [0:1]
+set size square
+unset key
+unset xtics 
+unset ytics
+unset colorbox
+set border lw 2.5
+set cbrange [0:0.8]
+splot "OutputFields-0" u 1:2:7
+
+set contour base
+set cntrparam levels discrete 0.5
+set cntrparam bspline
+set cntrlabel onecolor
+
+unset surface
+splot "OutputFields-0" u 1:2:8 lt 3 lc "black" lw 2, "OutputFields-init" u 1:2:8 lt 3 dt 2  lc "white" lw 2
+unset multiplot
+~~~
+
+~~~gnuplot Maps for Swelling
+reset
+set terminal svg size 450, 450
+#set terminal epslatex size 3.6, 3.6 color colortext
+set output "massb-swelling-map.svg"
+set pm3d map interpolate 0,0
+load "/root/gnuplot-palettes/jet.pal"
+
+set multiplot
+
+set xr [0:1]
+set yr [0:1]
+set size square
+unset key
+unset xtics 
+unset ytics
+unset colorbox
+set cbrange [0:0.8]
+splot "OutputFields-1" u 1:2:7
+
+set contour base
+set cntrparam levels discrete 0.5
+set cntrparam bspline
+set cntrlabel onecolor
+
+unset surface
+splot "OutputFields-1" u 1:2:8 lt 3 lc "black" lw 2, "OutputFields-init" u 1:2:8 lt 3 dt 2  lc "white" lw 2
+unset multiplot
+~~~
 
 ~~~gnuplot Maps for Smooth
 reset
@@ -501,36 +499,36 @@ splot "OutputFields-3" u 1:2:8 lt 3 lc "black" lw 2, "OutputFields-init" u 1:2:8
 unset multiplot
 ~~~
 
-#~~~gnuplot Maps for initial condition
-#reset
-#set terminal svg size 450, 450
-##set terminal epslatex size 3.6, 3.6 color colortext
-#set output "massb-init-map.svg"
-#set pm3d map interpolate 0,0
-##load "/root/gnuplot-palettes/ylgn.pal"
-#load "/root/gnuplot-palettes/jet.pal"
-#
-#set multiplot
-#
-#set xr [0:1]
-#set yr [0:1]
-#set size square
-#unset key
-#unset xtics 
-#unset ytics
-#unset colorbox
-#set cbrange [0:0.8]
-#splot "OutputFields-init" u 1:2:7
-#
-#set contour base
-#set cntrparam levels discrete 0.5
-#set cntrparam bspline
-#set cntrlabel onecolor
-#
-#unset surface
-#splot "OutputFields-init" u 1:2:8 lt 3 lc "black" lw 2, "OutputFields-init" u 1:2:8 lt 3 dt 2  lc "white" lw 2
-#unset multiplot
-#~~~
+~~~gnuplot Maps for initial condition
+reset
+set terminal svg size 450, 450
+#set terminal epslatex size 3.6, 3.6 color colortext
+set output "massb-init-map.svg"
+set pm3d map interpolate 0,0
+#load "/root/gnuplot-palettes/ylgn.pal"
+load "/root/gnuplot-palettes/jet.pal"
+
+set multiplot
+
+set xr [0:1]
+set yr [0:1]
+set size square
+unset key
+unset xtics 
+unset ytics
+unset colorbox
+set cbrange [0:0.8]
+splot "OutputFields-init" u 1:2:7
+
+set contour base
+set cntrparam levels discrete 0.5
+set cntrparam bspline
+set cntrlabel onecolor
+
+unset surface
+splot "OutputFields-init" u 1:2:8 lt 3 lc "black" lw 2, "OutputFields-init" u 1:2:8 lt 3 dt 2  lc "white" lw 2
+unset multiplot
+~~~
 
 ~~~gnuplot Plot of porosity
 
@@ -559,65 +557,64 @@ set key bottom right box
       "shrink.dat" u 1:2 w l lc "dark-green" lw 2 t "Only shrinking", \
       "smooth.dat" u 1:2 w l lc "blue" lw 2 t "Smooth function"
 ~~~
-#~~~gnuplot Plot of porosity
-#reset
+
+~~~gnuplot Plot of porosity
+reset
 #set terminal svg enhanced size 450, 450
-#set output "massb-profiles.svg"
-#
-##set terminal epslatex size 3.6, 3.6
-##set output "massb-profiles.tex"
-#
-#!awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-init > init.dat
-#!awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-0 > shrink.dat
-#!awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-1 > swell.dat
-#!awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-3 > smooth.dat
-#
-#unset key
-#set grid
-#set xrange [0:0.6]
-#set xtics 0.2
-#set yrange [0:1]
-#set ytics 0.5
-#unset key
-#set label "Porosity" at screen 0.02, 0.5 rotate by 90 center
-#set label "Radial coordinate" at screen 0.55, 0.1 center
-#
-#set xtics format ""
-#set multiplot layout 3,1 margins 0.15, 0.95, 0.2, 0.95 spacing 0,0.05
-#
-#set arrow 1 from 0.22, 0.23 to 0.22, 0.9
-#set label "t" at 0.23, 0.54
-#set label "$\\Gamma _{0} = \\Gamma _{f}$" at 0.35, 0.3
-#set label "$\\epsilon _{f}$" at 0.3, 0.91
-#set label "$\\epsilon _{0}$" at 0.3, 0.55
-#set title "Constant-volume" offset 0,-1
-#plot  "init.dat" u 1:2 w l lw 6 lc "black" notitle,\
-#      "swell.dat" u 1:2 w l lw 6 lc "orange" t "Constant-volume"
-#
-#unset label
-#unset arrow 1
-#set arrow 2 from 0.42,0.5 to 0.22,0.5
-#set label "t" at 0.32, 0.6
-#set title "Only shrinking"
-#set label "$\\Gamma _{0}$" at 0.5, 0.5
-#set label "$\\Gamma _{f}$" at 0.24, 0.25
-#set label "$\\epsilon _{0} = \\epsilon _{f}$" at 0.35, 0.3
-#plot  "init.dat" u 1:2 w l lw 6 lc "black" notitle,\
-#      "shrink.dat" u 1:2 w l lw 6 lc "dark-green" t "Only shrinking"
-#
-#unset label
-#unset arrow 2
-#set xtics format "%g"
-#set arrow 3 from 0.32,0.27 to 0.22, 0.9
-#set label "t" at 0.29, 0.56
-#set title "Smooth function"
-#set label "$\\Gamma _{0}$" at 0.5, 0.5
-#set label "$\\Gamma _{f}$" at 0.42, 0.7
-#set label "$\\epsilon _{0}$" at 0.35, 0.27
-#set label "$\\epsilon _{f}$" at 0.3, 0.91
-#plot  "init.dat" u 1:2 w l lw 6 lc "black" notitle,\
-#      "smooth.dat" u 1:2 w l lw 6 lc "blue" t "Smooth function"
-#unset multiplot
-#
-#~~~
-**/
+set terminal epslatex size 3.6, 3.6
+set output "massb-profiles.tex"
+
+
+!awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-init > init.dat
+!awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-0 > shrink.dat
+!awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-1 > swell.dat
+!awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-3 > smooth.dat
+
+unset key
+set grid
+set xrange [0:0.6]
+set xtics 0.2
+set yrange [0:1]
+set ytics 0.5
+unset key
+set label "Porosity" at screen 0.02, 0.5 rotate by 90 center
+set label "Radial coordinate r" at screen 0.55, 0.1 center
+
+set xtics format ""
+set multiplot layout 3,1 margins 0.15, 0.95, 0.2, 0.95 spacing 0,0.05
+
+set arrow 1 from 0.22, 0.23 to 0.22, 0.9
+set label "t" at 0.23, 0.54
+set label "$\\Gamma _{0} = \\Gamma _{f}$" at 0.35, 0.3
+set label "$\\epsilon _{f}$" at 0.3, 0.91
+set label "$\\epsilon _{0}$" at 0.3, 0.55
+set title "Constant-volume" offset 0,-1
+plot  "init.dat" u 1:2 w l lw 6 dt 2 lc "black" notitle,\
+      "swell.dat" u 1:2 w l lw 6 lc "orange" t "Constant-volume"
+
+unset label
+unset arrow 1
+set arrow 2 from 0.42,0.5 to 0.22,0.5
+set label "t" at 0.32, 0.6
+set title "Only shrinking"
+set label "$\\Gamma _{0}$" at 0.5, 0.5
+set label "$\\Gamma _{f}$" at 0.24, 0.25
+set label "$\\epsilon _{0} = \\epsilon _{f}$" at 0.35, 0.3
+plot  "init.dat" u 1:2 w l lw 6 dt 2 lc "black" notitle,\
+      "shrink.dat" u 1:2 w l lw 6 lc "dark-green" t "Only shrinking"
+
+unset label
+unset arrow 2
+set xtics format "%g"
+set arrow 3 from 0.32,0.27 to 0.22, 0.9
+set label "t" at 0.29, 0.56
+set title "Smooth function"
+set label "$\\Gamma _{0}$" at 0.5, 0.5
+set label "$\\Gamma _{f}$" at 0.42, 0.7
+set label "$\\epsilon _{0}$" at 0.35, 0.27
+set label "$\\epsilon _{f}$" at 0.3, 0.91
+plot  "init.dat" u 1:2 w l lw 6 dt 2 lc "black" notitle,\
+      "smooth.dat" u 1:2 w l lw 6 lc "blue" t "Smooth function"
+unset multiplot
+~~~
+*/

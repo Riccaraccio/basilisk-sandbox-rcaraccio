@@ -15,6 +15,10 @@ the average velocity in the free fluid region at the outlet, as done in the
 `stop` event.
 */
 
+/** 
+"POROUS_ADVECTION" overloads some steps of the Navier-Stokes solver to account for a porous medium. In this case this effect is minimal and using [centered.h](/src/navier-stokes/centered.h) work fine aswell.
+*/
+
 #define POROUS_ADVECTION 1
 
 int maxlevel = 10;        // Maximum refinement level
@@ -65,19 +69,22 @@ double rhoG = 1., muG;
 face vector muv[];
 
 int main() {
-
+  /**
+  We download data for post-processing.
+  */
+  // system ("wget https://raw.githubusercontent.com/Riccaraccio/basilisk-sandbox-rcaraccio/refs/heads/master/data/porouschannel/velocity-da-02");
+  
   /**
   We set the fluid properties to match the desired Re number in the free fluid
   region.
   */
   muG = H*1.*rhoG/Re;
-  // const face vector muv[] = {muG, muG};
   mu = muv;
 
   Da = (coord) {1.e-2*sq(H), 1.e-2*sq(H)};
 
   /**
-   Domain in 8H x 2H
+   The domain is 8H x 2H
   */
   size (8*H);
   dimensions (nx=8, ny=2);
@@ -98,6 +105,9 @@ event init (i = 0) {
     eps[] = eps0*f[] + (1. - f[]);
   }
 
+  /**
+  * In the porous region, the fluid is more viscous due to the presence of the solid matrix.
+  */
   scalar centered_mu[];
   foreach()
     centered_mu[] = muG/eps[];
@@ -144,6 +154,10 @@ void write_results() {
   }
   fprintf (stderr, "# Avg u: %g\n", avg_U);
 }
+
+/**
+We stop the simulation after convergence of the flow filed is reached
+*/
 
 scalar un[];
 #define CONVERGENCE_TOLERANCE 1e-10

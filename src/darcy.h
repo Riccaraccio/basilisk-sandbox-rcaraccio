@@ -6,11 +6,11 @@ They allow to account for the resistance to flow due to the presence of a porous
 In this step, we want to solve the following equation:
 $$
 \frac{\partial \mathbf{u}}{\partial t} = - \frac{1}{\rho_g}
-\left[ \frac{\mu_g \epsilon_g \mathbf{v}_g}{\mathbf{Da}} + 
+\left[ \frac{\mu_g \epsilon_g \mathbf{u}_g}{\mathbf{K}} + 
 \rho_g\frac{1.75}{\sqrt{150\epsilon_g^3}} \frac{\epsilon_g
-|\mathbf{v}_g|\mathbf{v}_g}{\sqrt{\mathbf{Da}}} \right]
+|\mathbf{u}_g|\mathbf{u}_g}{\sqrt{\mathbf{K}}} \right]
 $$
-Note that the permeability tensor **Da** can reach very small values.
+Note that the permeability tensor **K** (Da in the code) can reach very small values.
 Therefore, an implicit treatment of the Darcy and Forchheimer
 terms must and is here implemented.
 
@@ -62,7 +62,7 @@ event viscous_term (i++) {
       muGh = muGv_S[];
       rhoGh = rhoGv_S[];
       #else
-      muGh = muG/e;
+      muGh = muG/e; // effective viscosity
       rhoGh = rhoG;
       #endif
 

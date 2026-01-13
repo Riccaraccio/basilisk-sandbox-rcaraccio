@@ -3,7 +3,7 @@
 The calculation of the solid phase velocity field 'ubf' is performed through the
 solution of a Poisson equation for the velocity potential 'psi'.
 The source term of the Poisson equation is given by the product of the
-evaporation rate 'omega', the volume fraction field 'f' and the
+reaction rate 'omega', the volume fraction field 'f' and the
 shrinkage factor 'zeta', divided by the solid phase density 'rhoS'.
 */
 

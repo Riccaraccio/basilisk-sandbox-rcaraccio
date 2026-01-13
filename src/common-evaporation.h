@@ -1,7 +1,8 @@
 /**
- * This is a copy of common-evaporation.h from Edoardo Cipriano's
- * basilisk sandbox repository. All credits to him.
- */
+This is a copy of common-evaporation.h from Edoardo Cipriano's
+basilisk sandbox repository. All credits to him!
+We use it here to have useful functions for phase change problems.
+*/
 
 /**
 # Common Evaporation

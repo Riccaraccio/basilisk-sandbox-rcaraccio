@@ -1,3 +1,7 @@
+/**
+Simple conversion of a VOF field to a level-set field.
+*/
+
 #include "redistance.h"
 
 void vof_to_ls (scalar f, scalar levelset, int imax = 3)

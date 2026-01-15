@@ -47,7 +47,7 @@ void update_properties_initial (void) {
 
       rhoGv_S[] = tpG.rhov (&tsGh);
       cpGv_S[] = tpG.cpv (&tsGh);
-      muGv_S[] = tpG.muv (&tsGh);
+      muGv_S[] = tpG.muv (&tsGh) / (porosity[] / f[]);
       lambdaGv_S[] = tpG.lambdav (&tsGh);
       tpG.diff (&tsGh, Diff_coeff);
 #ifdef MASS_DIFFUSION_ENTHALPY

@@ -3,7 +3,6 @@
 #endif
 
 #include "intgrad.h"
-#include "fracface.h"
 
 #ifdef EXPLICIT_DIFFUSION
   #include "diffusion-explicit.h"

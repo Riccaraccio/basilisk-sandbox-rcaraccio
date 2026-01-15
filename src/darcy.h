@@ -50,7 +50,9 @@ to account for the Darcy and Forchheimer resistance.
 */
 
 event viscous_term (i++) {
+#ifndef NO_DARCY_CORRECTION
   correction(dt);
+#endif
   foreach() {
     if (f[] > F_ERR) {
       double e = porosity[]/f[];
@@ -73,7 +75,9 @@ event viscous_term (i++) {
       }
     }
   }
+#ifndef NO_DARCY_CORRECTION
   correction(-dt);
+#endif
 }
 
 /**

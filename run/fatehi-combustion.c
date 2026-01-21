@@ -124,14 +124,24 @@ event output (t += 1) {
   fflush(fpT);
 
   // Interpolate Water vapor mass fraction
-  static FILE * fpYH2O = fopen ("YH2OProfile.dat", "w");
-  scalar YH2O = YGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
-  double YH2O_2mm = interpolate(YH2O, H0/2 + 2e-3, 0.); // 2mm from surface
-  double YH2O_4mm = interpolate(YH2O, H0/2 + 4e-3, 0.); // 4mm from surface
-  double YH2O_8mm = interpolate(YH2O, H0/2 + 8e-3, 0.); // 8mm from surface
-  double YH2O_11mm = interpolate(YH2O, H0/2 + 11e-3, 0.); // 11mm from surface
-  fprintf (fpYH2O, "%g %g %g %g %g\n", t, YH2O_2mm, YH2O_4mm, YH2O_8mm, YH2O_11mm);
-  fflush(fpYH2O);
+  static FILE * fpxH2O = fopen ("xH2OProfile.dat", "w");
+
+  double yG[NGS], xG[NGS], MWg, xH2O[4];
+  double sample_points[4] = {H0/2 + 2e-3, H0/2 + 4e-3, H0/2 + 8e-3, H0/2 + 11e-3};
+
+  for (int kk = 0; kk < 4; kk++) {
+    foreach_point(sample_points[kk], 0.) {
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        yG[jj] = YG[];
+      }
+    }
+    OpenSMOKE_MoleFractions_From_MassFractions (yG, &MWg, xG);
+    xH2O[kk] = xG[OpenSMOKE_IndexOfSpecies ("H2O")];
+  }
+
+  fprintf (fpxH2O, "%g %g %g %g %g\n", t, xH2O[0], xH2O[1], xH2O[2], xH2O[3]);
+  fflush(fpxH2O);
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);

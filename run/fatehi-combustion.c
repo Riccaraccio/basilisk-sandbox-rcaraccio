@@ -129,19 +129,14 @@ event init (i= 0) {
 
 // Prints profile of a scalar at a given x location for all y form 0 to L0/2
 void print_profile (scalar f, double x_interp, FILE* fp, int time, int n_samples =  100) {
-  coord box[2] = {{x_interp, 0.}, {x_interp, L0/2}}
+  coord box[2] = {{x_interp, 0.}, {x_interp, L0/2}};
   coord p, n = {1, n_samples};
-  double delta = (L0/2)/n_samples;
 
   foreach_region (p, box, n) {
     double val = interpolate (f, p.x, p.y);
-    fprintf (fp, "%d %g %g\n", time, yy, val);
+    fprintf (fp, "%d %g %g\n", time, p.y, val);
   }
   fflush (fp);
-  // double step = (L0/2)/(1<<maxlevel);
-  // for (double yy = 0.; yy <= L0/2; yy += step) {
-  //   double val = interpolate (f, x, yy);
-  // }
 }
 
 // Calculates the H2O-density path-averaged temperarure
@@ -151,7 +146,7 @@ double T_H2O_weigthed_average (double x_interp, int n_samples = 100) {
   coord box[2] = {{x_interp, 0.}, {x_interp, L0/2}};
   coord p, n = {1, n_samples};
   double delta = (L0/2)/n_samples, numerator = 0., denominator = 0.;
-  foreach_region (p, box, n) {
+  foreach_region (p, box, n, reduction(+:numerator) reduction(+:denominator)) {
     numerator += interpolate (XH2O, p.x, p.y) * delta;
     denominator += interpolate (XH2O, p.x, p.y) / interpolate (T, p.x, p.y) * delta;
   }
@@ -169,7 +164,7 @@ double path_average_XH2O (double x_interp, const int n_points =100) {
   coord box[2] = {{x_interp, 0.}, {x_interp, L0/2}};
   coord p, n = {1, n_points};
   double delta = (L0/2)/n_points, numerator = 0.;
-  foreach_region (p, box, n)
+  foreach_region (p, box, n, reduction(+:numerator))
     numerator += interpolate (XH2O, p.x, p.y) * delta;
 
   return numerator/(L0/2.);

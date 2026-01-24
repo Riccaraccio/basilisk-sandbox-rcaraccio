@@ -58,8 +58,7 @@ int main() {
   init_grid(1 << maxlevel);
 
 #ifndef MOLAR_DIFFUSION
-  if (pid() == 0)
-    fprintf (stderr, "MOLAR_DIFFUSION is compulsory for this case\n");
+  fprintf (stderr, "MOLAR_DIFFUSION is compulsory for this case\n");
   return 1;
 #endif
 
@@ -99,8 +98,7 @@ event init (i= 0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
   
-  if (pid() == 0)
-    fprintf(stderr, "Initial solid mass: %g kg\n", solid_mass0);
+  fprintf(stderr, "Initial solid mass: %g kg\n", solid_mass0);
 
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
@@ -123,22 +121,18 @@ event init (i= 0) {
 
   divq_rad = opensmoke_optically_thin;
 
-  if (pid() == 0) {
-    fTprofile_2mm = fopen("T_profile_2mm.dat", "w");
-    fTprofile_11mm = fopen("T_profile_11mm.dat", "w");
-    fpxH2Oprofile_2mm = fopen("xH2O_profile_2mm.dat", "w");
-    fpxH2Oprofile_11mm = fopen("xH2O_profile_11mm.dat", "w");
-  }
+  fTprofile_2mm = fopen("T_profile_2mm.dat", "w");
+  fTprofile_11mm = fopen("T_profile_11mm.dat", "w");
+  fpxH2Oprofile_2mm = fopen("xH2O_profile_2mm.dat", "w");
+  fpxH2Oprofile_11mm = fopen("xH2O_profile_11mm.dat", "w");
 }
 
 // Prints profile of a scalar at a given x location for all y form 0 to L0/2
-void print_profile (scalar f, double x_interp, FILE* fp, int time, int n_samples =  100) {
-  coord box[2] = {{x_interp, 0.}, {x_interp, L0/2}};
-  coord p, n = {1, n_samples};
-
-  foreach_region (p, box, n, serial) {
-    double val = interpolate (f, p.x, p.y);
-    fprintf (fp, "%d %g %g\n", time, p.y, val);
+void print_profile (scalar f, double x_interp, FILE* fp, int time, int n_samples = 100) {
+  double step = (L0/2)/n_samples;
+  for (double yy = 0.; yy <= L0/2; yy += step) {
+    double val = interpolate (f, x_interp, yy);
+    fprintf (fp, "%d %g %g\n", time, yy, val);
   }
 }
 
@@ -146,12 +140,12 @@ void print_profile (scalar f, double x_interp, FILE* fp, int time, int n_samples
 double T_H2O_weigthed_average (double x_interp, int n_samples = 100) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
-  coord box[2] = {{x_interp, 0.}, {x_interp, L0/2}};
-  coord p, n = {1, n_samples};
-  double delta = (L0/2)/n_samples, numerator = 0., denominator = 0.;
-  foreach_region (p, box, n, reduction(+:numerator) reduction(+:denominator)) {
-    numerator += interpolate (XH2O, p.x, p.y) * delta;
-    denominator += interpolate (XH2O, p.x, p.y) / interpolate (T, p.x, p.y) * delta;
+  double step = (L0/2)/n_samples;
+  double numerator = 0., denominator = 0.;
+  for (double yy = 0.; yy <= L0/2; yy += step) {
+    double xH2O_local = interpolate (XH2O, x_interp, yy);
+    numerator += xH2O_local * step;
+    denominator += xH2O_local / interpolate (T, x_interp, yy) * step; 
   }
 
   if (denominator < SEPS) // avoid division by 0
@@ -161,19 +155,18 @@ double T_H2O_weigthed_average (double x_interp, int n_samples = 100) {
 }
 
 // Calculates the path-averaged xH2O mole fractions
-double path_average_XH2O (double x_interp, const int n_points =100) {
+double path_average_XH2O (double x_interp, const int n_samples = 100) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
-  coord box[2] = {{x_interp, 0.}, {x_interp, L0/2}};
-  coord p, n = {1, n_points};
-  double delta = (L0/2)/n_points, numerator = 0.;
-  foreach_region (p, box, n, reduction(+:numerator))
-    numerator += interpolate (XH2O, p.x, p.y) * delta;
+  double step = (L0/2)/n_samples, numerator = 0.;
+  for (double yy = 0.; yy <= L0/2; yy += step) {
+    numerator += interpolate (XH2O, x_interp, yy) * step;
+  }
 
   return numerator/(L0/2.);
 }
 
-event print_profile (t = 0; t += 10) {
+event print_profile (t += 10) {
   int time = (int) round(t);
 
   // Temperature profiles
@@ -185,12 +178,10 @@ event print_profile (t = 0; t += 10) {
   print_profile (XH2O, H0/2 + 2e-3, fpxH2Oprofile_2mm, time);
   print_profile (XH2O, H0/2 + 11e-3, fpxH2Oprofile_11mm, time);
 
-  if (pid() == 0) {
-    fflush (fTprofile_2mm);
-    fflush (fTprofile_11mm);
-    fflush (fpxH2Oprofile_2mm);
-    fflush (fpxH2Oprofile_11mm);
-  }
+  fflush (fTprofile_2mm);
+  fflush (fTprofile_11mm);
+  fflush (fpxH2Oprofile_2mm);
+  fflush (fpxH2Oprofile_11mm);
 }
 
 event output (t += 1) {
@@ -212,21 +203,19 @@ event output (t += 1) {
   foreach (reduction(+:solid_mass))
     solid_mass += (f[]-porosity[])*rhoS*dv();
 
-  if (pid() == 0) {
-    static FILE *fpxH2O = fopen("xH2OProfile.dat", "w");
-    fprintf(fpxH2O, "%g %g %g %g %g %g\n", t, xH2O[0], xH2O[1], xH2O[2], xH2O[3], xH2O[4]);
-    fflush(fpxH2O);
-    
-    static FILE * fpT = fopen ("TemperatureProfile.dat", "w");
-    fprintf (fpT, "%g %g %g %g %g %g\n", t, Tavg[0], Tavg[1], Tavg[2], Tavg[3], Tavg[4]);
-    fflush(fpT);
-    
-    char name[80];
-    sprintf(name, "OutputData-%d", maxlevel);
-    static FILE * fp = fopen (name, "w");
-    fprintf(fp, "%g %g %g\n", t, solid_mass / solid_mass0, statsf(T).max);
-    fflush(fp);
-  }
+  static FILE *fpxH2O = fopen("xH2OProfile.dat", "w");
+  fprintf(fpxH2O, "%g %g %g %g %g %g\n", t, xH2O[0], xH2O[1], xH2O[2], xH2O[3], xH2O[4]);
+  fflush(fpxH2O);
+  
+  static FILE * fpT = fopen ("TemperatureProfile.dat", "w");
+  fprintf (fpT, "%g %g %g %g %g %g\n", t, Tavg[0], Tavg[1], Tavg[2], Tavg[3], Tavg[4]);
+  fflush(fpT);
+  
+  char name[80];
+  sprintf(name, "OutputData-%d", maxlevel);
+  static FILE * fp = fopen (name, "w");
+  fprintf(fp, "%g %g %g\n", t, solid_mass / solid_mass0, statsf(T).max);
+  fflush(fp);
 }
 
 #if TREE
@@ -259,12 +248,10 @@ event movie (t += 1) {
 }
 
 event stop (t = tend) {
-  if (pid() == 0) {
-    fclose(fTprofile_2mm);
-    fclose(fTprofile_11mm);
-    fclose(fpxH2Oprofile_2mm);
-    fclose(fpxH2Oprofile_11mm);
-  }
+  fclose(fTprofile_2mm);
+  fclose(fTprofile_11mm);
+  fclose(fpxH2Oprofile_2mm);
+  fclose(fpxH2Oprofile_11mm);
 }
 
 /** 

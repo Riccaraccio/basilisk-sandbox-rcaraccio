@@ -35,7 +35,7 @@ const double D0 = 8e-3, H0 = 8e-3;
 double solid_mass0 = 0.;
 
 int main() {
-  
+
   lambdaSmodel = L_HUANG;
   TS0 = 300.; TG0 = 1123.;
   rhoS = 1550;
@@ -48,6 +48,8 @@ int main() {
   zeta_policy = ZETA_CONST;
 
   DT = 1;
+
+  G.x = -9.81;
 
   kinfolder = "biomass/dummy-solid-gas";
   // kinfolder = "biomass/Red-gas-2507";
@@ -88,7 +90,7 @@ event init (i= 0) {
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0178;
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.0167;
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0419;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0040;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0041;
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.0610;
 
   foreach()
@@ -103,6 +105,7 @@ event init (i= 0) {
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
   TG[right] = neumann (0.);
+  TG[bottom] = neumann (0.);
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
@@ -128,21 +131,21 @@ event init (i= 0) {
 }
 
 // Prints profile of a scalar at a given x location for all y form 0 to L0/2
-void print_profile (scalar f, double x_interp, FILE* fp, int time, int n_samples = 100) {
-  double step = (L0/2)/n_samples;
-  for (double yy = 0.; yy <= L0/2; yy += step) {
+void print_profile (scalar f, double x_interp, FILE* fp, int time, int n_samples = 100, const double length = L0/2) {
+  double step = length/n_samples;
+  for (double yy = 0.; yy <= length; yy += step) {
     double val = interpolate (f, x_interp, yy);
     fprintf (fp, "%d %g %g\n", time, yy, val);
   }
 }
 
 // Calculates the H2O-density path-averaged temperarure
-double T_H2O_weigthed_average (double x_interp, int n_samples = 100) {
+double T_H2O_weigthed_average (double x_interp, int n_samples = 100, const double length = L0/2) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
-  double step = (L0/2)/n_samples;
+  double step = length/n_samples;
   double numerator = 0., denominator = 0.;
-  for (double yy = 0.; yy <= L0/2; yy += step) {
+  for (double yy = 0.; yy <= length; yy += step) {
     double xH2O_local = interpolate (XH2O, x_interp, yy);
     numerator += xH2O_local * step;
     denominator += xH2O_local / interpolate (T, x_interp, yy) * step; 
@@ -151,32 +154,31 @@ double T_H2O_weigthed_average (double x_interp, int n_samples = 100) {
   if (denominator < SEPS) // avoid division by 0
     return TG0;
 
-  return numerator/(denominator + SEPS);
+  return numerator/denominator;
 }
 
 // Calculates the path-averaged xH2O mole fractions
-double path_average_XH2O (double x_interp, const int n_samples = 100) {
+double path_average_XH2O (double x_interp, const int n_samples = 100, const double length = L0/2) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
-  double step = (L0/2)/n_samples, numerator = 0.;
-  for (double yy = 0.; yy <= L0/2; yy += step) {
+  double step = length/n_samples, numerator = 0.;
+  for (double yy = 0.; yy <= length; yy += step)
     numerator += interpolate (XH2O, x_interp, yy) * step;
-  }
 
-  return numerator/(L0/2.);
+  return numerator/(length);
 }
 
-event print_profile (t += 10) {
+event print_profile (t += 10; t <= 100) {
   int time = (int) round(t);
 
   // Temperature profiles
-  print_profile (T, H0/2 + 2e-3, fTprofile_2mm, time);
-  print_profile (T, H0/2 + 11e-3, fTprofile_11mm, time);
+  print_profile (T, H0/2 + 2e-3, fTprofile_2mm, time, 100, L0/2);
+  print_profile (T, H0/2 + 11e-3, fTprofile_11mm, time, 100, L0/2);
 
   // Water vapor mole fraction profile
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
-  print_profile (XH2O, H0/2 + 2e-3, fpxH2Oprofile_2mm, time);
-  print_profile (XH2O, H0/2 + 11e-3, fpxH2Oprofile_11mm, time);
+  print_profile (XH2O, H0/2 + 2e-3, fpxH2Oprofile_2mm, time, 100, L0/2);
+  print_profile (XH2O, H0/2 + 11e-3, fpxH2Oprofile_11mm, time, 100, L0/2);
 
   fflush (fTprofile_2mm);
   fflush (fTprofile_11mm);
@@ -187,16 +189,18 @@ event print_profile (t += 10) {
 event output (t += 1) {
   // Interpolate Water vapor mass fraction
   double xH2O[5], sample_points[5] = {H0/2 + 2e-3, H0/2 + 4e-3, H0/2 + 8e-3, H0/2 + 11e-3, H0/2 + 15e-3};
-  for (int i = 0; i < 5; i++)
-    xH2O[i] = path_average_XH2O (sample_points[i]);
+
+  const double L_flame_exp = 30e-3;
+  for (int ii = 0; ii < 5; ii++)
+    xH2O[ii] = path_average_XH2O (sample_points[ii], 100, L_flame_exp);
 
   // Interpolate temperature
   double Tavg[5];
-  for (int i = 0; i < 5; i++)
-    if (xH2O[i] < 1e-4)
-      Tavg[i] = TG0; //ambient temperature
+  for (int ii = 0; ii < 5; ii++)
+    if (xH2O[ii] < 1e-4)
+      Tavg[ii] = TG0; //ambient temperature
     else
-      Tavg[i] = T_H2O_weigthed_average (sample_points[i]);
+      Tavg[ii] = T_H2O_weigthed_average (sample_points[ii], 100, L_flame_exp);
 
   //log mass profile
   double solid_mass = 0.;
@@ -233,7 +237,7 @@ event movie (t += 1) {
   scalar XH2O_S = XGList_S[OpenSMOKE_IndexOfSpecies ("H2O")];
   scalar XH2O[];
   foreach()
-    XH2O[] = XH2O_S[] + XH2O_G[];
+    XH2O[] = XH2O_S[]*f[] + XH2O_G[]*(1. - f[]);
 
   clear();
   view (theta=0, phi=0, psi=-pi/2., width = 1080, height = 1080);
@@ -260,12 +264,34 @@ set terminal svg size 400, 400
 set output "mass-fatehi.svg"
 set xlabel "Time [s]"
 set ylabel "Normalized solid mass [-]"
-set grid
 set xrange [0:150]
 set yrange [0:1.05]
 
 plot "OutputData-9" u 1:2 w l lw 3 lc "black" notitle, \
      "../../data/fatehi/mass" u 1:2 w lp pt 64 ps 1 lw 1 lc "black" notitle
+~~~
+
+~~~gnuplot H2O mole fraction
+reset
+set terminal svg size 400, 400
+set output "xH2O-fatehi.svg"
+set xlabel "Time [s]"
+set ylabel "H2O Mole Fraction [-]"
+set yrange [0.:0.5]
+set xrange [0:70]
+
+error_margin = 0.03
+
+plot  "../../data/fatehi/yH2O-11mm" u 1:($2 + error_margin):($2 - error_margin) w filledcurves lc "gray" notitle  ,\
+      "../../data/fatehi/yH2O-11mm" u 1:2 smooth mcs lw 1 lc "black" notitle, \
+      "../../data/fatehi/yH2O-11mm" u 1:2 w p pt 64 ps 0.8 lw 1 lc "black" notitle, \
+      "xH2OProfile.dat" u 1:4 w l lw 2 lc "black" title "11 mm",\
+      "../../data/fatehi/yH2O-2mm" u 1:($2 + error_margin):($2 - error_margin) w filledcurves lc "light-coral" notitle  ,\
+      "../../data/fatehi/yH2O-2mm" u 1:2 smooth mcs lw 1 lc "red" notitle, \
+      "../../data/fatehi/yH2O-2mm" u 1:2 w p pt 65 ps 0.8 lw 1 lc "red" notitle, \
+      "xH2OProfile.dat" u 1:2 w l lw 2 lc "red" title "2 mm"
+
+
 ~~~
 
 ~~~gnuplot Temperature
@@ -274,14 +300,92 @@ set terminal svg size 400, 400
 set output "temperature-fatehi.svg"
 set xlabel "Time [s]"
 set ylabel "Temperature [K]"
-set grid
 set yrange [400:1900]
-set xrange [0:80]
+set xrange [0:60]
 
-plot "TemperatureProfile.dat" u 1:2 w l lw 3 lc "black" t "T-2mm", \
-     "../../data/fatehi/T-2mm" u 1:2 w lp pt 1 ps 1 lw 1 lc "black" notitle, \
-      "TemperatureProfile.dat" u 1:4 w l lw 3 lc "red" t "T-8mm", \
-      "../../data/fatehi/T-8mm" u 1:2 w lp pt 1 ps 1 lw 1 lc "red" notitle
+error_margin = 50
+shift = 6
+
+plot  "../../data/fatehi/T-2mm" u 1:($2 + error_margin):($2 - error_margin) w filledcurves lc "gray" notitle  ,\
+      "../../data/fatehi/T-2mm" u 1:2 smooth mcs lw 1 lc "black" notitle, \
+      "../../data/fatehi/T-2mm" u 1:2 w p pt 64 ps 0.8 lw 1 lc "black" notitle, \
+      "TemperatureProfile.dat" u ($1-shift):2 w l lw 2 lc "black" title "2 mm"
+~~~
+
+~~~gnuplot Temperature evolution
+reset
+set terminal svg size 400, 400
+set output "temperature-evolution-fatehi-2mm.svg"
+load "/root/gnuplot-palettes/inferno.pal"
+
+set xlabel "y position"
+set ylabel "Temperature"
+set key right top
+set ytics 900,200,2300
+set yrange [950:2200]
+
+
+end_time = 70
+step_time = 10
+
+set cbrange [0:end_time]
+unset colorbox
+
+plot for [t=0:end_time:step_time] "T_profile_2mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \
+     for [t=0:end_time:step_time] "T_profile_2mm.dat" u ($1==t ? -$2 : 1/0):3:(t) w l lw 2 lc palette notitle
+~~~
+
+~~~gnuplot Test plot
+reset
+set terminal svg size 400, 400
+set output "test-plot-fatehi.svg"
+set xlabel "Time [s]"
+set ylabel "H2O Mole Fraction [-]"
+set yrange [0.:0.5]
+set xrange [0:70]
+
+endtime = 70
+step = 10
+n = endtime/step + 1
+
+array max_xH2O[n]
+array time_points[n]
+
+do for [i=0:endtime/step] {
+    time = i*step
+    stats "xH2O_profile_2mm.dat" using ($1==time ? $2 : 1/0):3 nooutput
+    max_xH2O[i+1] = STATS_max_y
+    time_points[i+1] = time
+}
+
+plot sample [i=1:n] '+' using (time_points[i]):(max_xH2O[i]) w l lw 2 lc "black" title "Max H2O", \
+      "../../data/fatehi/yH2O-2mm" u 1:2 w p pt 65 ps 0.8 lw 1 lc "red" notitle
+
 
 ~~~
+
+
+~~~gnuplot Temperature evolution
+reset
+set terminal svg size 400, 400
+set output "xH2O-evolution-fatehi-2mm.svg"
+load "/root/gnuplot-palettes/inferno.pal"
+set xlabel "y position"
+set ylabel "H2O Mole Fraction"
+set key right top
+set yrange [0:0.5]
+
+end_time = 100
+step_time = 10
+
+set cbrange [0:end_time]
+unset colorbox 
+
+plot for [t=0:end_time:step_time] "xH2O_profile_2mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \
+     for [t=0:end_time:step_time] "xH2O_profile_2mm.dat" u ($1==t ? -$2 : 1/0):3:(t) w l lw 2 lc palette notitle
+
+~~~
+
+
+
 **/

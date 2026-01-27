@@ -21,12 +21,14 @@ const double Uin = 0.03; //inlet velocity
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
-psi[left]    = neumann (0.);
+psi[left]    = dirichlet (0.);
+
+psi[top]     = dirichlet (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
-psi[right]    = dirichlet (0.);
+psi[right]    = neumann (0.);
 
 const double tend = 300; //simulation time 300 s
 int maxlevel = 9; int minlevel = 3;
@@ -158,6 +160,7 @@ double T_H2O_weigthed_average (double x_interp, int n_samples = 100, const doubl
 }
 
 // Calculates the path-averaged xH2O mole fractions
+// NOTE: if too high, can be weighted by 1/T
 double path_average_XH2O (double x_interp, const int n_samples = 100, const double length = L0/2) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
@@ -229,6 +232,9 @@ event adapt (i++) {
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
     (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
+
+  // Unrefine for outflow condition
+  unrefine (x > L0*0.4);
 }
 #endif
 

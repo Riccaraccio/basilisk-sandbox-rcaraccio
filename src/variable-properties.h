@@ -4,17 +4,10 @@
 # define F_ERR 1e-10
 #endif
 
-// IDK WHY THIS DOESN'T WORK
-// (const) scalar rhoGv_G = zeroc, rhoGv_S = zeroc, rhoSv = zeroc;
-// (const) scalar muGv_G = zeroc, muGv_S = zeroc;
-// (const) scalar lambdaGv_G= zeroc, lambdaGv_S = zeroc, lambdaSv = zeroc;
-// (const) scalar cpGv_G = zeroc, cpGv_S = zeroc, cpSv = zeroc;
-
-//USE THIS INSTEAD FOR NOW, also seems to be much faster
-scalar rhoGv_G[], rhoGv_S[], rhoSv[];
-scalar muGv_G[], muGv_S[];
-scalar lambdaGv_G[], lambdaGv_S[], lambdaSv[];
-scalar cpGv_G[], cpGv_S[], cpSv[];
+scalar rhoGv[], rhoSv[];
+scalar muGv[];
+scalar lambdaGv[], lambdaSv[];
+scalar cpGv[], cpSv[];
 
 typedef struct {
   double T, P;
@@ -47,18 +40,14 @@ extern scalar sf;
 
 event properties (i++) {
 
-  scalar alphacenter[], mucenter[];
-  foreach() {
-    alphacenter[] = 1./(rhoGv_G[]*(1.-f[]) + rhoGv_S[]*f[]);
-    mucenter[] = (muGv_G[]*(1.-f[]) + muGv_S[]*f[]);
-    rhov[] = cm[]*(rhoGv_G[]*(1.-f[]) + rhoGv_S[]*f[]);
-  }
+  foreach()
+    rhov[] = cm[]*rhoGv[];
 
   foreach_face() {
-    alphav.x[] = fm.x[]*face_value(alphacenter, 0);
+    alphav.x[] = fm.x[]*face_value(rhoGv, 0);
     {
       face vector muv = mu;
-      muv.x[] = fm.x[]*face_value(mucenter, 0);
+      muv.x[] = fm.x[]*face_value(muGv, 0);
     }
   }
 }

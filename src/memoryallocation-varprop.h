@@ -3,22 +3,16 @@
 unsigned int NGS, NSS;
 scalar omega[];
 
-scalar* YGList_G    = NULL;
-scalar* YGList_S    = NULL;
-scalar* YGList_Int  = NULL;
+scalar* YGList    = NULL;
 scalar* sSexpList   = NULL;
 scalar* sGexpList   = NULL;
 scalar* YSList      = NULL;
-scalar* DmixGList_G = NULL;
-scalar* DmixGList_S = NULL;
+scalar* DmixGList = NULL;
 #ifdef MOLAR_DIFFUSION
-scalar* XGList_G    = NULL;
-scalar* XGList_S    = NULL;
-scalar* XGList_Int  = NULL;
+scalar* XGList    = NULL;
 #endif
 #ifdef MASS_DIFFUSION_ENTHALPY
-scalar* cpGList_G = NULL;
-scalar* cpGList_S = NULL;
+scalar* cpGList = NULL;
 #endif
 
 double* gas_start;
@@ -60,7 +54,7 @@ lambda1v.t[top] = neumann(0.);
 #endif
 
 bool success;
-scalar MWmixG_G[], MWmixG_S[];
+scalar MWmixG[];
 scalar fG[], fS[];
 face vector fsS[], fsG[];
 
@@ -77,22 +71,16 @@ event defaults (i = 0) {
   NGS = OpenSMOKE_NumberOfSpecies();
   NSS = OpenSMOKE_NumberOfSolidSpecies(); 
   
-  YGList_G    = NULL;
-  YGList_S    = NULL;
-  YGList_Int  = NULL;
+  YGList      = NULL;
   sSexpList   = NULL;
   sGexpList   = NULL;
   YSList      = NULL;
-  DmixGList_G = NULL;
-  DmixGList_S = NULL;
+  DmixGList = NULL;
   #ifdef MOLAR_DIFFUSION
-  XGList_G    = NULL;
-  XGList_S    = NULL;
-  XGList_Int  = NULL;
+  XGList    = NULL;
   #endif
   #ifdef MASS_DIFFUSION_ENTHALPY
-  cpGList_G = NULL;
-  cpGList_S = NULL;
+  cpGList = NULL;
   #endif
 
   //Allocate gas species fields
@@ -100,31 +88,11 @@ event defaults (i = 0) {
     scalar a = new scalar;
     free (a.name);
     char name[20];
-    sprintf (name, "%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    sprintf (name, "%s",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
-    YGList_S = list_append (YGList_S, a);
-  }
-  reset (YGList_S, 0.);
-
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar a = new scalar;
-    free (a.name);
-    char name[20];
-    sprintf (name, "%s_G",OpenSMOKE_NamesOfSpecies(jj));
-    a.name = strdup (name);
-    YGList_G = list_append (YGList_G, a);
+    YGList = list_append (YGList, a);
   } 
-  reset (YGList_G, 0.);
-
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar a = new scalar;
-    free (a.name);
-    char name[20];
-    sprintf (name, "%s_Int",OpenSMOKE_NamesOfSpecies(jj));
-    a.name = strdup (name);
-    YGList_Int = list_append (YGList_Int, a);
-  }
-  reset (YGList_Int, 0.);
+  reset (YGList, 0.);
 
   //Allocate solid species fields
   for (int jj = 0; jj<NSS; jj++) {
@@ -142,21 +110,11 @@ event defaults (i = 0) {
     scalar s = new scalar;
     free (s.name);
     char name[20];
-    sprintf (name, "D_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    sprintf (name, "D_%s",OpenSMOKE_NamesOfSpecies(jj));
     s.name = strdup (name);
-    DmixGList_S = list_append (DmixGList_S, s);
+    DmixGList = list_append (DmixGList, s);
   }
-  reset (DmixGList_S, 0.);
-
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar s = new scalar;
-    free (s.name);
-    char name[20];
-    sprintf (name, "D_%s_G",OpenSMOKE_NamesOfSpecies(jj));
-    s.name = strdup (name);
-    DmixGList_G = list_append (DmixGList_G, s);
-  }
-  reset (DmixGList_G, 0.);
+  reset (DmixGList, 0.);
 
 // fields for the source therms
 for (int jj=0; jj<NGS; jj++) {
@@ -184,51 +142,22 @@ for (int jj=0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
     char name[20];
-    sprintf (name, "XG_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    sprintf (name, "XG_%s",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
-    XGList_S = list_append (XGList_S, a);
+    XGList = list_append (XGList, a);
   }
-  reset (XGList_S, 0.);
-
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar a = new scalar;
-    free (a.name);
-    char name[20];
-    sprintf (name, "XG_%s_G",OpenSMOKE_NamesOfSpecies(jj));
-    a.name = strdup (name);
-    XGList_G = list_append (XGList_G, a);
-  }
-  reset (XGList_G, 0.);
-
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar a = new scalar;
-    free (a.name);
-    char name[20];
-    sprintf (name, "XG_%s_Int",OpenSMOKE_NamesOfSpecies(jj));
-    a.name = strdup (name);
-    XGList_Int = list_append (XGList_Int, a);
-  }
-  reset (XGList_Int, 0.);
+  reset (XGList, 0.);
   #endif
   #ifdef MASS_DIFFUSION_ENTHALPY
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
     char name[20];
-    sprintf (name, "cpG_%s_G",OpenSMOKE_NamesOfSpecies(jj));
+    sprintf (name, "cpG_%s",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
-    cpGList_G = list_append (cpGList_G, a);
+    cpGList = list_append (cpGList, a);
   }
-  reset (cpGList_G, 0.);
-  for (int jj = 0; jj<NGS; jj++) {
-    scalar a = new scalar;
-    free (a.name);
-    char name[20];
-    sprintf (name, "cpG_%s_S",OpenSMOKE_NamesOfSpecies(jj));
-    a.name = strdup (name);
-    cpGList_S = list_append (cpGList_S, a);
-  }
-  reset (cpGList_S, 0.);
+  reset (cpGList, 0.);
   #endif
 
   //initialize vector with initial values
@@ -247,35 +176,10 @@ for (int jj=0; jj<NGS; jj++) {
     sol_MWs[jj] = OpenSMOKE_MW_Solid(jj);
   }
 
-  for (scalar s in YGList_S)
-    s.inverse = false;
-
-  for (scalar s in YGList_G)
-    s.inverse = true;
-
   for (scalar s in YSList)
     s.inverse = false;
 
-#ifdef MOLAR_DIFFUSION
-  for (scalar s in XGList_S)
-    s.inverse = false;
-
-  for (scalar s in XGList_G)
-    s.inverse = true;
-#endif
-
-  scalar *temp;
-  temp = list_concat(f.tracers, YGList_S);
-  if (f.tracers)
-    free(f.tracers);
-  f.tracers = temp;
-
-  temp = list_concat(f.tracers, YGList_G);
-  if (f.tracers)
-    free(f.tracers);
-  f.tracers = temp;
-
-  temp = list_concat(f.tracers, YSList);
+  scalar* temp = list_concat(f.tracers, YSList);
   if (f.tracers)
     free(f.tracers);
   f.tracers = temp;
@@ -298,18 +202,11 @@ for (int jj=0; jj<NGS; jj++) {
 #endif
 
 #ifdef VARPROP
-  if (is_constant(rhoGv_G)) {
+  if (is_constant(rhoGv)) {
     scalar * l = list_copy(all);
-    rhoGv_G = new scalar;
+    rhoGv = new scalar;
     free(all);
-    all = list_concat({rhoGv_G}, l);
-    free(l);
-  }
-  if (is_constant(rhoGv_S)) {
-    scalar * l = list_copy(all);
-    rhoGv_S = new scalar;
-    free(all);
-    all = list_concat({rhoGv_S}, l);
+    all = list_concat({rhoGv}, l);
     free(l);
   }
   if (is_constant(rhoSv)) {
@@ -319,32 +216,18 @@ for (int jj=0; jj<NGS; jj++) {
     all = list_concat({rhoSv}, l);
     free(l);
   }
-  if (is_constant(muGv_G)) {
+  if (is_constant(muGv)) {
     scalar * l = list_copy(all);
-    muGv_G = new scalar;
+    muGv = new scalar;
     free(all);
-    all = list_concat({muGv_G}, l);
+    all = list_concat({muGv}, l);
     free(l);
   }
-  if (is_constant(muGv_S)) {
+  if (is_constant(lambdaGv)) {
     scalar * l = list_copy(all);
-    muGv_S = new scalar;
+    lambdaGv = new scalar;
     free(all);
-    all = list_concat({muGv_S}, l);
-    free(l);
-  }
-  if (is_constant(lambdaGv_G)) {
-    scalar * l = list_copy(all);
-    lambdaGv_G = new scalar;
-    free(all);
-    all = list_concat({lambdaGv_G}, l);
-    free(l);
-  }
-  if (is_constant(lambdaGv_S)) {
-    scalar * l = list_copy(all);
-    lambdaGv_S = new scalar;
-    free(all);
-    all = list_concat({lambdaGv_S}, l);
+    all = list_concat({lambdaGv}, l);
     free(l);
   }
   if (is_constant(lambdaSv)) {
@@ -354,18 +237,11 @@ for (int jj=0; jj<NGS; jj++) {
     all = list_concat({lambdaSv}, l);
     free(l);
   }
-  if (is_constant(cpGv_G)) {
+  if (is_constant(cpGv)) {
     scalar * l = list_copy(all);
-    cpGv_G = new scalar;
+    cpGv = new scalar;
     free(all);
-    all = list_concat({cpGv_G}, l);
-    free(l);
-  }
-  if (is_constant(cpGv_S)) {
-    scalar * l = list_copy(all);
-    cpGv_S = new scalar;
-    free(all);
-    all = list_concat({cpGv_S}, l);
+    all = list_concat({cpGv}, l);
     free(l);
   }
   if (is_constant(cpSv)) {
@@ -391,20 +267,8 @@ event init (i = 0) {
 
   foreach() {
     for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_G[jj];
-      YG[] = gas_start[jj]*(1-f[]);
-    }
-
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_S[jj];
-      YG[] = gas_start[jj]*f[];
-    }
-  }
-
-  foreach() {
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YGInt = YGList_Int[jj];
-      YGInt[] = gas_start[jj];
+      scalar YG = YGList[jj];
+      YG[] = gas_start[jj];
     }
   }
 
@@ -446,13 +310,10 @@ event init (i = 0) {
 
 event cleanup (t = end) {
   delete (YSList),      free (YSList),      YSList = NULL;
-  delete (YGList_S),    free (YGList_S),    YGList_S = NULL;
-  delete (YGList_G),    free (YGList_G),    YGList_G = NULL;
-  delete (YGList_Int),  free (YGList_Int),  YGList_Int = NULL;
+  delete (YGList),    free (YGList),    YGList = NULL;
   delete (sSexpList),   free (sSexpList),   sSexpList = NULL;
   delete (sGexpList),   free (sGexpList),   sGexpList = NULL;
-  delete (DmixGList_S), free (DmixGList_S), DmixGList_S = NULL;
-  delete (DmixGList_G), free (DmixGList_G), DmixGList_G = NULL;
+  delete (DmixGList), free (DmixGList), DmixGList = NULL;
   free(gas_start),  gas_start = NULL;
   free(sol_start),  sol_start = NULL;
   free(gas_MWs),    gas_MWs = NULL;
@@ -460,14 +321,11 @@ event cleanup (t = end) {
   delete(f.tracers),  free(f.tracers),   f.tracers = NULL;
 
 #ifdef MOLAR_DIFFUSION
-  delete (XGList_S), free (XGList_S), XGList_S = NULL;
-  delete (XGList_G), free (XGList_G), XGList_G = NULL;
-  delete (XGList_Int), free (XGList_Int), XGList_Int = NULL;
+  delete (XGList), free (XGList), XGList = NULL;
 #endif
 
 #ifdef MASS_DIFFUSION_ENTHALPY
-  delete (cpGList_G), free (cpGList_G), cpGList_G = NULL;
-  delete (cpGList_S), free (cpGList_S), cpGList_S = NULL;
+  delete (cpGList), free (cpGList), cpGList = NULL;
 #endif
 
 #ifdef SOLVE_TEMPERATURE

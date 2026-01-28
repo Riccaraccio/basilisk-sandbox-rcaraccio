@@ -176,7 +176,7 @@ event phasechange(i++) {
       porosity is in tracer form, already multiplied by f
       */
 #ifdef VARPROP
-      gas_source[] = -omega[]*(f[] - porosity[])*(1./rhoGv_S[] - 1./rhoSv[])*cm[];
+      gas_source[] = -omega[]*(f[] - porosity[])*(1./rhoGv[] - 1./rhoSv[])*cm[];
 #else
       gas_source[] = -omega[]*(f[] - porosity[])*(1./rhoG - 1./rhoS)*cm[];
 #endif

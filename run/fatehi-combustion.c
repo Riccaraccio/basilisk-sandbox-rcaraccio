@@ -2,15 +2,16 @@
 #define SOLVE_TEMPERATURE 1
 #define RADIATION_INTERFACE 0.9
 #define MOLAR_DIFFUSION 1
-#define FICK_CORRECTED 1
-#define MASS_DIFFUSION_ENTHALPY 1
-#define GAS_PHASE_REACTIONS 1
+#define NO_EXPANSION 1
+// #define FICK_CORRECTED 1
+// #define MASS_DIFFUSION_ENTHALPY 1
+// #define GAS_PHASE_REACTIONS 1
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
-#include "gravity.h"
+// #include "gravity.h"
 #include "superquadric.h"
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
@@ -51,7 +52,7 @@ int main() {
 
   DT = 1;
 
-  G.x = -9.81;
+  // G.x = -9.81;
 
   kinfolder = "biomass/dummy-solid-gas";
   // kinfolder = "biomass/Red-gas-2507";
@@ -110,7 +111,7 @@ event init (i= 0) {
   TG[bottom] = neumann (0.);
 
   for (int jj=0; jj<NGS; jj++) {
-    scalar YG = YGList_G[jj];
+    scalar YG = YGList[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
       YG[left] = dirichlet (0.765);
       YG[left] = dirichlet (0.765);
@@ -143,7 +144,7 @@ void print_profile (scalar f, double x_interp, FILE* fp, int time, int n_samples
 
 // Calculates the H2O-density path-averaged temperarure
 double T_H2O_weigthed_average (double x_interp, int n_samples = 100, const double length = L0/2) {
-  scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+  scalar XH2O = XGList[OpenSMOKE_IndexOfSpecies ("H2O")];
 
   double step = length/n_samples;
   double numerator = 0., denominator = 0.;
@@ -162,7 +163,7 @@ double T_H2O_weigthed_average (double x_interp, int n_samples = 100, const doubl
 // Calculates the path-averaged xH2O mole fractions
 // NOTE: if too high, can be weighted by 1/T
 double path_average_XH2O (double x_interp, const int n_samples = 100, const double length = L0/2) {
-  scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+  scalar XH2O = XGList[OpenSMOKE_IndexOfSpecies ("H2O")];
 
   double step = length/n_samples, numerator = 0.;
   for (double yy = 0.; yy <= length; yy += step)
@@ -179,7 +180,7 @@ event print_profile (t += 10; t <= 100) {
   print_profile (T, H0/2 + 11e-3, fTprofile_11mm, time, 100, L0/2);
 
   // Water vapor mole fraction profile
-  scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+  scalar XH2O = XGList[OpenSMOKE_IndexOfSpecies ("H2O")];
   print_profile (XH2O, H0/2 + 2e-3, fpxH2Oprofile_2mm, time, 100, L0/2);
   print_profile (XH2O, H0/2 + 11e-3, fpxH2Oprofile_11mm, time, 100, L0/2);
 
@@ -228,7 +229,7 @@ event output (t += 1) {
 #if TREE
 event adapt (i++) {
   // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
-  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+  scalar fuel = YGList[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
     (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
@@ -239,11 +240,7 @@ event adapt (i++) {
 #endif
 
 event movie (t += 1) {
-  scalar XH2O_G = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
-  scalar XH2O_S = XGList_S[OpenSMOKE_IndexOfSpecies ("H2O")];
-  scalar XH2O[];
-  foreach()
-    XH2O[] = XH2O_S[]*f[] + XH2O_G[]*(1. - f[]);
+  scalar XH2O = XGList[OpenSMOKE_IndexOfSpecies ("H2O")];
 
   clear();
   view (theta=0, phi=0, psi=-pi/2., width = 1080, height = 1080);

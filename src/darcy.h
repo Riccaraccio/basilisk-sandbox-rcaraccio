@@ -30,7 +30,7 @@ extern scalar porosity;
 extern scalar f;
 
 #ifdef VARPROP
-extern scalar rhoGv_S, muGv_S;
+extern scalar rhoGv, muGv;
 #else
 extern double rhoG, muG;
 #endif
@@ -61,8 +61,8 @@ event viscous_term (i++) {
 
       double muGh, rhoGh;
       #ifdef VARPROP
-      muGh = muGv_S[];
-      rhoGh = rhoGv_S[];
+      muGh = muGv[];
+      rhoGh = rhoGv[];
       #else
       muGh = muG/e; // effective viscosity
       rhoGh = rhoG;

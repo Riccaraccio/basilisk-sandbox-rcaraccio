@@ -145,7 +145,7 @@ event chemistry (i++) {
       data.P = Pref + p[];
 #ifdef VARPROP
       data.rhos = rhoSv[];
-      data.rhog = rhoGv_S[];
+      data.rhog = rhoGv[];
 #else
       data.rhos = rhoS;
       data.rhog = rhoG;
@@ -154,7 +154,7 @@ event chemistry (i++) {
 #ifdef SOLVE_TEMPERATURE
 # ifdef VARPROP
       data.cps = cpSv[];
-      data.cpg = cpGv_S[];
+      data.cpg = cpGv[];
 # else
       data.cps = cpS;
       data.cpg = cpG;
@@ -166,14 +166,14 @@ event chemistry (i++) {
       double gasmass[NGS];
       double rhoGvh;
       #ifdef VARPROP
-      rhoGvh = rhoGv_S[];
+      rhoGvh = rhoGv[];
       #else
       rhoGvh = rhoG;
       #endif
 
       for (int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList_S[jj];
-        gasmass[jj] = YG[]/f[]*rhoGvh*porosity[];
+        scalar YG = YGList[jj];
+        gasmass[jj] = YG[]*rhoGvh*porosity[];
         y0ode[jj] = gasmass[jj];
       }
 
@@ -202,8 +202,8 @@ event chemistry (i++) {
         totgasmass += y0ode[jj];
 
       for (int jj=0; jj<NGS; jj++) {
-        scalar YG = YGList_S[jj];
-        YG[] = (totgasmass < 1e-8) ? 0. : y0ode[jj]/totgasmass*f[];
+        scalar YG = YGList[jj];
+        YG[] = (totgasmass < 1e-8) ? 0. : y0ode[jj]/totgasmass;
       }
 
       double totsolidmass = 0;
@@ -219,7 +219,7 @@ event chemistry (i++) {
 
 #ifdef VARPROP
       for (int jj=0; jj<NGS; jj++) {
-        scalar DYDtGjj = DYDtG_S[jj];
+        scalar DYDtGjj = DYDtG[jj];
         DYDtGjj[] += sources[jj]*cm[];
       }
 #endif
@@ -245,8 +245,8 @@ event chemistry (i++) {
 
         double y0ode[NGS + 1]; // NGS + T
         for (int jj=0; jj<NGS; jj++) {
-          scalar YG = YGList_G[jj];
-          y0ode[jj] = YG[]/(1.-f[]);
+          scalar YG = YGList[jj];
+          y0ode[jj] = YG[];
         }
         y0ode[NGS] = TG[]/(1.-f[]);
 
@@ -256,13 +256,13 @@ event chemistry (i++) {
         double sources[NGS + 1];
         data.sources = sources;
 #ifdef VARPROP
-        data.rhog = rhoGv_G[];
+        data.rhog = rhoGv[];
 #else
         data.rhog = rhoG;
 #endif
 #ifdef SOLVE_TEMPERATURE
 # ifdef VARPROP
-        data.cpg = cpGv_G[];
+        data.cpg = cpGv[];
 # else
         data.cpg = cpG;
 # endif
@@ -274,12 +274,11 @@ event chemistry (i++) {
         OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dt, y0ode, &data);
 
         for (int jj=0; jj<NGS; jj++) {
-          scalar YG = YGList_G[jj];
-          YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1.-f[]) : 0.;
-          YG[] = y0ode[jj]*(1.-f[]);
+          scalar YG = YGList[jj];
+          YG[] = y0ode[jj];
 
 #ifdef VARPROP
-          scalar DYDtGjj = DYDtG_G[jj];
+          scalar DYDtGjj = DYDtG[jj];
           DYDtGjj[] += sources[jj]*cm[];
 #endif
         }

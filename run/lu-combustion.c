@@ -1,6 +1,5 @@
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
-#define RADIATION_INTERFACE 0.85
 #define MOLAR_DIFFUSION 1
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
@@ -129,11 +128,12 @@ event output (t += 1) {
   
   // calculate surface temperature as average over interface cells
   double T_surface = avg_interface (TInt, f, F_ERR);
+  double TS_avg = avg_interface (TS, f, F_ERR);
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
   static FILE * fp = fopen (name, "w");
-  fprintf(fp, "%g %g %g %g %g\n", t, solid_mass / solid_mass0, statsf(T).max, T_center, T_surface);
+  fprintf(fp, "%g %g %g %g %g %g\n", t, solid_mass / solid_mass0, statsf(T).max, T_center, T_surface, TS_avg);
   fflush(fp);
 }
 
@@ -170,3 +170,37 @@ event movie (t += 1) {
 }
 
 event stop (t = tend);
+/** 
+~~~gnuplot Mass
+reset
+set terminal svg size 400, 400
+set output "lu-mass.svg"
+set xlabel "Time [s]"
+set ylabel "Normalized Mass [-]"
+set yrange [0.:1.1]
+set xrange [0:100]
+
+plot  "../../data/lu/mass" u 1:(1 - ($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "black" notitle, \
+      "OutputData-9" u 1:2 w l lw 2 lc "black" notitle
+
+~~~
+
+~~~gnuplot Temperature evolution
+reset
+set terminal svg size 400, 400
+set output "T-lu.svg"
+set xlabel "Time [s]"
+set ylabel "Temperature [K]"
+set yrange [200:1800]
+set xrange [0:100]
+set key bottom right
+
+plot  "../../data/lu/T-particle-core" u 1:(($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "black" notitle, \
+      "../../data/lu/T-particle-surf" u 1:(($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "red" notitle, \
+      "OutputData-9" u 1:4 w l lw 2 lc "black" title "Core", \
+      "OutputData-9" u 1:5 w l lw 2 lc "red" title "Surface"
+
+
+~~~
+
+*/

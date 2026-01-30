@@ -1,6 +1,5 @@
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
-#define RADIATION_INTERFACE 0.9
 #define MOLAR_DIFFUSION 1
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
@@ -31,7 +30,7 @@ p[right]      = dirichlet (0.);
 psi[right]    = neumann (0.);
 
 const double tend = 300; //simulation time 300 s
-int maxlevel = 9; int minlevel = 3;
+int maxlevel = 9; int minlevel = 2;
 
 const double D0 = 8e-3, H0 = 8e-3;
 double solid_mass0 = 0.;
@@ -171,8 +170,8 @@ double path_average_XH2O (double x_interp, const int n_samples = 100, const doub
   return numerator/(length);
 }
 
-event print_profile (t += 10; t <= 100) {
-  int time = (int) round(t);
+event print_profile (t += 1; t <= 100) {
+  const int time = (int) round(t);
 
   // Temperature profiles
   print_profile (T, H0/2 + 2e-3, fTprofile_2mm, time, 100, L0/2);
@@ -193,7 +192,7 @@ event output (t += 1) {
   // Interpolate Water vapor mass fraction
   double xH2O[5], sample_points[5] = {H0/2 + 2e-3, H0/2 + 4e-3, H0/2 + 8e-3, H0/2 + 11e-3, H0/2 + 15e-3};
 
-  const double L_flame_exp = 30e-3;
+  const double L_flame_exp = 30e-3/2;
   for (int ii = 0; ii < 5; ii++)
     xH2O[ii] = path_average_XH2O (sample_points[ii], 100, L_flame_exp);
 
@@ -274,7 +273,7 @@ set xrange [0:150]
 set yrange [0:1.05]
 
 plot "OutputData-9" u 1:2 w l lw 3 lc "black" notitle, \
-     "../../data/fatehi/mass" u 1:2 w lp pt 64 ps 1 lw 1 lc "black" notitle
+     "../../data/fatehi/mass" u 1:2 w p pt 64 ps 1 lw 1 lc "light-gray" notitle
 ~~~
 
 ~~~gnuplot H2O mole fraction
@@ -287,16 +286,12 @@ set yrange [0.:0.5]
 set xrange [0:70]
 
 error_margin = 0.03
+shift = 0
 
-plot  "../../data/fatehi/yH2O-11mm" u 1:($2 + error_margin):($2 - error_margin) w filledcurves lc "gray" notitle  ,\
-      "../../data/fatehi/yH2O-11mm" u 1:2 smooth mcs lw 1 lc "black" notitle, \
-      "../../data/fatehi/yH2O-11mm" u 1:2 w p pt 64 ps 0.8 lw 1 lc "black" notitle, \
-      "xH2OProfile.dat" u 1:4 w l lw 2 lc "black" title "11 mm",\
-      "../../data/fatehi/yH2O-2mm" u 1:($2 + error_margin):($2 - error_margin) w filledcurves lc "light-coral" notitle  ,\
-      "../../data/fatehi/yH2O-2mm" u 1:2 smooth mcs lw 1 lc "red" notitle, \
-      "../../data/fatehi/yH2O-2mm" u 1:2 w p pt 65 ps 0.8 lw 1 lc "red" notitle, \
-      "xH2OProfile.dat" u 1:2 w l lw 2 lc "red" title "2 mm"
-
+plot  "../../data/fatehi/yH2O-11mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "gray" notitle  ,\
+      "xH2OProfile.dat" u ($1-shift):4 w l lw 2 lc "black" title "11 mm",\
+      "../../data/fatehi/yH2O-2mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "light-coral" notitle  ,\
+      "xH2OProfile.dat" u ($1-shift):2 w l lw 2 lc "red" title "2 mm"
 
 ~~~
 
@@ -306,16 +301,16 @@ set terminal svg size 400, 400
 set output "temperature-fatehi.svg"
 set xlabel "Time [s]"
 set ylabel "Temperature [K]"
-set yrange [400:1900]
+set yrange [800:1900]
 set xrange [0:60]
 
 error_margin = 50
-shift = 6
+shift = 0
 
-plot  "../../data/fatehi/T-2mm" u 1:($2 + error_margin):($2 - error_margin) w filledcurves lc "gray" notitle  ,\
-      "../../data/fatehi/T-2mm" u 1:2 smooth mcs lw 1 lc "black" notitle, \
-      "../../data/fatehi/T-2mm" u 1:2 w p pt 64 ps 0.8 lw 1 lc "black" notitle, \
-      "TemperatureProfile.dat" u ($1-shift):2 w l lw 2 lc "black" title "2 mm"
+plot  "../../data/fatehi/T-15mm" u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "black" notitle, \
+      "../../data/fatehi/T-2mm" u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "light-coral" notitle, \
+      "TemperatureProfile.dat" u ($1-shift):6 w l lw 2 lc "black" title "15 mm", \
+      "TemperatureProfile.dat" u ($1-shift):2 w l lw 2 lc "red" title "2 mm"
 ~~~
 
 ~~~gnuplot Temperature evolution
@@ -328,13 +323,14 @@ set xlabel "y position"
 set ylabel "Temperature"
 set key right top
 set ytics 900,200,2300
-set yrange [950:2200]
+set yrange [950:2300]
+set xrange [-0.06:0.06]
 
 
-end_time = 70
+end_time = 10
 step_time = 10
 
-set cbrange [0:end_time]
+set cbrange [0:100]
 unset colorbox
 
 plot for [t=0:end_time:step_time] "T_profile_2mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \
@@ -350,28 +346,29 @@ set ylabel "H2O Mole Fraction [-]"
 set yrange [0.:0.5]
 set xrange [0:70]
 
-endtime = 70
+endtime = 10
 step = 10
 n = endtime/step + 1
+error_margin = 0.03
 
 array max_xH2O[n]
 array time_points[n]
 
 do for [i=0:endtime/step] {
     time = i*step
-    stats "xH2O_profile_2mm.dat" using ($1==time ? $2 : 1/0):3 nooutput
+    stats "xH2O_profile_11mm.dat" using ($1==time ? $2 : 1/0):3 nooutput
     max_xH2O[i+1] = STATS_max_y
     time_points[i+1] = time
 }
 
 plot sample [i=1:n] '+' using (time_points[i]):(max_xH2O[i]) w l lw 2 lc "black" title "Max H2O", \
-      "../../data/fatehi/yH2O-2mm" u 1:2 w p pt 65 ps 0.8 lw 1 lc "red" notitle
+      "../../data/fatehi/yH2O-11mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lw 1 lc "light-gray" notitle
 
 
 ~~~
 
 
-~~~gnuplot Temperature evolution
+~~~gnuplot xH2O evolution
 reset
 set terminal svg size 400, 400
 set output "xH2O-evolution-fatehi-2mm.svg"
@@ -380,11 +377,12 @@ set xlabel "y position"
 set ylabel "H2O Mole Fraction"
 set key right top
 set yrange [0:0.5]
+set xrange [-0.06:0.06]
 
-end_time = 100
+end_time = 20
 step_time = 10
 
-set cbrange [0:end_time]
+set cbrange [0:100]
 unset colorbox 
 
 plot for [t=0:end_time:step_time] "xH2O_profile_2mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \

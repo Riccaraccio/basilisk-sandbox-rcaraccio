@@ -15,6 +15,9 @@ extern vector lambda1v, lambda2v;
 extern double TG0;
 extern scalar TInt, TS, TG;
 
+const double char_emissivity = 0.1;
+const double wood_emissivity = 0.6;
+
 typedef struct {
   coord c;
 } UserDataNls;
@@ -46,8 +49,12 @@ int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) 
   double lambda1vh = n.x / (n.x + n.y) * lambda1v.x[] + n.y / (n.x + n.y) * lambda1v.y[];
   double lambda2vh = n.x / (n.x + n.y) * lambda2v.x[] + n.y / (n.x + n.y) * lambda2v.y[];
 
+  scalar YCHAR = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+  double char_fraction = YCHAR[] / fS[];
+  double emissivity = char_fraction * char_emissivity + (1. - char_fraction) * wood_emissivity;
+
   gsl_vector_set(fdata, 0,
-                 -divq_rad_int(TInti, RADIATION_TEMP, RADIATION_INTERFACE) 
+                 -divq_rad_int(TInti, RADIATION_TEMP, emissivity) 
                  + lambda1vh * gradTSn 
                  + lambda2vh * gradTGn);
   // }

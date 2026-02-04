@@ -50,6 +50,10 @@ to account for the Darcy and Forchheimer resistance.
 */
 
 event viscous_term (i++) {
+/**
+We leave the option to apply a correction before and after the Darcy
+as this may be useful in some cases (e.g., high external flows).
+*/
 #ifndef NO_DARCY_CORRECTION
   correction(dt);
 #endif

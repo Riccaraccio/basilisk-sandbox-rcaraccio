@@ -1,3 +1,9 @@
+/**
+# Tempeature Profile Module
+Simple implementation of temperature profile reading and interpolation.
+Ideally this should be a struct/class but for simplicity kept as functions.
+*/
+
 #ifndef TEMPERATURE_PROFILE
     #define TEMPERATURE_PROFILE 1
 #endif
@@ -20,11 +26,6 @@ extern double TG0;
  * @note The arrays x and y must have the same length.
  */
 void TemperatureProfile_Set(const double*x, const double* y, const int size) {
-
-    if (y[0] != TG0 || TG0 == 0) {
-        fprintf(stderr,"Error: The first temperature value must be equal to TG0.\n");
-        return;
-    }
 
     if (sizeof(x) != sizeof(y)) {
         fprintf(stderr,"Error: The arrays Time and Temperature must have the same length.\n");
@@ -52,7 +53,7 @@ void TemperatureProfile_Set(const double*x, const double* y, const int size) {
  * @return The interpolated temperature at the given time. If the time greater than
  * the last time, returns the last temperature.
  */
-double TemperatureProfile_GetT(double time) {
+double TemperatureProfile_GetT(const double time) {
 
     if (time < TimeVector[0]) {
         fprintf(stderr,"Error: Time is out of bound.\n");

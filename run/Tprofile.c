@@ -1,3 +1,10 @@
+/**
+# Temperature Profile Module Example
+This is a simple example demonstrating how to use the Temperature Profile Module.
+It sets up a temperature profile based on predefined time and temperature arrays,
+and retrieves temperature values at specific times using linear interpolation.
+*/
+
 #include "temperature-profile.h"
 double TG0 = 300.;
 

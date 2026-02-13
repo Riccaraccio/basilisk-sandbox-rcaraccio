@@ -114,11 +114,16 @@ astats adapt_wavelet_leave_interface(scalar *slist,      // list of scalars
                 to avoid this issue.
                 NOTE: This is just a workaround, ideally one would want to investigate further the origin of this issue
                 */
-#if _MPI
+#if 0
+                // This seems to be fixed forcing the call to boundary after changing uf in shirnking.h
+                // Kept here for reference, may be useful in the future if the issue reappears
+                @if _MPI
                 bool condition = (vf[] > F_ERR && level < maxlevel);
-#else
+@else
                 bool condition = (vf[] > F_ERR && vf[] < 1. - F_ERR && level < maxlevel);
+@endif
 #endif
+                bool condition = (vf[] > F_ERR && vf[] < 1. - F_ERR && level < maxlevel);
                 if (condition) {
                   cell.flags |= too_coarse;
                   cell.flags &= ~too_fine;

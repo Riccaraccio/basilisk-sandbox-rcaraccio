@@ -1,9 +1,6 @@
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
 #define RADIATION_INTERFACE 0.9
-#define MOLAR_DIFFUSION 1
-#define FICK_CORRECTED 1
-#define MASS_DIFFUSION_ENTHALPY 1
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
@@ -15,36 +12,31 @@
 #include "darcy.h"
 
 double tend = 600.; //simulation time
+double Uin = 0.3; //inlet velocity
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
-psi[right]    = dirichlet (0.);
+psi[right]    = neumann (0.);
+pf[right]     = dirichlet (0.);
 
-u.n[left]    = neumann (0.);
-u.t[left]    = neumann (0.);
-p[left]      = dirichlet (0.);
-psi[left]    = dirichlet (0.);
+psi[top]     = dirichlet (0.);
 
-u.n[top]    = neumann (0.);
-u.t[top]    = neumann (0.);
-p[top]      = dirichlet (0.);
-psi[top]    = dirichlet (0.);
-
-u.n[bottom] = dirichlet (0.);
-u.t[bottom] = dirichlet (0.);
-p[bottom]   = neumann (0.);
-
+u.n[left]    = dirichlet (Uin);
+u.t[left]    = dirichlet (0.);
+p[left]      = neumann (0.);
+pf[left]     = neumann (0.);
+psi[left]    = neumann (0.);
 
 int maxlevel = 8; int minlevel = 4;
-double D0 = 2e-2;
+double D0 = 1e-1;
 double solid_mass0 = 0., moisture0 = 0.;
 
 int main() {
   
   lambdaS = 0.1987;
   lambdaSmodel = L_HUANG;
-  TS0 = 650.; TG0 = 700.;
+  TS0 = 600.; TG0 = 900.;
   rhoS = 920;
   eps0 = 0.4;
 
@@ -52,7 +44,7 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  zeta_policy = ZETA_SWELLING;
+  zeta_policy = ZETA_SHRINK;
 
   G.x = -9.81;
 
@@ -83,8 +75,9 @@ event init(i=0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
-  TG[right] = dirichlet (TG0);
+  TG[right] = neumann (0.);
   TG[top] = dirichlet (TG0);
+  TG[left] = dirichlet (TG0);
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
@@ -98,28 +91,9 @@ event init(i=0) {
   }
 }
 
-event output (t += 1) {
-  fprintf (stderr, "%g\n", t);
-
-  char name[80];
-  sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
-
-  //log mass profile
-  double solid_mass = 0.;
-  foreach (reduction(+:solid_mass))
-    solid_mass += (f[]-porosity[])*rhoS*dv();
-
-  //calculate radius
-  double radius = cbrt (3./2.*statsf(f).sum);
-
-  fprintf (fp, "%g %g %g\n", t, solid_mass/solid_mass0, radius/(D0/2.));
-
-  fflush(fp);
-}
-
 #if TREE
 event adapt (i++) {
+  fprintf(stderr, "%g\n", t);
   scalar inert = YGList_G[OpenSMOKE_IndexOfSpecies ("N2")];
   adapt_wavelet_leave_interface ({T, u.x, u.y, inert}, {f},
     (double[]){1.e-2, 1.e-2, 1.e-2, 1e-2}, maxlevel, minlevel, 1);
@@ -127,7 +101,6 @@ event adapt (i++) {
   unrefine (x < -L0/3);
 }
 #endif
-
 
 event stop (t = tend);
 

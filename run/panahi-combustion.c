@@ -6,13 +6,14 @@
 #define MASS_DIFFUSION_ENTHALPY 1
 #define GAS_PHASE_REACTIONS 1
 #define RADIATION_TEMP 1400.
+#define NO_DARCY_CORRECTION
 
 #ifndef ASPECT_RATIO
-# define ASPECT_RATIO 4. // aspect ratio of the particle
+# define ASPECT_RATIO 1. // aspect ratio of the particle
 #endif
 
 #ifndef IS_SPHERE
-# define IS_SPHERE false // true: sphere, false: cylinder
+# define IS_SPHERE true // true: sphere, false: cylinder
 #endif
 
 #include "axi.h" 
@@ -86,7 +87,7 @@ int main() {
     fprintf (stderr, "Calculated cylinder diameter D0: %e mm, height H0: %e mm\n", D0*1e3, H0*1e3);
   }
 
-  L0 = 9*max(D0, H0);
+  L0 = 10*max(D0, H0);
   init_grid(1 << maxlevel);
   run();
 }

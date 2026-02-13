@@ -17,6 +17,7 @@ const double Text = INIT_TEMP;
 
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
+//#include "navier-stokes/perfs.h"
 #define MULTICOMPONENT
 #include "constant-properties.h"
 #include "two-phase.h"
@@ -30,12 +31,16 @@ const double H0 = 4e-3; // 4 mm, from picuture in paper
 
 u.n[top] = dirichlet (0.)*f[] + (1-f[])*neumann (0.);
 u.t[top] = dirichlet (0.)*f[] + (1-f[])*neumann (0.);
+// uf.n[top] = dirichlet (0.)*f[] + (1-f[])*neumann (0.);
+// uf.t[top] = dirichlet (0.)*f[] + (1-f[])*neumann (0.);
 p[top]   = neumann (0.)*f[] + (1-f[])*dirichlet (0.);
 pf[top]  = neumann (0.)*f[] + (1-f[])*dirichlet (0.);
 psi[top] = neumann (0.);
 
 u.n[right]   = dirichlet(-Uin);
 u.t[right]   = dirichlet(0.);
+// uf.n[right]   = dirichlet(-Uin);
+// uf.t[right]   = dirichlet(0.);
 p[right]     = neumann(0.);
 psi[right]   = dirichlet(0.);
 
@@ -60,7 +65,7 @@ int main() {
   zeta_policy = ZETA_SHRINK;
 
   shift_prod = true;
-  DT = 1e-1;
+  DT = 1;
 
   kinfolder = "biomass/PE";
   init_grid(1 << maxlevel);
@@ -97,6 +102,25 @@ event init(i=0) {
   }
 }
 
+#if 0
+event stability (i++) {
+  reset ((scalar*) {uf}, 0.);
+  reset ((scalar*) {u}, 0.);
+}
+
+event end_timestep (i++) {
+ 
+  reset ((scalar*) {uf}, 0.);
+  reset ((scalar*) {u}, 0.);
+
+  mgp = project_sf (uf, p, alpha, dt, mgp.nrelax);
+
+  foreach()
+    foreach_dimension()
+      u.x[] = 0.5*(uf.x[] + uf.x[1]);
+}
+#endif
+
 double delta = H0, RR;
 event end_timestep (i++) {
   double delta0 = delta;
@@ -104,7 +128,12 @@ event end_timestep (i++) {
   RR = fabs (delta - delta0)/dt*1e3; //mm/s
 }
 
-event output (t += 0.01) {
+event end_timestep (i++) {
+  // fprintf (stderr, "dt = %g\n", dt);
+  dtmax = DT;
+}
+
+event output (t += 1) {
   fprintf(stderr, "%g\n", t);
 
   char name[80];
@@ -127,27 +156,27 @@ event output (t += 0.01) {
   fflush(fp);
 }
 
-event movie (t += 1) {
-  clear();
-  view (tx = -0.5, ty = -0.5);
-  draw_vof ("f", lw = 2.5);
-  squares ("u.x", spread = -1);
-  vectors ("u", scale = 1e-4, level = 5);
-  isoline ("u.x", lw = 1.8);
-  save ("velocity.mp4");
+// event movie (t += 1) {
+//   clear();
+//   view (tx = -0.5, ty = -0.5);
+//   draw_vof ("f", lw = 2.5);
+//   squares ("u.x", spread = -1);
+//   vectors ("u", scale = 1e-4, level = 5);
+//   isoline ("u.x", lw = 1.8);
+//   save ("velocity.mp4");
 
-  clear();
-  view (tx = -0.5, ty = -0.5);
-  draw_vof ("f", lw = 2.5);
-  squares ("T", spread = -1, min = 300, max = TG0);
-  save ("temperature.mp4");
+//   clear();
+//   view (tx = -0.5, ty = -0.5);
+//   draw_vof ("f", lw = 2.5);
+//   squares ("T", spread = -1, min = 300, max = TG0);
+//   save ("temperature.mp4");
 
-  clear();
-  view (tx = -0.5, ty = -0.5);
-  draw_vof ("f", lw = 2.5);
-  squares ("omega", spread = -1);
-  save ("omega.mp4");
-}
+//   clear();
+//   view (tx = -0.5, ty = -0.5);
+//   draw_vof ("f", lw = 2.5);
+//   squares ("omega", spread = -1);
+//   save ("omega.mp4");
+// }
 
 event adapt (i++) {
   #if TREE

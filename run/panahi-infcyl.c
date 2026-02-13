@@ -7,7 +7,7 @@
 #define GAS_PHASE_REACTIONS 1
 #define RADIATION_TEMP 1400.
 
-#include "grid/multigrid.h"
+// #include "grid/multigrid.h"
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -25,7 +25,7 @@ p[top]      = dirichlet (0.);
 psi[top]    = dirichlet (0.);
 
 double tend = 600e-3; //simulation time 300 ms
-int maxlevel = 4; int minlevel = 3;
+int maxlevel = 8; int minlevel = 3;
 double average_mass = 5.3e-8; //average biomass particle mass 53 mg
 
 double D0;
@@ -60,7 +60,7 @@ int main() {
   D0 = cbrt (4*particle_volume/(M_PI*aspect_ratio));
 
   #if TREE
-    L0 = 40*D0;
+    L0 = 30*D0;
   #else
     int n_proc = 16;
     size (40*D0/n_proc);

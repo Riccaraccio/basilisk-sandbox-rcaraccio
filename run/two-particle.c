@@ -19,8 +19,8 @@
 #include "view.h"
 
 double Uin = 0.25;
-double tend = 800.; //simulation time
-//double tend = 5; //simulation time
+//double tend = 800.; //simulation time
+double tend = 5; //simulation time
 
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
@@ -135,33 +135,33 @@ event adapt (i++) {
 }
 #endif
 
-//event stop (t = tend) {
-//  clear();
-//  view (ty=-0.5, width = 1400., height=1400.);
-//  squares ("T", min=300, max=773, linear=true, spread=-1);
-//  draw_vof ("f", lw=2);
-//  cells();
-//  save ("final-temperature.png");
-//}
+event stop (t = tend) {
+  clear();
+  view (ty=-0.5, width = 1400., height=1400.);
+  squares ("T", min=300, max=773, linear=true, spread=-1);
+  draw_vof ("f", lw=2);
+  cells();
+  save ("final-temperature.png");
+}
 
 /** 
 ~~~gnuplot
 reset
-set terminal svg size 450, 450
-#set terminal epslatex size 3.6, 3.6 color colortext
-set output "mass.svg"
+#set terminal svg size 450, 450
+set terminal epslatex size 3.6, 3.6 color colortext
+set output "mass.tex"
 
 set xlabel "Time [s]"
 set ylabel "Normalized mass [-]"
 set grid
-set xrange [0:600]
+set xrange [0:400]
 set xtics 100
 set yrange [0:1.1]
 set ytics 0.2
 set key top right box
 set size square
 
-plot  "log-one" u 1:2 w l lw 6 dt 1 lc "black" t "one particle", \
-      "log-two" u 1:2 w l lw 6 dt 3 lc "black" t "two particles"
+plot  "one" u 1:2 w l lw 6 dt 3 lc "black" t "one particle", \
+      "two" u 1:2 w l lw 6 dt 1 lc "black" t "two particles"
 ~~~
 **/

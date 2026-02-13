@@ -5,6 +5,7 @@
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
 #define GAS_PHASE_REACTIONS 1
+#define RADIATION_TEMP 1267.
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
@@ -27,7 +28,7 @@ u.t[top]    = neumann (0.);
 p[top]      = dirichlet (0.);
 psi[top]    = dirichlet (0.);
 
-int maxlevel = 8; int minlevel = 3;
+int maxlevel = 7; int minlevel = 3;
 double D0 = 9.5e-3;
 double solid_mass0 = 0.;
 
@@ -49,11 +50,12 @@ int main() {
 
   zeta_policy = ZETA_CONST;
 
-  L0 = 10*D0;
+  L0 = 5*D0;
 
   DT = 1e-2;
 
-  kinfolder = "biomass/dummy-solid-gas";
+  // kinfolder = "biomass/dummy-solid-gas";
+  kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
   init_grid(1 << maxlevel);
   run();
@@ -67,7 +69,16 @@ event init(i=0) {
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.79;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.21;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.4885;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]  = 0.1850;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1961;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.0007;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0000;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.0641;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0006;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0050;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.0600;
 
   foreach()
     porosity[] = eps0*f[];
@@ -118,23 +129,26 @@ event output (t += 0.01) {
 
 #if TREE
 event adapt (i++) {
-  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
 
-  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel}, {f},
+  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
     (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
 }
 #endif
 
-event movie (t += 0.1) {
-  clear();
-  view (tx = -0.5, ty = -0.5, width = 1080, height = 1080);
-  squares ("T", min=300, max=2000, spread=-1);
-  isoline ("T", val=statsf(T).max);
-  draw_vof("f");
-  save ("movie.mp4");
-}
+// event movie (t += 0.5) {
+//   clear();
+//   view (tx = -0.5, ty = -0.5, width = 1080, height = 1080);
+//   squares ("T", min=300, max=2000, spread=-1);
+//   isoline ("T", val=statsf(T).max);
+//   draw_vof("f");
+//   save ("movie.mp4");
+// }
 
-event stop (t = tend);
+//event stop (t = tend);
+event stop (t = 0.01){
+  dump();
+}
 
 /** 
 ~~~gnuplot

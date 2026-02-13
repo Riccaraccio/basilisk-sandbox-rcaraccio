@@ -1,16 +1,20 @@
+/**
+# Variable properties
+This file defines the variable properties for the gas and solid phases, as well as the functions to compute them. 
+*/
+
+
 #define VARPROP
 
 #ifndef F_ERR
 # define F_ERR 1e-10
 #endif
 
-// IDK WHY THIS DOESN'T WORK
-// (const) scalar rhoGv_G = zeroc, rhoGv_S = zeroc, rhoSv = zeroc;
-// (const) scalar muGv_G = zeroc, muGv_S = zeroc;
-// (const) scalar lambdaGv_G= zeroc, lambdaGv_S = zeroc, lambdaSv = zeroc;
-// (const) scalar cpGv_G = zeroc, cpGv_S = zeroc, cpSv = zeroc;
-
-//USE THIS INSTEAD FOR NOW, also seems to be much faster
+/**
+Variable properties fields. 
+Given that we consider posous media, we define separate properties for the gas phase inside the pores and for the solid matrix.
+The suffixe "_S" refers to internal gas  and "_G" to the surrounding gas.
+ */
 scalar rhoGv_G[], rhoGv_S[], rhoSv[];
 scalar muGv_G[], muGv_S[];
 scalar lambdaGv_G[], lambdaGv_S[], lambdaSv[];
@@ -44,6 +48,10 @@ extern scalar sf;
 #else
 # define sf f
 #endif
+
+/**
+We overwrite the properties for the Navier-Stokes solver with the variable properties.
+*/
 
 event properties (i++) {
 

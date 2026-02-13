@@ -11,20 +11,20 @@ Ideally this should be a struct/class but for simplicity kept as functions.
 double* TempVector = NULL;
 double* TimeVector = NULL;
 int nPoints;
-extern double TG0;
 
 /**
- * @brief Reads temperature profile data from given arrays.
- *
- * This function reads temperature and time data from the provided arrays
- * and stores them in dynamically allocated vectors.
- *
- * @param x Pointer to an array of time data.
- * @param y Pointer to an array of temperature data.
- * @param size The number of data points in the arrays.
- * @return void
- * @note The arrays x and y must have the same length.
- */
+## TemperatureProfile_Set
+
+Reads temperature profile data from given arrays.
+
+This function reads temperature and time data from the provided arrays
+and stores them in dynamically allocated vectors.
+
+* x; Pointer to an array of time data.
+* y: Pointer to an array of temperature data.
+* size: The number of data points in the arrays.
+note: The arrays x and y must have the same length.
+*/
 void TemperatureProfile_Set(const double*x, const double* y, const int size) {
 
     if (sizeof(x) != sizeof(y)) {
@@ -41,18 +41,20 @@ void TemperatureProfile_Set(const double*x, const double* y, const int size) {
     }
 }
 
-/**
- * @brief Retrieves the temperature at a given time using linear interpolation.
- *
- * This function takes a time value and returns the corresponding temperature
- * by performing linear interpolation between the known temperature points.
- * If the time is out of the bounds of the known time points, it returns an error
- * or the last known temperature value.
- *
- * @param time The time at which the temperature is to be retrieved.
- * @return The interpolated temperature at the given time. If the time greater than
- * the last time, returns the last temperature.
- */
+/** 
+## TemperatureProfile_GetT
+Retrieves the temperature at a given time using linear interpolation.
+
+This function takes a time value and returns the corresponding temperature
+by performing linear interpolation between the known temperature points.
+If the time is out of the bounds of the known time points, it returns an error
+or the last known temperature value.
+
+* time: The time at which the temperature is to be retrieved.
+
+returns the interpolated temperature at the given time. If the time greater than
+the last time, returns the last temperature.
+*/
 double TemperatureProfile_GetT(const double time) {
 
     if (time < TimeVector[0]) {
@@ -74,24 +76,26 @@ double TemperatureProfile_GetT(const double time) {
 }
 
 /**
- * @brief Frees the memory allocated for temperature and time vectors.
- *
- * This function releases the dynamically allocated memory for the 
- * temperature vector (TempVector) and the time vector (TimeVector).
- * It should be called to avoid memory leaks when these vectors are 
- * no longer needed.
- */
+## TemperatureProfile_Free
+Frees the memory allocated for temperature and time vectors.
+
+This function releases the dynamically allocated memory for the 
+temperature vector (TempVector) and the time vector (TimeVector).
+It should be called to avoid memory leaks when these vectors are 
+no longer needed.
+*/
 void TemperatureProfile_Free() {
     free(TempVector), TempVector = NULL;
     free(TimeVector), TimeVector = NULL;
 }
 
 /**
- * @brief Prints the temperature profile data to the standard error stream.
- *
- * This function prints the temperature profile data to the standard error stream.
- * It is useful for debugging purposes to verify that the data has been read correctly.
- */
+## TemperatureProfile_Print
+Prints the temperature profile data to the standard error stream.
+
+This function prints the temperature profile data to the standard error stream.
+It is useful for debugging purposes to verify that the data has been read correctly.
+*/
 void TemperatureProfile_Print() {
     for (int i=0; i<nPoints; i++) {
         fprintf(stderr,"%g %g\n", TimeVector[i], TempVector[i]);

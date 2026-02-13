@@ -1,3 +1,13 @@
+/**
+## Default OpenSMOKE++ header file
+Requires the OpenSMOKE++ interface to link the library functions. See 
+[OpenSMOKE++ Interface](https://github.com/edocipriano/OpenSMOKEppInterface) 
+and [OpenSMOKE++](https://www.opensmokepp.polimi.it/).
+
+This library provides functions to read thermodynamic, transport properties and reaction rates, 
+all key necessity for computing reacting flows.
+*/
+
 #include "OpenSMOKE_Interface.h"
 
 #define OPENSMOKE 1

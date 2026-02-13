@@ -1,3 +1,9 @@
+/**
+## OpenSMOKE++ Properties Interface
+We link the OpenSMOKE++ interface to read thermodynamic and transport properties for the gas and solid phases. 
+The properties are computed as a function of the local thermodynamic state, which is defined by the temperature, pressure and composition.
+*/
+
 #include "opensmoke.h"
 #include "variable-properties.h"
 
@@ -57,7 +63,6 @@ double opensmoke_solprop_heatcapacity (void * p) {
 
 extern double rhoS;
 
-trace
 double opensmoke_solprop_density (void * p) {
   return rhoS;
 }

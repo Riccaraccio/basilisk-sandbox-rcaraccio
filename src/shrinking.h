@@ -51,6 +51,7 @@ We declare a function to set the shrinking factor 'zeta' based on the
 selected policy.
 */
 
+trace
 void set_zeta (enum zeta_types zeta_policy) {
   switch (zeta_policy) {
   case ZETA_SHRINK: {

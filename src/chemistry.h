@@ -1,9 +1,9 @@
 /**
 # Chemistry solver
 This header contains the implementation of the chemistry solver.
-We solve an equation of the form:
-$$\frac{dM_{i}}{dt} = \sum^NR_j R_ji \nu_ji$$
-where M is the mass of species i, R is the reaction rate and nu is the 
+The general form of the equation is we solve an equation of the form:
+$$\frac{dMs_{i}}{dt} = \sum^{NR}_j R_{ji} \nu_{ji}(1-\epsilon)$$
+where y is the mass (or mass fractions) of species i, R is the reaction rate and nu is the 
 stoichiometric coefficient of species i in reaction j.
 
 We use the OpenSMOKE++ library to solve the ODE system as this offers
@@ -21,7 +21,7 @@ extern scalar porosity;
 #ifndef TURN_OFF_REACTIONS
 
 /**
-# Explicit ODE solvers
+## Explicit ODE solvers
 These are simple implementations of explicit ODE solvers: Euler and
 Runge-Kutta 4(5). They can be used for non-stiff problems.
 */
@@ -131,7 +131,7 @@ event chemistry (i++) {
   unsigned int NEQ = NGS + NSS + 1;
 #endif
   /**
-  # Solid-gas reactions
+  ## Solid-gas reactions
   We solve the solid-gas reaction system in each cell where there is
   solid present (i.e. f > F_ERR). The system is solved in terms of mass
   because the volume of the solid phase is variable due to porosity changes.
@@ -234,7 +234,7 @@ event chemistry (i++) {
     }
 
   /**
-  # Gas-phase reactions
+  ## Gas-phase reactions
   We solve the gas-phase reaction system in each cell where there is
   no solid present (i.e. f < F_ERR). The system is solved in terms of mass
   fraction as the volume is occupied only by the gas phase.

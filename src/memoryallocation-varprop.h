@@ -1,44 +1,58 @@
+/**
+# Memory allocation for variable properties
+Allocation of memory for species mass fractions, diffusion coefficients, temperatures, etc.
+List are used to dynamically allocate the scalars according to the number of species in the kinetic scheme.
+*/
+
 #include "opensmoke.h"
 
 unsigned int NGS, NSS;
 scalar omega[];
 
-scalar* YGList_G    = NULL;
-scalar* YGList_S    = NULL;
-scalar* YGList_Int  = NULL;
-scalar* sSexpList   = NULL;
-scalar* sGexpList   = NULL;
-scalar* YSList      = NULL;
-scalar* DmixGList_G = NULL;
-scalar* DmixGList_S = NULL;
+scalar* YGList_G    = NULL; // gas species in the gas phase
+scalar* YGList_S    = NULL; // gas species in the porous phase
+scalar* YGList_Int  = NULL; // gas species at the interface
+scalar* sSexpList   = NULL; // source terms for gas species in the porous phase
+scalar* sGexpList   = NULL; // source terms for gas species in the gas phase
+scalar* YSList      = NULL; // solid species in the porous phase
+scalar* DmixGList_G = NULL; // diffusion coefficients for gas species in the gas phase
+scalar* DmixGList_S = NULL; // diffusion coefficients for gas species in the porous phase
 #ifdef MOLAR_DIFFUSION
-scalar* XGList_G    = NULL;
-scalar* XGList_S    = NULL;
-scalar* XGList_Int  = NULL;
+scalar* XGList_G    = NULL; // mole fractions for gas species in the gas phase
+scalar* XGList_S    = NULL; // mole fractions for gas species in the porous phase
+scalar* XGList_Int  = NULL; // mole fractions for gas species at the interface
 #endif
 #ifdef MASS_DIFFUSION_ENTHALPY
-scalar* cpGList_G = NULL;
-scalar* cpGList_S = NULL;
+scalar* cpGList_G = NULL;   // specific heats for gas species in the gas phase
+scalar* cpGList_S = NULL;   // specific heats for gas species in the porous phase
 #endif
 
-double* gas_start;
-double* sol_start;
-double* gas_MWs;
-double* sol_MWs;
-double Pref = 101325.;
+double* gas_start; // starting mass fractions for gas species
+double* sol_start; // starting mass fractions for solid species
+double* gas_MWs; // molecular weights for gas species
+double* sol_MWs; // molecular weights for solid species
+double Pref = 101325.; // reference pressure [Pa]
 
 #ifdef SOLVE_TEMPERATURE
-scalar T[];
-double lambdaS = 1.; double lambdaG = 1.;
-double cpS = 1.; double cpG = 1.;
+scalar T[]; // temperature field
+double lambdaS = 1.; double lambdaG = 1.; // thermal conductivities [W/m/K]
+double cpS = 1.; double cpG = 1.; // specific heats [J/kg/K]
 
-double TS0 = 300.; double TG0 = 300.;
+double TS0 = 300.; double TG0 = 300.; // initial temperatures [K]
 
-scalar TInt[];
-scalar TS, TG;
-scalar sST[], sGT[];
-face vector lambda1f[], lambda2f[];
-vector lambda1v[], lambda2v[];
+scalar TInt[]; // interface temperature
+scalar TS, TG; // solid and gas temperatures
+scalar sST[], sGT[]; // source terms for solid and gas temperatures
+face vector lambda1f[], lambda2f[]; // face vector thermal conductivities for porous and gas phases
+vector lambda1v[], lambda2v[]; // thermal conductivities for porous and gas phases
+
+/**
+We want to consider anisotropic thermal conductivity for the solid phase.
+Thus, we set the boundary conditions for the vector field lambda1v (solid phase) accordingly.
+For simplicity, we do the same for the gas phase (lambda2v), although it is not strictly necessary.
+These boundary conditions are set to Neumann (zero gradient) on all sides are necessary for the correct
+calculation of the fluxes at the boundaries.
+*/
 
 lambda2v.n[bottom] = neumann(0.); 
 lambda2v.t[bottom] = neumann(0.);
@@ -60,13 +74,16 @@ lambda1v.t[top] = neumann(0.);
 #endif
 
 bool success;
-scalar MWmixG_G[], MWmixG_S[];
-scalar fG[], fS[];
-face vector fsS[], fsG[];
+scalar MWmixG_G[], MWmixG_S[]; // mixture molecular weights
+scalar fG[], fS[]; // phase fractions
+face vector fsS[], fsG[]; // face fractions
 
 event defaults (i = 0) {
 
-  //Read the kinetic scheme
+  /*
+  We load the kinetic scheme using OpenSMOKE++ functions.
+  */
+
   char kinfolder_root[120];
   sprintf (kinfolder_root, "%s/kinetics/%s/kinetics",
       getenv ("OPENSMOKE_INTERFACE"), kinfolder);
@@ -74,8 +91,8 @@ event defaults (i = 0) {
   OpenSMOKE_Init();
   OpenSMOKE_ReadKinetics (kinfolder_root);
   OpenSMOKE_ReadSolidKinetics (kinfolder_root);
-  NGS = OpenSMOKE_NumberOfSpecies();
-  NSS = OpenSMOKE_NumberOfSolidSpecies(); 
+  NGS = OpenSMOKE_NumberOfSpecies(); // Number of gas species
+  NSS = OpenSMOKE_NumberOfSolidSpecies(); // Number of solid species
   
   YGList_G    = NULL;
   YGList_S    = NULL;
@@ -247,6 +264,7 @@ for (int jj=0; jj<NGS; jj++) {
     sol_MWs[jj] = OpenSMOKE_MW_Solid(jj);
   }
 
+  // Set correct side for inverse fields
   for (scalar s in YGList_S)
     s.inverse = false;
 
@@ -264,6 +282,7 @@ for (int jj=0; jj<NGS; jj++) {
     s.inverse = true;
 #endif
 
+  // Add species to f tracer list
   scalar *temp;
   temp = list_concat(f.tracers, YGList_S);
   if (f.tracers)

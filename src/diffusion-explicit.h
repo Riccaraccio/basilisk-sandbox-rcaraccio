@@ -1,3 +1,14 @@
+/**
+# Explicit diffusion solver
+This file provides an explicit solver for the diffusion equation
+of the form:
+\f[
+\frac{\partial f}{\partial t} = \nabla \cdot (D \nabla f) + r + \beta f
+\f]
+where *D* is the diffusion coefficient, *r* is a source term and *beta*
+is a coefficient for an implicit source term.
+*/
+
 trace
 int diffusion_explicit (scalar f, double dt,
     face vector D,

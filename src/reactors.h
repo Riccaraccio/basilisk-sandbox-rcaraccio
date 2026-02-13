@@ -85,10 +85,12 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
   OpenSMOKE_SolProp_ReactionRates (cgas,csolid);
   OpenSMOKE_SolProp_FormationRates (rgas, rsolid); //rates are given per m3 of solid
 
+  // update the gas species rates
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]*rgas[jj]*(1-epsilon);
   }
 
+  // update the solid species rates
   for (int jj=0; jj<NSS; jj++) {
     dy[jj+NGS] = sol_MWs[jj]*rsolid[jj]*(1-epsilon);
   }
@@ -104,7 +106,8 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
 }
 
 /**
-## *solid_batch_nonisothermal_constantpressure()*: solve chemical species reactions
+## *solid_batch_nonisothermal_constantpressure()*
+solve chemical species reactions in the solid phase
 
 * *y*: vector (length = NS+1) containing the initial values of the system
 * *dt*: simulation time step
@@ -215,10 +218,17 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
   #endif
 }
 
-void gas_batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
+/**
+## *gas_batch_nonisothermal_constantpressure()*
+solve chemical species reactions in the gas phase
 
-  /**
-  Unpack data for the ODE system. */
+* *y*: vector (length = NS+1) containing the initial values of the system
+* *dt*: simulation time step
+* *dy*: right-hand-side of the batch system of equations
+* *args*: structure with additional arguments to be passed to the system
+*/
+
+void gas_batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
 
   UserDataODE data = *(UserDataODE *)args;
   double Temperature = y[NGS];
@@ -226,13 +236,16 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   OpenSMOKE_GasProp_SetTemperature (Temperature);
   OpenSMOKE_GasProp_SetPressure (data.P);
 
+  // Unpack mass fractions
   double gasmassfracs[NGS], gasmolefracs[NGS];
   for (int jj=0; jj<NGS; jj++)
     gasmassfracs[jj] = y[jj] < 0. ? 0. : y[jj];
 
+  // Calculate mole fractions and mixture molecular weight
   double MWMix;
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWMix, gasmassfracs);
 
+  // Calculate concentrations and reaction rates
   double ctot = data.P/(R_GAS*1000*Temperature); // kmol/m3
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
@@ -255,7 +268,7 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]*rgas[jj]/data.rhog;
-    data.sources[jj] = dy[jj]*data.rhog;
+    data.sources[jj] = dy[jj]*data.rhog; // source term for gas expansion
   }
 
   //Temperature equation

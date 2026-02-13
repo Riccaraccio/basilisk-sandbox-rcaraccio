@@ -1,3 +1,9 @@
+/**
+# Interface temperature solver
+This header contains the implementation of the solver for the interface temperature.
+We exploit the GSL library to solve the non-linear equation for the interface temperature.
+*/
+
 #include "intgrad.h"
 #ifndef USE_GSL
 # define USE_GSL 1
@@ -26,10 +32,12 @@ typedef struct {
 # define RADIATION_INTERFACE 0.
 #endif
 
+// Radiative heat flux at the interface
 double divq_rad_int (double TInti, double Tbulk = 300., double alphacorr = 1.) {
   return alphacorr*5.670373e-8*(pow(Tbulk, 4.) - pow(TInti, 4.));
 }
 
+// Non-linear equation for the interface temperature to be zeroed
 int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) {
   UserDataNls * data = (UserDataNls *)params;
   double TInti = gsl_vector_get(xdata, 0);

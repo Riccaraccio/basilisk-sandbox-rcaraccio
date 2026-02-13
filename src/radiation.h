@@ -1,4 +1,7 @@
 /**
+
+Copy of [Edoardo Cipriano radiation.h](/sandbox/ecipriano/src/opensmoke/radiation.h)
+
 # Radiation Models
 
 Radiation models for combustion simulations. Currently,

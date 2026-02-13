@@ -275,16 +275,18 @@ set xlabel "Time [s]"
 set size square
 set ylabel "Normalized solid mass [-]"
 set yrange [0:1]
-#set key top right box width 1
+unset key
 set xrange [0:800]
 set yrange [0:1.0]
 set xtics (0, 200, 400, 600, 800)
 set grid
 err_mass_time_r = 20
 err_mass_time_l = 0.
+array dummy[1] = [0]
 
 plot  "OutputData-7-rate" u 1:2 w l lw 6 lc "black" notitle, \
-      "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 64 ps 2 lw 6 lc "black" notitle
+      "data/mass-exp" u 1:2:($1-err_mass_time_l):($1+err_mass_time_r) w xerrorbars pt 5 ps 2 lw 6 lc "black" notitle,\
+      dummy u (NaN):(NaN) w lp pt 5 ps 2 lw 4 lc "black" t "Solid mass"
       #"data/mass-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Mass Gentile"
 ~~~
 
@@ -307,13 +309,14 @@ err_shrink_value_u = 0.
 err_shrink_value_d = 0.05
 err_mass_time = 20
 array dummy[1] = [0]
+set dashtype 11 (2,2,2,2)
 
-plot "OutputData-7-const" u 1:3 w l lw 6 lc "dark-green" notitle, \
-     "OutputData-7-const" u 1:4 w l lw 6 lc "black" notitle, \
-     "data/radial-exp" u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 64 ps 2 lw 5 lc "dark-green" notitle, \
-     "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 65 ps 2 lw 5 lc "black" notitle, \
-     dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 5 lc "dark-green" t "Radial", \
-     dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 5 lc "black" t "Axial"
+plot "OutputData-7-const" u 1:3 w l lw 6 dt 11 lc "dark-green" notitle, \
+     "OutputData-7-const" u 1:4 w l lw 6 dt 1  lc "black" notitle, \
+     "data/radial-exp" u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 5 ps 2 lw 5 lc "dark-green" notitle, \
+     "data/axial-exp"  u 1:2:($1-err_shrink_time_l):($1+err_shrink_time_r):($2-err_shrink_value_d):($2+err_shrink_value_u) w xyerrorbars pt 7 ps 2 lw 5 lc "black" notitle, \
+     dummy u (NaN):(NaN) w lp pt 5 ps 2 lw 4 dt 11 lc "dark-green" t "Radial", \
+     dummy u (NaN):(NaN) w lp pt 7 ps 2 lw 4 dt 1 lc "black" t "Axial"
      #"data/radial-gentile" u 1:2 w l dt 2 lw 2 lc "dark-green" t "Radial Gentile", \
      #"data/axial-gentile" u 1:2 w l dt 2 lw 2 lc "black" t "Axial Gentile"
 ~~~

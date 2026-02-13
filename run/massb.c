@@ -304,7 +304,7 @@ set key bottom right box width 1
 set xlabel "N"
 set ylabel "Error"
 set format y "10^{%T}"
-set key top right box opaque
+set key top right box opaque invert
 set logscale x 2
 set logscale y
 set yr [1e-5:0.8]
@@ -313,11 +313,13 @@ set size square
 set grid
 #set title "Solid mass conservation"
 
-plot  '$SHRINK_DATA'    u 1:2 w p pt 65  ps 3.5 lw 6 lc "dark-green" t "Only shrinking",\
-      '$SWELLING_DATA'  u 1:2 w p pt 66  ps 3.5 lw 6 lc "black" t "Constant-volume",\
-      '$SMOOTH_DATA'    u 1:2 w p pt 64  ps 3.5 lw 6 lc "blue" t "Smooth function", \
-      f4(x) lw 6 lc "red" title "$1^{st}$ order",\
-      f5(x) lw 6 dt 2 lc "red" title "$2^{nd}$ order"
+set dashtype 11 (2,2,2,2)
+
+plot   f5(x) lw 6 dt 11 lc "red" title "$2^{nd}$ order",\
+       f4(x) lw 6 lc "red" title "$1^{st}$ order",\
+      '$SMOOTH_DATA'    u 1:2 w p pt 5 ps 3 lw 6 lc "black" t "Smooth function", \
+      '$SHRINK_DATA'    u 1:2 w p pt 7 ps 3 lw 6 lc "blue" t "Only shrinking",\
+      '$SWELLING_DATA'  u 1:2 w p pt 9 ps 3 lw 6 lc "dark-green" t "Constant-volume"
       #f3(x) lw 3 lc "blue" title sprintf("fit: %.2f x^{%.2f}", A3, B3)
 ~~~
 
@@ -354,7 +356,7 @@ do for [i=0:2] {
 array x_levels[3] = [2**5, 2**6, 2**7]
 
 #set title "Gas mass conservation"
-set key top right box opaque
+set key top right box opaque invert
 
 set xlabel "N"
 set ylabel "Error"
@@ -399,10 +401,10 @@ fit f0(x) '$SHRINK_DATA' using 1:2 via A0, B0
 fit f1(x) '$SWELLING_DATA' using 1:2 via A1, B1
 fit f3(x) '$SMOOTH_DATA' using 1:2 via A3, B3
 
-plot  '$SHRINK_DATA'   u 1:2 w p pt 65 ps 3.5 lw 6 lc "dark-green" t "Only shrinking",\
-      '$SWELLING_DATA' u 1:2 w p pt 66 ps 3.5 lw 6 lc "black" t "Constant-volume",\
-      '$SMOOTH_DATA'   u 1:2 w p pt 64 ps 3.5 lw 6 lc "blue" t "Smooth function", \
-      f4(x) lw 6 lc "red" title "$1^{st}$ order"
+plot   f4(x) lw 6 lc "red" title "$1^{st}$ order",\
+      '$SMOOTH_DATA'   u 1:2 w p pt 5 ps 3 lw 6 lc "black" t "Smooth function", \
+      '$SHRINK_DATA'   u 1:2 w p pt 7 ps 3 lw 6 lc "blue" t "Only shrinking",\
+      '$SWELLING_DATA' u 1:2 w p pt 9 ps 3 lw 6 lc "dark-green" t "Constant-volume"
       #f3(x) lw 3 lc "blue" title sprintf("fit: %.2f x^{%.2f}", A3, B3)
 ~~~
 
@@ -563,6 +565,7 @@ reset
 #set terminal svg enhanced size 450, 450
 set terminal epslatex size 3.6, 3.6
 set output "massb-profiles.tex"
+set dashtype 11 (2,2,2,2)
 
 
 !awk '$2==0 && $8==1 {print $1, $7; if ($7 != 0) {last_x=$1; last_y=$7}} END {if (last_x != "") {print last_x, last_y-1; print last_x, 1}}' OutputFields-init > init.dat
@@ -589,7 +592,7 @@ set label "$\\Gamma _{0} = \\Gamma _{f}$" at 0.35, 0.3
 set label "$\\epsilon _{f}$" at 0.3, 0.91
 set label "$\\epsilon _{0}$" at 0.3, 0.55
 set title "Constant-volume" offset 0,-1
-plot  "init.dat" u 1:2 w l lw 6 dt 2 lc "black" notitle,\
+plot  "init.dat" u 1:2 w l lw 6 dt 11 lc "black" notitle,\
       "swell.dat" u 1:2 w l lw 6 lc "orange" t "Constant-volume"
 
 unset label
@@ -600,7 +603,7 @@ set title "Only shrinking"
 set label "$\\Gamma _{0}$" at 0.5, 0.5
 set label "$\\Gamma _{f}$" at 0.24, 0.25
 set label "$\\epsilon _{0} = \\epsilon _{f}$" at 0.35, 0.3
-plot  "init.dat" u 1:2 w l lw 6 dt 2 lc "black" notitle,\
+plot  "init.dat" u 1:2 w l lw 6 dt 11 lc "black" notitle,\
       "shrink.dat" u 1:2 w l lw 6 lc "dark-green" t "Only shrinking"
 
 unset label
@@ -613,7 +616,7 @@ set label "$\\Gamma _{0}$" at 0.5, 0.5
 set label "$\\Gamma _{f}$" at 0.42, 0.7
 set label "$\\epsilon _{0}$" at 0.35, 0.27
 set label "$\\epsilon _{f}$" at 0.3, 0.91
-plot  "init.dat" u 1:2 w l lw 6 dt 2 lc "black" notitle,\
+plot  "init.dat" u 1:2 w l lw 6 dt 11 lc "black" notitle,\
       "smooth.dat" u 1:2 w l lw 6 lc "blue" t "Smooth function"
 unset multiplot
 ~~~

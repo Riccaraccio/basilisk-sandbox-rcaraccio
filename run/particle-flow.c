@@ -185,9 +185,6 @@ event stop (t = tend);
 /** 
 ~~~gnuplot
 reset
-#set terminal svg size 450, 450
-#set output "huang-mass.svg"
-
 set terminal epslatex size 3.6, 3.6 color colortext
 set output "huang-mass.tex"
 
@@ -202,13 +199,18 @@ set key top right box width 2.2
 set size square
 array dummy[1] = [0]
 
-plot  "OutputData-20-773" u 1:2 w l lw 6 lc "black" notitle, \
-      "../../data/huang-particleflow/20/773-mass" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      "OutputData-30-773" u 1:2 w l lw 6 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/30/773-mass" u 1:2 w p pt 65 ps 2 lw 3 lc "dark-green" notitle, \
-      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 3 lc "black" t "2 cm", \
-      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 3 lc "dark-green" t "3 cm"
+set dashtype 11 (2,2,2,2)
+set dashtype 12 (5,2,5,2)
+
+plot  "OutputData-20-773" u 1:2 w l lw 6 dt 1 lc "black" notitle, \
+      "../../data/huang-particleflow/20/773-mass" every 3 u 1:2 w p pt 5 ps 2 lw 3 lc "black" notitle, \
+      "OutputData-30-773" u 1:2 w l lw 6 dt 11 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/30/773-mass" every 3 u 1:2 w p pt 7 ps 2 lw 3 lc "dark-green" notitle, \
+      dummy u (NaN):(NaN) w lp pt 5 ps 2 lw 3 dt 1  lc "black" t "2 cm", \
+      dummy u (NaN):(NaN) w lp pt 7 ps 2 lw 3 dt 11 lc "dark-green" t "3 cm"
 ~~~
+
+
 ~~~gnuplot
 reset
 #set terminal svg size 450, 450
@@ -228,18 +230,22 @@ set key bottom right box width 2.2
 set size square 
 array dummy[1] = [0]
 
-plot  "../../data/huang-particleflow/20/673-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      "../../data/huang-particleflow/20/773-shrinking" u 1:2 w p pt 65 ps 2 lw 3 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/20/873-shrinking" u 1:2 w p pt 66 ps 2 lw 3 lc "blue" notitle, \
-      "../../data/huang-particleflow/20/973-shrinking" u 1:2 w p pt 69 ps 2 lw 3 lc "orange" notitle, \
-      "OutputData-20-673" u 1:6 w l lw 6 lc "black" notitle, \
-      "OutputData-20-773" u 1:6 w l lw 6 lc "dark-green" notitle, \
-      "OutputData-20-873" u 1:6 w l lw 6 lc "blue" notitle, \
-      "OutputData-20-973" u 1:6 w l lw 6 lc "orange" notitle, \
-      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 6 lc "black" t "673K", \
-      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 6 lc "dark-green" t "773K", \
-      dummy u (NaN):(NaN) w lp pt 66 ps 2 lw 6 lc "blue" t "873K", \
-      dummy u (NaN):(NaN) w lp pt 69 ps 2 lw 6 lc "orange" t "973K"
+set dashtype 11 (2,2,2,2)
+set dashtype 12 (5,2,5,2)
+set dashtype 13 (5,2,2,2)
+
+plot  "../../data/huang-particleflow/20/673-shrinking" every 3 u 1:2 w p pt 5  ps 2 lw 3 lc "black" notitle, \
+      "../../data/huang-particleflow/20/773-shrinking" every 3 u 1:2 w p pt 7  ps 2 lw 3 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/20/873-shrinking" every 3 u 1:2 w p pt 9  ps 2 lw 3 lc "blue" notitle, \
+      "../../data/huang-particleflow/20/973-shrinking" every 3 u 1:2 w p pt 15 ps 2 lw 3 lc "orange" notitle, \
+      "OutputData-20-673" u 1:6 w l lw 6 dt 1  lc "black" notitle, \
+      "OutputData-20-773" u 1:6 w l lw 6 dt 11 lc "dark-green" notitle, \
+      "OutputData-20-873" u 1:6 w l lw 6 dt 12 lc "blue" notitle, \
+      "OutputData-20-973" u 1:6 w l lw 6 dt 13 lc "orange" notitle, \
+      dummy u (NaN):(NaN) w lp pt 5  ps 2 lw 4 dt 1 lc "black" t "673K", \
+      dummy u (NaN):(NaN) w lp pt 7  ps 2 lw 4 dt 11 lc "dark-green" t "773K", \
+      dummy u (NaN):(NaN) w lp pt 9  ps 2 lw 4 dt 12 lc "blue" t "873K", \
+      dummy u (NaN):(NaN) w lp pt 15 ps 2 lw 4 dt 13 lc "orange" t "973K"
 
 ~~~
 
@@ -262,18 +268,18 @@ set key bottom right box width 2.2
 set size square 
 array dummy[1] = [0]
 
-plot  "../../data/huang-particleflow/30/673-shrinking" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-      "../../data/huang-particleflow/30/773-shrinking" u 1:2 w p pt 65 ps 2 lw 3 lc "dark-green" notitle, \
-      "../../data/huang-particleflow/30/873-shrinking" u 1:2 w p pt 66 ps 2 lw 3 lc "blue" notitle, \
-      "../../data/huang-particleflow/30/973-shrinking" u 1:2 w p pt 69 ps 2 lw 3 lc "orange" notitle, \
-      "OutputData-30-673" u 1:6 w l lw 6 lc "black" notitle, \
-      "OutputData-30-773" u 1:6 w l lw 6 lc "dark-green" notitle, \
-      "OutputData-30-873" u 1:6 w l lw 6 lc "blue" notitle, \
-      "OutputData-30-973" u 1:6 w l lw 6 lc "orange" notitle, \
-      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 6 lc "black" t "673K", \
-      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 6 lc "dark-green" t "773K", \
-      dummy u (NaN):(NaN) w lp pt 66 ps 2 lw 6 lc "blue" t "873K", \
-      dummy u (NaN):(NaN) w lp pt 69 ps 2 lw 6 lc "orange" t "973K"
+plot  "../../data/huang-particleflow/30/673-shrinking" every 3 u 1:2 w p pt 5  ps 2 lw 3 lc "black" notitle, \
+      "../../data/huang-particleflow/30/773-shrinking" every 3 u 1:2 w p pt 7  ps 2 lw 3 lc "dark-green" notitle, \
+      "../../data/huang-particleflow/30/873-shrinking" every 3 u 1:2 w p pt 9  ps 2 lw 3 lc "blue" notitle, \
+      "../../data/huang-particleflow/30/973-shrinking" every 3 u 1:2 w p pt 15 ps 2 lw 3 lc "orange" notitle, \
+      "OutputData-30-673" u 1:6 w l lw 6 dt 1 lc "black" notitle, \
+      "OutputData-30-773" u 1:6 w l lw 6 dt 11 lc "dark-green" notitle, \
+      "OutputData-30-873" u 1:6 w l lw 6 dt 12 lc "blue" notitle, \
+      "OutputData-30-973" u 1:6 w l lw 6 dt 13 lc "orange" notitle, \
+      dummy u (NaN):(NaN) w lp pt 5  ps 2 lw 4 dt 1 lc "black" t "673K", \
+      dummy u (NaN):(NaN) w lp pt 7  ps 2 lw 4 dt 11 lc "dark-green" t "773K", \
+      dummy u (NaN):(NaN) w lp pt 9  ps 2 lw 4 dt 12 lc "blue" t "873K", \
+      dummy u (NaN):(NaN) w lp pt 15 ps 2 lw 4 dt 13 lc "orange" t "973K"
 ~~~
 
 ~~~gnuplot
@@ -295,12 +301,14 @@ set key bottom right box width 2.2
 set size square
 array dummy[1] = [0]
 
-plot "OutputData-20-773" u 1:3 w l lw 6 lc "black" notitle, \
-     "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 64 ps 2 lw 3 lc "black" notitle, \
-     "OutputData-30-773" u 1:3 w l lw 6 lc "dark-green" notitle, \
-     "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 65 ps 2 lw 3 lc "dark-green" notitle, \
-      dummy u (NaN):(NaN) w lp pt 64 ps 2 lw 3 lc "black" t "2 cm", \
-      dummy u (NaN):(NaN) w lp pt 65 ps 2 lw 3 lc "dark-green" t "3 cm"
+set dashtype 11 (2,2,2,2)
+
+plot "OutputData-20-773" u 1:3 w l lw 6 dt 1 lc "black" notitle, \
+     "../../data/huang-particleflow/20/773-T-core" every 2 u 1:2 w p pt 5 ps 2 lw 3 lc "black" notitle, \
+     "OutputData-30-773" u 1:3 w l lw 6 dt 11 lc "dark-green" notitle, \
+     "../../data/huang-particleflow/30/773-T-core" every 2 u 1:2 w p pt 7 ps 2 lw 3 lc "dark-green" notitle, \
+      dummy u (NaN):(NaN) w lp pt 5 ps 2 lw 3 dt 1 lc "black" t "2 cm", \
+      dummy u (NaN):(NaN) w lp pt 7 ps 2 lw 3 dt 11 lc "dark-green" t "3 cm"
 ~~~
 
 ~~~gnuplot
@@ -314,7 +322,7 @@ set xrange [0:650]
 set xtics 100
 set yrange [200:850]
 set ytics 100
-set key bottom right box width 2.1
+set key bottom right box width 2.2
 set size square
 
 plot "OutputData-20-773" u 1:4 w l lw 3 lc "black" t "2 cm", \
@@ -342,4 +350,119 @@ plot "OutputData-20-773" u 1:5 w l lw 3 lc "black" t "2 cm", \
      "OutputData-30-773" u 1:5 w l lw 3 lc "dark-green" t "3 cm", \
      "../../data/huang-particleflow/30/773-T-surf" u 1:2 w p pt 4 ps 1.2 lc "dark-green" notitle
 ~~~
-**/
+
+~~~gnuplot
+reset
+set terminal svg size 550, 550 font "Montserrat,14"
+set output "huang-mass.svg"
+
+set xlabel "Time [s]"
+set ylabel "Normalized mass [-]"
+set xrange [0:650]
+set xtics 100
+set yrange [0:1.1]
+set ytics 0.2
+set key top right
+set size square
+array dummy[1] = [0]
+
+red = "#E3120B"
+
+plot  "OutputData-20-773" u 1:2 w l lw 4 lc "black" notitle, \
+      "../../data/huang-particleflow/20/773-mass" u 1:2 w p pt 64 ps 1. lw 3 lc "black" notitle, \
+      "OutputData-30-773" u 1:2 w l lw 4 lc rgb red notitle, \
+      "../../data/huang-particleflow/30/773-mass" u 1:2 w p pt 66 ps 1 lw 3 lc rgb red notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 1 lw 4 lc "black" t "2 cm", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 1 lw 4 lc rgb red t "3 cm"
+~~~
+
+~~~gnuplot
+reset
+set terminal svg size 550, 550 font "Montserrat,14"
+set output "huang-t-core.svg"
+
+set xlabel "Time [s]"
+set ylabel "Temperature [K]"
+set xrange [0:650]
+set xtics 100
+set yrange [250:900]
+set ytics 100
+set key bottom right
+set size square
+array dummy[1] = [0]
+
+red = "#E3120B"
+
+plot "OutputData-20-773" u 1:3 w l lw 4 lc "black" notitle, \
+     "../../data/huang-particleflow/20/773-T-core" u 1:2 w p pt 64 ps 1 lw 3 lc "black" notitle, \
+     "OutputData-30-773" u 1:3 w l lw 4 lc rgb red notitle, \
+     "../../data/huang-particleflow/30/773-T-core" u 1:2 w p pt 66 ps 1 lw 3 lc rgb red notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 1 lw 3 lc "black" t "2 cm", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 1 lw 3 lc rgb red t "3 cm"
+~~~
+
+~~~gnuplot
+reset
+set terminal svg size 550, 550 font "Montserrat,14"
+set output "huang-shrink-30.svg"
+
+set xlabel "Time [s]"
+set ylabel "Shrinking factor [-]"
+set xrange [0:650]
+set xtics 100
+set yrange [0.0:1.05]
+set ytics 0.2
+set key bottom right
+set size square
+array dummy[1] = [0]
+
+red = "#E3120B"
+light_red = "#F9B5B0"
+
+
+plot  "../../data/huang-particleflow/30/673-shrinking" every 2 u 1:2 w p pt 64  ps 1 lw 3 lc "black" notitle, \
+      "../../data/huang-particleflow/30/773-shrinking" every 2 u 1:2 w p pt 66  ps 1 lw 3 lc "grey" notitle, \
+      "../../data/huang-particleflow/30/873-shrinking" every 2 u 1:2 w p pt 74  ps 1 lw 3 lc rgb light_red notitle, \
+      "../../data/huang-particleflow/30/973-shrinking" every 2 u 1:2 w p pt 70 ps 1 lw 3 lc rgb red notitle, \
+      "OutputData-30-673" u 1:6 w l lw 4 lc "black" notitle, \
+      "OutputData-30-773" u 1:6 w l lw 4 lc "grey" notitle, \
+      "OutputData-30-873" u 1:6 w l lw 4 lc rgb light_red notitle, \
+      "OutputData-30-973" u 1:6 w l lw 4 lc rgb red notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 1 lw 4 lc "black" t "673K", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 1 lw 4 lc "grey" t "773K", \
+      dummy u (NaN):(NaN) w lp pt 74 ps 1 lw 4 lc rgb light_red t "873K", \
+      dummy u (NaN):(NaN) w lp pt 70 ps 1 lw 4 lc rgb red t "973K"
+~~~ 
+~~~gnuplot
+reset
+set terminal svg size 550, 550 font "Montserrat,14"
+set output "huang-shrink-20.svg"
+
+set xlabel "Time [s]"
+set ylabel "Shrinking factor [-]"
+set xrange [0:650]
+set xtics 100
+set yrange [0.0:1.05]
+set ytics 0.2
+set key bottom right
+set size square
+array dummy[1] = [0]
+
+red = "#E3120B"
+light_red = "#F9B5B0"
+
+plot  "../../data/huang-particleflow/20/673-shrinking" every 2 u 1:2 w p pt 64 ps 1 lw 3 lc "black" notitle, \
+      "../../data/huang-particleflow/20/773-shrinking" every 2 u 1:2 w p pt 66 ps 1 lw 3 lc "grey" notitle, \
+      "../../data/huang-particleflow/20/873-shrinking" every 2 u 1:2 w p pt 74 ps 1 lw 3 lc rgb light_red notitle, \
+      "../../data/huang-particleflow/20/973-shrinking" every 2 u 1:2 w p pt 70 ps 1 lw 3 lc rgb red notitle, \
+      "OutputData-20-673" u 1:6 w l lw 4 lc "black" notitle, \
+      "OutputData-20-773" u 1:6 w l lw 4 lc "grey" notitle, \
+      "OutputData-20-873" u 1:6 w l lw 4 lc rgb light_red notitle, \
+      "OutputData-20-973" u 1:6 w l lw 4 lc rgb red notitle, \
+      dummy u (NaN):(NaN) w lp pt 64 ps 1 lw 4 lc "black" t "673K", \
+      dummy u (NaN):(NaN) w lp pt 66 ps 1 lw 4 lc "grey" t "773K", \
+      dummy u (NaN):(NaN) w lp pt 74 ps 1 lw 4 lc rgb light_red t "873K", \
+      dummy u (NaN):(NaN) w lp pt 70 ps 1 lw 4 lc rgb red t "973K"
+~~~
+**/ 
+    

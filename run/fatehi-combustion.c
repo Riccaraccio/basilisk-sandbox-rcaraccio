@@ -265,15 +265,15 @@ event stop (t = tend) {
 
 /** 
 ~~~gnuplot Mass
-set terminal svg size 400, 400
+set terminal svg size 550, 550 font "Montserrat,14"
 set output "mass-fatehi.svg"
 set xlabel "Time [s]"
 set ylabel "Normalized solid mass [-]"
 set xrange [0:150]
 set yrange [0:1.05]
 
-plot "OutputData-9" u 1:2 w l lw 3 lc "black" notitle, \
-     "../../data/fatehi/mass" u 1:2 w p pt 64 ps 1 lw 1 lc "light-gray" notitle
+plot "cluster/dummy/fatehi-combustion/OutputData-10" u 1:2 w l lw 4 lc "black" notitle, \
+     "../../data/fatehi/mass" u 1:2 w p pt 64 ps 1 lw 3 lc "black" notitle
 ~~~
 
 ~~~gnuplot H2O mole fraction
@@ -286,12 +286,12 @@ set yrange [0.:0.5]
 set xrange [0:70]
 
 error_margin = 0.03
-shift = 0
+shift = 6
 
 plot  "../../data/fatehi/yH2O-11mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "gray" notitle  ,\
-      "xH2OProfile.dat" u ($1-shift):4 w l lw 2 lc "black" title "11 mm",\
+      "cluster/full-9/fatehi-combustion/xH2OProfile.dat" u ($1-shift):4 w l lw 2 lc "black" title "11 mm",\
       "../../data/fatehi/yH2O-2mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "light-coral" notitle  ,\
-      "xH2OProfile.dat" u ($1-shift):2 w l lw 2 lc "red" title "2 mm"
+      "cluster/full-9/fatehi-combustion/xH2OProfile.dat" u ($1-shift):2 w l lw 2 lc "red" title "2 mm"
 
 ~~~
 
@@ -305,19 +305,44 @@ set yrange [800:1900]
 set xrange [0:60]
 
 error_margin = 50
-shift = 0
+shift = 5
 
-plot  "../../data/fatehi/T-15mm" u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "black" notitle, \
+plot  "../../data/fatehi/T-11mm" u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "black" notitle, \
       "../../data/fatehi/T-2mm" u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "light-coral" notitle, \
-      "TemperatureProfile.dat" u ($1-shift):6 w l lw 2 lc "black" title "15 mm", \
-      "TemperatureProfile.dat" u ($1-shift):2 w l lw 2 lc "red" title "2 mm"
+      "cluster/full-9/fatehi-combustion/TemperatureProfile.dat" u ($1-shift):5 w l lw 2 lc "black" title "11 mm", \
+      "cluster/full-9/fatehi-combustion/TemperatureProfile.dat" u ($1-shift):2 w l lw 2 lc "red" title "2 mm"
 ~~~
 
 ~~~gnuplot Temperature evolution
 reset
-set terminal svg size 400, 400
+set terminal svg size 550, 550 font "Montserrat,14"
 set output "temperature-evolution-fatehi-2mm.svg"
-load "/root/gnuplot-palettes/inferno.pal"
+load "/root/gnuplot-palettes/rdgy.pal"
+
+set xlabel "y position"
+set ylabel "Temperature"
+set key right top
+set ytics 900,200,2300
+set yrange [800:2300]
+set xrange [-0.06:0.06]
+set title "Temperature 2mm"
+
+end_time = 100 
+step_time = 10
+
+set cbrange [0:end_time]
+unset colorbox
+
+
+plot for [t=0:end_time:step_time] "cluster/dummy/fatehi-combustion/T_profile_2mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 3 lc palette title sprintf("%d s", t), \
+     for [t=0:end_time:step_time] "cluster/dummy/fatehi-combustion/T_profile_2mm.dat" u ($1==t ? -$2 : 1/0):3:(t) w l lw 3 lc palette notitle
+~~~
+
+~~~gnuplot Temperature evolution
+reset
+set terminal svg size 550, 550 font "Montserrat,14"
+set output "temperature-evolution-fatehi-11mm.svg"
+load "/root/gnuplot-palettes/rdgy.pal"
 
 set xlabel "y position"
 set ylabel "Temperature"
@@ -325,48 +350,17 @@ set key right top
 set ytics 900,200,2300
 set yrange [950:2300]
 set xrange [-0.06:0.06]
+#set title "Temperature 11mm"
 
-
-end_time = 10
-step_time = 10
+end_time = 100
+step_time = 20
 
 set cbrange [0:100]
 unset colorbox
 
-plot for [t=0:end_time:step_time] "T_profile_2mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \
-     for [t=0:end_time:step_time] "T_profile_2mm.dat" u ($1==t ? -$2 : 1/0):3:(t) w l lw 2 lc palette notitle
+plot for [t=0:end_time:step_time] "cluster/dummy/fatehi-combustion/T_profile_11mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 3 lc palette title sprintf("%d s", t), \
+     for [t=0:end_time:step_time] "cluster/dummy/fatehi-combustion/T_profile_11mm.dat" u ($1==t ? -$2 : 1/0):3:(t) w l lw 3 lc palette notitle
 ~~~
-
-~~~gnuplot Test plot
-reset
-set terminal svg size 400, 400
-set output "test-plot-fatehi.svg"
-set xlabel "Time [s]"
-set ylabel "H2O Mole Fraction [-]"
-set yrange [0.:0.5]
-set xrange [0:70]
-
-endtime = 10
-step = 10
-n = endtime/step + 1
-error_margin = 0.03
-
-array max_xH2O[n]
-array time_points[n]
-
-do for [i=0:endtime/step] {
-    time = i*step
-    stats "xH2O_profile_11mm.dat" using ($1==time ? $2 : 1/0):3 nooutput
-    max_xH2O[i+1] = STATS_max_y
-    time_points[i+1] = time
-}
-
-plot sample [i=1:n] '+' using (time_points[i]):(max_xH2O[i]) w l lw 2 lc "black" title "Max H2O", \
-      "../../data/fatehi/yH2O-11mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lw 1 lc "light-gray" notitle
-
-
-~~~
-
 
 ~~~gnuplot xH2O evolution
 reset
@@ -378,18 +372,73 @@ set ylabel "H2O Mole Fraction"
 set key right top
 set yrange [0:0.5]
 set xrange [-0.06:0.06]
+set title "xH2O 2mm"
 
-end_time = 20
-step_time = 10
+end_time = 18
+step_time = 2
 
-set cbrange [0:100]
+set cbrange [0:20]
 unset colorbox 
 
-plot for [t=0:end_time:step_time] "xH2O_profile_2mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \
-     for [t=0:end_time:step_time] "xH2O_profile_2mm.dat" u ($1==t ? -$2 : 1/0):3:(t) w l lw 2 lc palette notitle
+plot for [t=0:end_time:step_time] "cluster/full-9/fatehi-combustion/xH2O_profile_2mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \
+     for [t=0:end_time:step_time] "cluster/full-9/fatehi-combustion/xH2O_profile_2mm.dat" u ($1==t ? -$2 : 1/0):3:(t) w l lw 2 lc palette notitle
 
 ~~~
 
+~~~gnuplot xH2O evolution
+reset
+set terminal svg size 400, 400
+set output "xH2O-evolution-fatehi-11mm.svg"
+load "/root/gnuplot-palettes/inferno.pal"
+set xlabel "y position"
+set ylabel "H2O Mole Fraction"
+set key right top
+set yrange [0:0.5]
+set xrange [-0.06:0.06]
+set title "xH2O 11mm"
 
+end_time = 18
+step_time = 2
+
+set cbrange [0:20]
+unset colorbox 
+
+plot for [t=0:end_time:step_time] "cluster/full-9/fatehi-combustion/xH2O_profile_11mm.dat" u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \
+     for [t=0:end_time:step_time] "cluster/full-9/fatehi-combustion/xH2O_profile_11mm.dat" u ($1==t ? -$2 : 1/0):3:(t) w l lw 2 lc palette notitle
+
+~~~
+
+~~~gnuplot Test plot
+reset
+set terminal svg size 400, 400
+set output "test-plot-fatehi.svg"
+set xlabel "Time [s]"
+set ylabel "H2O Mole  Fraction[-]"
+set yrange [0.:0.5]
+set xrange [0:70]
+
+endtime = 70
+step = 1
+n = endtime/step + 1
+error_margin = 0.03
+shift = 5
+
+folder_path = "cluster/full-9/fatehi-combustion/"
+
+# Define the upper space limit for averaging
+space_max = 0.01
+
+# Use awk to filter and compute averages directly from the original data
+# Filter: keep only rows where space <= space_max, then average H2O for each time
+system(sprintf("awk '$2 <= %f {sum[$1]+=$3; count[$1]++} END {for(t in sum) print t, sum[t]/count[t]}' %sxH2O_profile_2mm.dat | sort -n > %savg_h2o_2mm.dat", space_max, folder_path, folder_path))
+system(sprintf("awk '$2 <= %f {sum[$1]+=$3; count[$1]++} END {for(t in sum) print t, sum[t]/count[t]}' %sxH2O_profile_11mm.dat | sort -n > %savg_h2o_11mm.dat", space_max, folder_path, folder_path))
+
+plot sprintf("%savg_h2o_2mm.dat", folder_path) u ($1-shift):2 w l lw 2 lc "red" t "2mm", \
+     "../../data/fatehi/yH2O-2mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "light-coral" notitle, \
+      sprintf("%savg_h2o_11mm.dat", folder_path) u ($1-shift):2 w l lw 2 lc "black" t "11mm", \
+      "../../data/fatehi/yH2O-11mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "gray" notitle
+
+
+~~~
 
 **/

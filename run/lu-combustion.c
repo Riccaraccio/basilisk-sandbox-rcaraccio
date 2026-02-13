@@ -128,7 +128,19 @@ event output (t += 1) {
   
   // calculate surface temperature as average over interface cells
   double T_surface = avg_interface (TInt, f, F_ERR);
-  double TS_avg = avg_interface (TS, f, F_ERR);
+
+  // calculate solid temperature as average over interface cells
+  double TS_avg = 0.;
+  int count = 0;
+  foreach (reduction(+:TS_avg) reduction(+:count)) {
+    if (f[] > F_ERR && f[] < 1.-F_ERR) {
+      TS_avg += TS[]/f[];
+      count++;
+    }
+  }
+
+  if (count > 0)
+    TS_avg /= count;
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
@@ -181,7 +193,7 @@ set yrange [0.:1.1]
 set xrange [0:100]
 
 plot  "../../data/lu/mass" u 1:(1 - ($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "black" notitle, \
-      "OutputData-9" u 1:2 w l lw 2 lc "black" notitle
+      "cluster/full/lu-combustion/OutputData-9" u 1:2 w l lw 2 lc "black" notitle
 
 ~~~
 
@@ -197,9 +209,8 @@ set key bottom right
 
 plot  "../../data/lu/T-particle-core" u 1:(($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "black" notitle, \
       "../../data/lu/T-particle-surf" u 1:(($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "red" notitle, \
-      "OutputData-9" u 1:4 w l lw 2 lc "black" title "Core", \
-      "OutputData-9" u 1:5 w l lw 2 lc "red" title "Surface"
-
+      "cluster/full/lu-combustion/OutputData-9" u 1:4 w l lw 2 lc "black" title "Core", \
+      "cluster/full/lu-combustion/OutputData-9" u 1:5 w l lw 2 lc "red" title "Surface"
 
 ~~~
 

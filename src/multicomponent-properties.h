@@ -101,10 +101,12 @@ void update_properties_initial (void) {
           double char_cond = 0.071;
           double bio_cond = 0.21;
           scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
+          double ash_fraction = ash_field[] / f[];
           double char_fraction = char_field[] / f[];
           foreach_dimension()
               lambda1v.x[] = (char_cond * char_fraction + bio_cond * (1. - char_fraction))*(1. - porosity[]/f[])
-                              + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / 0.95 + porosity[]/f[] * lambdaGv_S[];
+                              + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / emissivity(char_fraction, ash_fraction) + porosity[]/f[] * lambdaGv_S[];
           break;
         }
 
@@ -267,10 +269,12 @@ void update_properties (void) {
           double char_cond = 0.071;
           double bio_cond = 0.21;
           scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
+          double ash_fraction = ash_field[] / f[];
           double char_fraction = char_field[] / f[];
           foreach_dimension()
               lambda1v.x[] = (char_cond * char_fraction + bio_cond * (1. - char_fraction))*(1. - porosity[]/f[])
-                              + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / 0.95 + porosity[]/f[] * lambdaGv_S[];
+                              + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / emissivity(char_fraction, ash_fraction) + porosity[]/f[] * lambdaGv_S[];
           break;
         }
 

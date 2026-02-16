@@ -12,11 +12,10 @@
 
 #include "common-evaporation.h"
 #include "memoryallocation-varprop.h"
-#include "multicomponent-properties.h"
-#include "chemistry.h"
-
 #include "int-temperature.h"
 #include "int-concentration.h"
+#include "multicomponent-properties.h"
+#include "chemistry.h"
 
 void check_and_correct_fractions(scalar* YList, int n, bool inverse) {
   foreach() {

@@ -35,17 +35,26 @@ double divq_rad_int (double TInti, double Tbulk = 300., double alphacorr = 1.) {
   return alphacorr*5.670373e-8*(pow(Tbulk, 4.) - pow(TInti, 4.));
 }
 
-double emissivity_diblasi (const double char_fraction, const double ash_fraction = 0.) {
+double emissivity_diblasi (const double char_fraction, const double ash_fraction) {
+  NOT_UNUSED(ash_fraction);
   const double char_emissivity = 1;
   const double wood_emissivity = 0.6;
+  // From Galgano & Diblasi 2003
   return char_fraction * char_emissivity + (1. - char_fraction) * wood_emissivity;
 }
 
-double emissivity_lu (const double char_fraction, const double ash_fraction = 0.){
+double emissivity_lu (const double char_fraction, const double ash_fraction){
   const double char_emissivity = 0.95;
   const double wood_emissivity = 0.85;
   const double ash_emissivity = 0.7;
+  // From Lu et al 2008
   return char_fraction * char_emissivity + (1. - char_fraction - ash_fraction) * wood_emissivity + ash_fraction * ash_emissivity;
+}
+
+double emissivity_constant (const double char_fraction, const double ash_fraction) {
+  NOT_UNUSED(char_fraction);
+  NOT_UNUSED(ash_fraction);
+  return 0.85; // Gronli thesis 1996
 }
 
 double (*emissivity) (const double char_fraction, const double ash_fraction) = NULL;

@@ -65,6 +65,8 @@ int main() {
   return 1;
 #endif
 
+  emissivity = emissivity_constant;
+
   run();
 }
 
@@ -257,9 +259,6 @@ event movie (t += 1) {
 }
 
 event save_fields (t += 10) {
-  char name[80];
-  sprintf (name, "fields-%g", t);
-
   // H2O
   scalar XH2O_G = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
   scalar XH2O_S = XGList_S[OpenSMOKE_IndexOfSpecies ("H2O")];
@@ -295,7 +294,11 @@ event save_fields (t += 10) {
   foreach()
     LVG[] = LVG_S[]*f[] + LVG_G[]*(1. - f[]);
 
-  output_field ({T, f, u.x, u.y, XH2O, XCO2, XOH, XCO, LVG, omega}, name);
+  char name[80];
+  sprintf (name, "fields-%g", t);
+  static FILE * fs = fopen (name, "w");
+
+  output_field ({T, f, u.x, u.y, XH2O, XCO2, XOH, XCO, LVG, omega}, fs);
 }
 
 event stop (t = tend) {

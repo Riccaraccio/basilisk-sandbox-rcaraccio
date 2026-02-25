@@ -15,6 +15,7 @@
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "view.h"
+#include "flame.h"
 
 const double Uin = 0.6; //inlet velocity
 u.n[left]    = dirichlet (Uin);
@@ -30,9 +31,9 @@ p[right]      = dirichlet (0.);
 psi[right]    = neumann (0.);
 
 const double tend = 100; //simulation time 300 s
-int maxlevel = 9; int minlevel = 3;
+int maxlevel = 10; int minlevel = 3;
 
-const double D0 = 9.5e-3;
+double D0 = 9.5e-3;
 double solid_mass0 = 0.;
 
 int main() {
@@ -46,7 +47,7 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  zeta_policy = ZETA_REACTION;
+  zeta_policy = ZETA_CONST;
 
   DT = 1;
 
@@ -56,9 +57,11 @@ int main() {
   // kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
 
-  L0 = 15*D0;
+  L0 = 20*D0;
   origin (-L0/2, 0);
   init_grid(1 << maxlevel);
+
+  emissivity = emissivity_constant;
 
   run();
 }
@@ -72,19 +75,19 @@ event init (i= 0) {
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.235;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.594; // 93.5% biomass
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]   = 0.400; // 6.1% moisture
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]     = 0.006; // 0.6% ash
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.594; // 93.5% biomass
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]   = 0.400; // 6.1% moisture
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]     = 0.006; // 0.6% ash
 
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.3104;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("GMSW")]  = 0.1175;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1245;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.0004;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0000;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.0407;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0004;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0060;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.4000;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.3104;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("GMSW")]  = 0.1175;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1245;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.0004;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0001;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.0407;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0004;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0060;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.4000;
 
   foreach() {
     porosity[] = eps0*f[];
@@ -118,7 +121,7 @@ event init (i= 0) {
   divq_rad = opensmoke_optically_thin;
 }
 
-event output (t += 1) {
+event output (t += 0.1) {
   //log mass profile
   double solid_mass = 0.;
   foreach (reduction(+:solid_mass))
@@ -162,7 +165,7 @@ event adapt (i++) {
 }
 #endif
 
-event movie (t += 1) {
+event movie (t += 0.01) {
   scalar XH2O_G = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
   scalar XH2O_S = XGList_S[OpenSMOKE_IndexOfSpecies ("H2O")];
   scalar XH2O[];
@@ -171,11 +174,12 @@ event movie (t += 1) {
 
   clear();
   view (theta=0, phi=0, psi=-pi/2., width = 1080, height = 1080);
-  squares ("T", min = 300, max = 2000, spread = -1, linear = true);
-  isoline ("T", val = statsf(T).max);
   draw_vof ("f", lw = 1.5);
+  squares ("T", min = 300, max = 2000, spread = -1, linear = true);
+  isoline ("zmix - zsto", lw = 1.5, lc = {1., 1., 1.});
   mirror ({0, 1}) {
     squares ("XH2O", min = 0, max = 1., spread = -1, linear = true);
+    cells();
     draw_vof ("f", lw = 1.5);
   }
   save ("movie.mp4");
@@ -185,7 +189,7 @@ event stop (t = tend);
 /** 
 ~~~gnuplot Mass
 reset
-set terminal svg size 400, 400
+set terminal svg size 450, 450
 set output "lu-mass.svg"
 set xlabel "Time [s]"
 set ylabel "Normalized Mass [-]"

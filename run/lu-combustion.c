@@ -79,15 +79,16 @@ event init (i= 0) {
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]   = 0.400; // 6.1% moisture
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]     = 0.006; // 0.6% ash
 
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.3104;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("GMSW")]  = 0.1175;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1245;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]  = 0.0004;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]  = 0.0001;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]  = 0.0407;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0004;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0060;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.4000;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]   = 0.3104;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("GMSW")]   = 0.1175;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]   = 0.1245;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]   = 0.0004;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]   = 0.0001;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")]   = 0.0407;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]    = 0.0004;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]    = 0.0060;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]  = 0.1700;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BMOIST")] = 0.2300;
 
   foreach() {
     porosity[] = eps0*f[];

@@ -61,7 +61,7 @@ double (*emissivity) (const double char_fraction, const double ash_fraction) = N
 
 event defaults (i = 0) {
   if (emissivity == NULL)
-    emissivity = emissivity_lu;
+    emissivity = emissivity_constant;
 }
 
 // Non-linear equation for the interface temperature to be zeroed

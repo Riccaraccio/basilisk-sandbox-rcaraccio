@@ -19,7 +19,8 @@ enum solid_thermal_conductivity_model {
   L_CORBETTA,
   L_HUANG,
   L_ANCACOUCE,
-  L_KK
+  L_KK,
+  L_LU
 };
 
 enum solid_thermal_conductivity_model lambdaSmodel;
@@ -133,8 +134,35 @@ void update_properties_initial (void) {
           break;
         }
 
+        case L_LU: {
+          scalar moist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
+          double Cw = moist_field[] / f[];
+          if (OpenSMOKE_IndexOfSolidSpecies("BMOIST") >= 0) {
+            scalar bmoist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("BMOIST")];
+            Cw += bmoist_field[] / f[];
+          }
+
+          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction = char_field[] / f[];
+          scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
+          double ash_fraction = ash_field[] / f[];
+    
+          double char_cond = 0.071;
+          double ash_cond = 1.2;
+          double wood_cond = (0.129 - 4.9e-2*Cw)*
+                             (1 + (2.05 + 4*Cw)*1e-3*(TS[]/f[] - 273.15))*
+                             (0.986 + 2.695*Cw);
+          double rad_cont = 5.67e-8*pow(TS[]/f[], 3)*3.2e-6/emissivity(char_fraction, ash_fraction);
+
+          foreach_dimension()
+              lambda1v.x[] = (wood_cond*(1 - char_fraction - ash_fraction) + char_cond*char_fraction + ash_cond*ash_fraction)*(1. - porosity[]/f[]) 
+                             + porosity[]/f[] * lambdaGv_S[] + rad_cont;
+          break;
+        }
+
         default:
-          fprintf(stderr, "WARNING: Unknown solid thermal conductivity model\n");
+          fprintf(stderr, "ERROR: Unknown solid thermal conductivity model, unkown lambdaSmodel = %d \n", lambdaSmodel);
+          abort();
           break;
       }
     }
@@ -300,8 +328,35 @@ void update_properties (void) {
           break;
         }
 
+        case L_LU: {
+          scalar moist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
+          double Cw = moist_field[] / f[];
+          if (OpenSMOKE_IndexOfSolidSpecies("BMOIST") >= 0) {
+            scalar bmoist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("BMOIST")];
+            Cw += bmoist_field[] / f[];
+          }
+
+          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
+          double char_fraction = char_field[] / f[];
+          scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
+          double ash_fraction = ash_field[] / f[];
+    
+          double char_cond = 0.071;
+          double ash_cond = 1.2;
+          double wood_cond = (0.129 - 4.9e-2*Cw)*
+                             (1 + (2.05 + 4*Cw)*1e-3*(TS[]/f[] - 273.15))*
+                             (0.986 + 2.695*Cw);
+          double rad_cont = 5.67e-8*pow(TS[]/f[], 3)*3.2e-6/emissivity(char_fraction, ash_fraction);
+
+          foreach_dimension()
+              lambda1v.x[] = (wood_cond*(1 - char_fraction - ash_fraction) + char_cond*char_fraction + ash_cond*ash_fraction)*(1. - porosity[]/f[]) 
+                             + porosity[]/f[] * lambdaGv_S[] + rad_cont;
+          break;
+        }
+
         default:
-          fprintf(stderr, "WARNING: Unknown solid thermal conductivity model\n");
+          fprintf(stderr, "ERROR: Unknown solid thermal conductivity model, unkown lambdaSmodel = %d \n", lambdaSmodel);
+          abort();
           break;
       }
     }

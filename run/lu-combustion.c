@@ -4,7 +4,7 @@
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
 #define GAS_PHASE_REACTIONS 1
-#define RADIATION_TEMP 1273
+#define RADIATION_TEMP 1276
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
@@ -38,9 +38,9 @@ double solid_mass0 = 0.;
 
 int main() {
 
-  lambdaSmodel = L_HUANG;
+  lambdaSmodel = L_LU;
   TS0 = 300.; TG0 = 1050.;
-  rhoS = 950.; // biomass density
+  rhoS = 970.; // biomass density
   eps0 = 0.4; // low, compressed pellet
 
   //dummy properties
@@ -61,7 +61,7 @@ int main() {
   origin (-L0/2, 0);
   init_grid(1 << maxlevel);
 
-  emissivity = emissivity_constant;
+  emissivity = emissivity_lu;
 
   run();
 }
@@ -80,7 +80,7 @@ event init (i= 0) {
   // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]     = 0.006; // 0.6% ash
 
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]   = 0.3104;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("GMSW")]   = 0.1175;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]   = 0.1175;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]   = 0.1245;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")]   = 0.0004;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")]   = 0.0001;
@@ -155,8 +155,8 @@ event output (t += 0.1) {
 
 #if TREE
 event adapt (i++) {
-  // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
-  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
     (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);

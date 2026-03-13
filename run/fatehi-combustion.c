@@ -15,6 +15,7 @@
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "view.h"
+#include "flame.h"
 
 const double Uin = 0.03; //inlet velocity
 u.n[left]    = dirichlet (Uin);
@@ -30,9 +31,9 @@ p[right]      = dirichlet (0.);
 psi[right]    = neumann (0.);
 
 const double tend = 150 ; //simulation time 150 s
-int maxlevel = 10; int minlevel = 2;
+int maxlevel = 9; int minlevel = 2;
 
-const double D0 = 8e-3, H0 = 8e-3;
+double D0 = 8e-3, H0 = 8e-3;
 double solid_mass0 = 0.;
 
 int main() {
@@ -65,7 +66,7 @@ int main() {
   return 1;
 #endif
 
-  emissivity = emissivity_constant;
+  emissivity = emissivity_diblasi;
 
   run();
 }
@@ -75,7 +76,8 @@ int main() {
 double r0;
 // Output files for profiles
 FILE* fTprofile_2mm, * fTprofile_11mm;
-FILE* fpxH2Oprofile_2mm, * fpxH2Oprofile_11mm;
+FILE* fxH2Oprofile_2mm, * fxH2Oprofile_11mm;
+FILE* fxOHprofile_2mm, * fxOHprofile_11mm;
 
 event init (i= 0) {
   fraction (f, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
@@ -129,8 +131,10 @@ event init (i= 0) {
 
   fTprofile_2mm = fopen("T_profile_2mm.dat", "w");
   fTprofile_11mm = fopen("T_profile_11mm.dat", "w");
-  fpxH2Oprofile_2mm = fopen("xH2O_profile_2mm.dat", "w");
-  fpxH2Oprofile_11mm = fopen("xH2O_profile_11mm.dat", "w");
+  fxH2Oprofile_2mm = fopen("xH2O_profile_2mm.dat", "w");
+  fxH2Oprofile_11mm = fopen("xH2O_profile_11mm.dat", "w");
+  fxOHprofile_2mm = fopen("xOH_profile_2mm.dat", "w");
+  fxOHprofile_11mm = fopen("xOH_profile_11mm.dat", "w");
 }
 
 // Prints profile of a scalar at a given x location for all y form 0 to L0/2
@@ -172,7 +176,7 @@ double path_average_XH2O (double x_interp, const int n_samples = 100, const doub
   return numerator/(length);
 }
 
-event print_profile (t += 1; t <= 100) {
+event print_profile (t += 0.1; t <= 100) {
   const int time = (int) round(t);
 
   // Temperature profiles
@@ -181,16 +185,22 @@ event print_profile (t += 1; t <= 100) {
 
   // Water vapor mole fraction profile
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
-  print_profile (XH2O, H0/2 + 2e-3, fpxH2Oprofile_2mm, time, 200, L0/2);
-  print_profile (XH2O, H0/2 + 11e-3, fpxH2Oprofile_11mm, time, 200, L0/2);
+  print_profile (XH2O, H0/2 + 2e-3, fxH2Oprofile_2mm, time, 200, L0/2);
+  print_profile (XH2O, H0/2 + 11e-3, fxH2Oprofile_11mm, time, 200, L0/2);
+
+  scalar XOH = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+  print_profile (XOH, H0/2 + 2e-3, fxOHprofile_2mm, time, 200, L0/2);
+  print_profile (XOH, H0/2 + 11e-3, fxOHprofile_11mm, time, 200, L0/2);
 
   fflush (fTprofile_2mm);
   fflush (fTprofile_11mm);
-  fflush (fpxH2Oprofile_2mm);
-  fflush (fpxH2Oprofile_11mm);
+  fflush (fxH2Oprofile_2mm);
+  fflush (fxH2Oprofile_11mm);
+  fflush (fxOHprofile_2mm);
+  fflush (fxOHprofile_11mm);
 }
 
-event output (t += 1) {
+event output (t += 0.1) {
   // Interpolate Water vapor mass fraction
   double xH2O[5], sample_points[5] = {H0/2 + 2e-3, H0/2 + 4e-3, H0/2 + 8e-3, H0/2 + 11e-3, H0/2 + 15e-3};
 
@@ -229,10 +239,11 @@ event output (t += 1) {
 #if TREE
 event adapt (i++) {
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
   // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
-  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
+  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1, 1e-1}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);
@@ -250,14 +261,17 @@ event movie (t += 1) {
   view (theta=0, phi=0, psi=-pi/2., width = 1080, height = 1080);
   squares ("T", min = 300, max = 2000, spread = -1, linear = true);
   isoline ("T", val = statsf(T).max);
+  isoline ("zmix - zsto", lw = 1.5, lc = {1., 1., 1.});
   draw_vof ("f", lw = 1.5);
   mirror ({0, 1}) {
     squares ("XH2O", min = 0, max = 1., spread = -1, linear = true);
+    isoline ("zmix - zsto", lw = 1.5, lc = {1., 1., 1.});
     draw_vof ("f", lw = 1.5);
   }
   save ("movie.mp4");
 }
 
+#if PRINT_FIELDS
 event save_fields (t += 10) {
   // H2O
   scalar XH2O_G = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
@@ -296,28 +310,37 @@ event save_fields (t += 10) {
 
   char name[80];
   sprintf (name, "fields-%g", t);
-  static FILE * fs = fopen (name, "w");
-
-  output_field ({T, f, u.x, u.y, XH2O, XCO2, XOH, XCO, LVG, omega}, fs);
+  FILE * fs = fopen (name, "w");
+  if (fs == NULL) {
+    fprintf (stderr, "Error opening file %s for writing\n", name);
+  } else {
+    output_field ({T, f, u.x, u.y, XH2O, XCO2, XOH, XCO, LVG, omega}, fs);
+  }
 }
+#endif
 
 event stop (t = tend) {
   fclose(fTprofile_2mm);
   fclose(fTprofile_11mm);
-  fclose(fpxH2Oprofile_2mm);
-  fclose(fpxH2Oprofile_11mm);
+  fclose(fxH2Oprofile_2mm);
+  fclose(fxH2Oprofile_11mm);
+  fclose(fxOHprofile_2mm);
+  fclose(fxOHprofile_11mm);
 }
 
 /** 
 ~~~gnuplot Mass
-set terminal svg size 550, 550
+set terminal svg size 450, 450
 set output "mass-fatehi.svg"
 set xlabel "Time [s]"
 set ylabel "Normalized solid mass [-]"
 set xrange [0:150]
 set yrange [0:1.05]
 
-plot "cluster/full-9/fatehi-combustion/OutputData-9" u 1:2 w l lw 4 lc "black" notitle, \
+plot "cluster/10/diblasi/fatehi-combustion/OutputData-10"     u 1:2 w l lw 2 lc "black" t "Diblasi", \
+     "cluster/10/const/fatehi-combustion/OutputData-10"       u 1:2 w l lw 2 lc "red" t "Constant", \
+     "cluster/10/diblasi-swl/fatehi-combustion/OutputData-10" u 1:2 w l lw 2 lc "blue" t "Diblasi-SWL", \
+     "cluster/10/lu/fatehi-combustion/OutputData-10"          u 1:2 w l lw 2 lc "orange" t "Lu", \
      "../../data/fatehi/mass" u 1:2 w p pt 64 ps 1 lw 3 lc "black" notitle
 ~~~
 
@@ -470,7 +493,7 @@ reset
 set terminal svg size 550, 350
 set output "test-plot-fatehi.svg"
 set xlabel "Time [s]"
-set ylabel "H2O Mole  Fraction[-]"
+set ylabel "H2O Mole Fraction[-]"
 set yrange [0.:0.5]
 set xrange [0:60]
 

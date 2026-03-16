@@ -40,8 +40,8 @@ int main() {
 
   lambdaSmodel = L_LU;
   TS0 = 300.; TG0 = 1050.;
-  rhoS = 970.; // biomass density
-  eps0 = 0.4; // low, compressed pellet
+  rhoS = 1000.; // biomass density
+  eps0 = 0.4;
 
   //dummy properties
   rho1 = 1., rho2 = 1.;
@@ -53,8 +53,8 @@ int main() {
 
   G.x = -9.81;
 
-  kinfolder = "biomass/dummy-solid-gas";
-  // kinfolder = "biomass/Red-gas-2507";
+  // kinfolder = "biomass/dummy-solid-gas";
+  kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
 
   L0 = 20*D0;
@@ -156,17 +156,18 @@ event output (t += 0.1) {
 #if TREE
 event adapt (i++) {
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
   // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
-  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, porosity}, {f},
-    (double[]){1.e0, 1.e-1, 1.e-1, 1e-1}, maxlevel, minlevel, 2);
+  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
+    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1, 1e-1}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);
 }
 #endif
 
-event movie (t += 0.01) {
+event movie (t += 1) {
   scalar XH2O_G = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
   scalar XH2O_S = XGList_S[OpenSMOKE_IndexOfSpecies ("H2O")];
   scalar XH2O[];
@@ -198,24 +199,24 @@ set yrange [0.:1.1]
 set xrange [0:100]
 
 plot  "../../data/lu/mass" u 1:(1 - ($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "black" notitle, \
-      "cluster/full/lu-combustion/OutputData-9" u 1:2 w l lw 2 lc "black" notitle
+      "cluster/10/lu-combustion/OutputData-10" u 1:2 w l lw 2 lc "black" notitle
 
 ~~~
 
 ~~~gnuplot Temperature evolution
 reset
-set terminal svg size 400, 400
+set terminal svg size 450, 450
 set output "T-lu.svg"
 set xlabel "Time [s]"
 set ylabel "Temperature [K]"
-set yrange [200:1800]
+set yrange [200:1900]
 set xrange [0:100]
 set key bottom right
 
 plot  "../../data/lu/T-particle-core" u 1:(($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "black" notitle, \
       "../../data/lu/T-particle-surf" u 1:(($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "red" notitle, \
-      "cluster/full/lu-combustion/OutputData-9" u 1:4 w l lw 2 lc "black" title "Core", \
-      "cluster/full/lu-combustion/OutputData-9" u 1:5 w l lw 2 lc "red" title "Surface"
+      "cluster/10/lu-combustion/OutputData-10" u 1:4 w l lw 2 lc "black" title "Core", \
+      "cluster/10/lu-combustion/OutputData-10" u 1:6 w l lw 2 lc "red" title "Surface"
 
 ~~~
 

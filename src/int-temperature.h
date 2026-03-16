@@ -32,7 +32,7 @@ typedef struct {
 
 // Radiative heat flux at the interface
 double divq_rad_int (double TInti, double Tbulk = 300., double alphacorr = 1.) {
-  return alphacorr*5.670373e-8*(pow(Tbulk, 4.) - pow(TInti, 4.));
+  return 5.670373e-8*(0.92*pow(Tbulk, 4.) - alphacorr * pow(TInti, 4.));
 }
 
 double emissivity_diblasi (const double char_fraction, const double ash_fraction) {

@@ -142,8 +142,14 @@ void update_properties_initial (void) {
             Cw += bmoist_field[] / f[];
           }
 
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-          double char_fraction = char_field[] / f[];
+          double char_fraction = 0.;
+          for (int jj=0; jj<n_char_species; jj++) {
+            if (OpenSMOKE_IndexOfSolidSpecies(char_species[jj]) >= 0) {
+              scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies(char_species[jj])];
+              char_fraction += char_field[] / f[];
+            }
+          }
+
           scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
           double ash_fraction = ash_field[] / f[];
     
@@ -336,8 +342,14 @@ void update_properties (void) {
             Cw += bmoist_field[] / f[];
           }
 
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-          double char_fraction = char_field[] / f[];
+          double char_fraction = 0.;
+          for (int jj=0; jj<n_char_species; jj++) {
+            if (OpenSMOKE_IndexOfSolidSpecies(char_species[jj]) >= 0) {
+              scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies(char_species[jj])];
+              char_fraction += char_field[] / f[];
+            }
+          }
+
           scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
           double ash_fraction = ash_field[] / f[];
     

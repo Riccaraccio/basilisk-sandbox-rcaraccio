@@ -10,6 +10,10 @@
   #include "diffusion.h"
 #endif
 
+const int n_char_species = 14;
+const char *char_species[] = {"CHAR", "COH2S", "CO2S", "COS", "CH3OHS", "CH4S", 
+"C2H4S", "C6H5OHS", "CH2OS", "H2S", "C2H6S", "LVGS", "CHARO", "COSTIFFS"};
+
 #include "common-evaporation.h"
 #include "memoryallocation-varprop.h"
 #include "int-temperature.h"

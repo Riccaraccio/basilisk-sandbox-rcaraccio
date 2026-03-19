@@ -94,7 +94,6 @@ int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) 
 
 void ijc_CoupledTemperature() {
 
-  scalar YCHAR = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
   scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
   foreach() {
     if (f[]>F_ERR && f[] < 1.-F_ERR) {
@@ -106,7 +105,13 @@ void ijc_CoupledTemperature() {
       foreach_dimension()
         data.c.x = o.x;
 
-      double char_fraction = YCHAR[]/f[];
+      double char_fraction = 0.;
+      for (int jj = 0; jj < n_char_species; jj++) {
+        if (OpenSMOKE_IndexOfSolidSpecies(char_species[jj]) >= 0) {
+          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies(char_species[jj])];
+          char_fraction += char_field[] / f[];
+        }
+      }
       double ash_fraction = YASH[]/f[];
       data.emissivity = emissivity(char_fraction, ash_fraction);
 

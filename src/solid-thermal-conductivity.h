@@ -7,13 +7,16 @@ on the local temperature and composition of the solid phase, as well as on the
 porosity and volume fraction fields.
  */
 
- enum solid_thermal_conductivity_model {
+extern scalar* YSList; // List of solid species mass fraction fields
+
+enum solid_thermal_conductivity_model {
   L_CONST,
   L_CORBETTA,
   L_HUANG,
   L_ANCACOUCE,
   L_KK,
-  L_LU
+  L_LU,
+  L_GALGANO
 };
 
 enum solid_thermal_conductivity_model lambdaSmodel = L_CONST;
@@ -37,14 +40,13 @@ coord lambda_corbetta(Point point, double lambdaG, double porosity, double Tempe
 
 // Huang model for solid thermal conductivity
 coord lambda_huang(Point point, double lambdaG, double porosity, double Temperature, scalar f) {
-    NOT_UNUSED(Temperature);
     double char_cond = 0.071;
     double bio_cond = 0.21;
     double char_fraction = calculate_char_fraction(point, YSList, f);
     scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
     double ash_fraction = YASH[]/f[];
     double lambda = (char_cond*char_fraction + bio_cond*(1. - char_fraction))*(1. - porosity) 
-    + 13.5*5.67e-8*pow(TS[]/f[], 3)*80e-06/emissivity (char_fraction, ash_fraction) + porosity*lambdaG;
+    + 13.5*5.67e-8*pow(Temperature/f[], 3)*80e-06/emissivity (char_fraction, ash_fraction) + porosity*lambdaG;
     return (coord){lambda, lambda};
 }
 
@@ -75,25 +77,49 @@ coord lambda_kk(Point point, double lambdaG, double porosity, double Temperature
 
 // Lu model for solid thermal conductivity
 coord lambda_lu(Point point, double lambdaG, double porosity, double Temperature, scalar f) {
-    NOT_UNUSED(Temperature);
-    scalar moist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
-    double Cw = moist_field[]/f[];
-    int idx_bmoist = OpenSMOKE_IndexOfSolidSpeciesWithoutError("BMOIST");
-    if (idx_bmoist >= 0) {
-      scalar bmoist_field = YSList[idx_bmoist];
-      Cw += bmoist_field[]/f[];
-    }
-
+    double Cw = calculate_moisture_fraction(point, YSList, f);
     double char_fraction = calculate_char_fraction(point, YSList, f);
     scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
     double ash_fraction = YASH[]/f[];
+
     double char_cond = 0.071;
     double ash_cond = 1.2;
-    double wood_cond = (0.129 - 4.9e-2*Cw)*(0.986 + 2.695*Cw);
-    double rad_cont = 5.67e-8*pow(TS[]/f[], 3)*3.2e-6/emissivity(char_fraction, ash_fraction);
+    double wood_cond = (0.129 - 4.9e-2*Cw)*(1. + (2.05 + 4*Cw)*1e-3*(Temperature - 273.15))*(0.986 + 2.695*Cw);
+    double rad_cont = 5.67e-8*pow(Temperature/f[], 3)*3.2e-6/emissivity(char_fraction, ash_fraction);
     double lambda = (char_cond*char_fraction + wood_cond*(1. - char_fraction - ash_fraction) + ash_cond*ash_fraction)*\
                     (1. - porosity) + rad_cont + porosity*lambdaG;
     return (coord){lambda, lambda};
+}
+
+double wood_fraction_0;
+extern double eps0;
+coord lambda_galgano (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+  double char_fraction = calculate_char_fraction(point, YSList, f);
+  double moisture_fraction = calculate_moisture_fraction(point, YSList, f);
+  double wood_fraction = 1. - char_fraction - moisture_fraction;
+  scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
+  double ash_fraction = YASH[]/f[];
+
+  // Pore diameter
+  double dp_wood = 4.0e-5;
+  double dp_char = 2.0e-4;
+  double dp = wood_fraction*dp_wood + char_fraction*dp_char;
+
+  // Char conductivity with correction
+  double char_cond = 0.071;
+  double wood_cond = 0.15;
+  double moist_cond = 0.23;
+
+  // Effective thermal conductivity
+  double lambda = (wood_fraction*wood_cond
+                + char_fraction*char_cond
+                + moisture_fraction*moist_cond)*(1. - porosity)
+                + porosity*lambdaG
+                + 4.*dp*porosity/(1. - porosity)
+                  *pow(Temperature, 3)*5.67e-8
+                  *emissivity(char_fraction, ash_fraction);
+
+  return (coord){lambda, lambda};
 }
 
 // Function pointer for the pseudophase thermal conductivity model
@@ -119,9 +145,24 @@ event defaults (i = 0) {
     case L_LU:
       pseudo_phase_thermal_conductivity = lambda_lu;
       break;
+    case L_GALGANO:
+      pseudo_phase_thermal_conductivity = lambda_galgano;
+      break;
     default:
       fprintf(stderr, "ERROR: Unknown solid thermal conductivity model, unkown lambdaSmodel = %d \n", lambdaSmodel);
       abort();
       break;
+  }
+}
+
+event init (i = 0) {
+  if (lambdaSmodel == L_GALGANO) {
+    double moisture_fraction = sol_start[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
+    int bmoist_idx = OpenSMOKE_IndexOfSolidSpeciesWithoutError("BMOIST");
+    if (bmoist_idx >= 0)
+      moisture_fraction += sol_start[bmoist_idx];
+
+    wood_fraction_0 = 1. - moisture_fraction; // Initial wood fraction, used for the Galgano model
+    fprintf (stderr, "Initial wood fraction for Galgano model: %g\n", wood_fraction_0);
   }
 }

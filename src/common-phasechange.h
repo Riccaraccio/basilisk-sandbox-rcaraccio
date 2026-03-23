@@ -24,7 +24,7 @@ const char *char_species[] = {"CHAR", "COH2S", "CO2S", "COS", "CH3OHS",
                               "CH4S", "C2H4S", "C6H5OHS", "CH2OS", "H2S", 
                               "C2H6S", "LVGS", "CHARO", "COSTIFFS"};
 
-double calculate_char_fraction(Point point, scalar * YList, scalar f) {
+double calculate_char_fraction(Point point, const scalar * YList, scalar f) {
   double char_fraction = 0.;
   if (f[] > F_ERR) {
     for (int jj = 0; jj < n_char_species; jj++) {
@@ -36,6 +36,17 @@ double calculate_char_fraction(Point point, scalar * YList, scalar f) {
     }
   }
   return char_fraction;
+}
+
+double calculate_moisture_fraction(Point point, const scalar * YList, scalar f) {
+  scalar moist_field = YList[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
+  double Cw = moist_field[]/f[];
+  int idx_bmoist = OpenSMOKE_IndexOfSolidSpeciesWithoutError("BMOIST");
+  if (idx_bmoist >= 0) {
+    scalar bmoist_field = YList[idx_bmoist];
+    Cw += bmoist_field[]/f[];
+  }
+  return Cw;
 }
 
 void check_and_correct_fractions (scalar* YList, int n, bool inverse) {

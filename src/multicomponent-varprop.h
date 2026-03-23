@@ -178,17 +178,21 @@ event tracer_diffusion (i++) {
   check_and_correct_fractions (YGList_G, NGS, true);
   check_and_correct_fractions (YSList,   NSS, false);
 
-#ifdef SOLVE_TEMPERATURE
   foreach() {
+#ifdef SOLVE_TEMPERATURE
     TS[] = (f[] > F_ERR) ? TS[]/f[] : 0.;
     TG[] = ((1. - f[]) > F_ERR) ? TG[]/(1. - f[]) : 0.;
 #endif
 
-    for (scalar YG in YGList_S)
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YG = YGList_S[jj];
       YG[] = (f[] > F_ERR) ? YG[]/f[] : 0.;
+    }
     
-    for (scalar YG in YGList_G)
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YG = YGList_G[jj];
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
+    }
   }
 
 #ifdef MOLAR_DIFFUSION

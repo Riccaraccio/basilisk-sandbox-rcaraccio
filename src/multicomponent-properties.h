@@ -6,210 +6,14 @@ change model, and compute the lagrangian derivative of the density,
 which is used as a sorce term for the velocity divergence, to
 describe low Mach compressibility effects. */
 
-#ifndef T_PROP
-// # define T_PROP 1e-5
-# define T_PROP F_ERR
-// # define T_PROP 0.1
-#endif
-
 #ifdef VARPROP
-
-enum solid_thermal_conductivity_model {
-  L_CONST,
-  L_CORBETTA,
-  L_HUANG,
-  L_ANCACOUCE,
-  L_KK,
-  L_LU
-};
-
-enum solid_thermal_conductivity_model lambdaSmodel;
+#include "solid-thermal-conductivity.h"
 
 scalar rhoGv_G0[], rhoGv_S0[];
 extern scalar porosity;
 scalar DTDtS[], DTDtG[];
 scalar * DYDtG_G = NULL;
 scalar * DYDtG_S = NULL;
-
-void update_properties_initial (void) {
-  foreach() {
-    ThermoState tsGh, tsSh;
-    double Diff_coeff[NGS];
-    if (f[] > T_ERR) {
-      // Update the properties of the internal gas phase
-      double xG[NGS];
-      double MWmixG;
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, gas_start);
-      MWmixG_S[] = MWmixG;
-
-      tsGh.T = TS0;
-      tsGh.P = Pref;
-      tsGh.x = xG;
-
-      rhoGv_S[] = tpG.rhov (&tsGh);
-      cpGv_S[] = tpG.cpv (&tsGh);
-      muGv_S[] = tpG.muv (&tsGh) / (porosity[] / f[]);
-      lambdaGv_S[] = tpG.lambdav (&tsGh);
-      tpG.diff (&tsGh, Diff_coeff);
-#ifdef MASS_DIFFUSION_ENTHALPY
-      double cpG[NGS];
-      tpG.cpvs (&tsGh, cpG);
-      for(int jj=0; jj<NGS; jj++) {
-        scalar cpGv = cpGList_S[jj];
-        cpGv[] = cpG[jj];
-      }
-#endif // MASS_DIFFUSION_ENTHALPY
-
-      for(int jj=0; jj<NGS; jj++) {
-        scalar DmixGv = DmixGList_S[jj];
-        #ifdef CONST_DIFF
-        DmixGv[] = CONST_DIFF;
-        #else
-        DmixGv[] = Diff_coeff[jj];
-        DmixGv[] *= pow(porosity[]/f[], 4./3.); //effect of solid, to be revised
-        #endif
-      }
-      
-      //Update the properties of the solid phase
-      double xS[NSS];
-      double MWmixS;
-      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, sol_start);
-
-      tsSh.T = TS0;
-      tsSh.P = Pref;
-      tsSh.x = xS;
-
-      rhoSv[] = tpS.rhov (&tsSh);
-      cpSv[] = tpS.cpv (&tsSh);
-
-      switch (lambdaSmodel) {
-        case L_CONST:
-          foreach_dimension()
-            lambda1v.x[] = (1. - porosity[] / f[]) * lambdaS + porosity[] / f[] * lambdaGv_S[];
-          break;
-
-        case L_CORBETTA: {
-          double char_cond = 0.1405;
-          double bio_cond = 0.1937;
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-          double char_fraction = char_field[] / f[];
-          foreach_dimension()
-              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) + porosity[]/f[] * lambdaGv_S[];
-          break;
-        }
-        
-        case L_HUANG: {
-          double char_cond = 0.071;
-          double bio_cond = 0.21;
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-          scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
-          double ash_fraction = ash_field[] / f[];
-          double char_fraction = char_field[] / f[];
-          foreach_dimension()
-              lambda1v.x[] = (char_cond * char_fraction + bio_cond * (1. - char_fraction))*(1. - porosity[]/f[])
-                              + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / emissivity(char_fraction, ash_fraction) + porosity[]/f[] * lambdaGv_S[];
-          break;
-        }
-
-        case L_ANCACOUCE: {
-          double char_cond= 0.125;
-          double bio_cond = 0.056 + 2.6e-4 * tsSh.T;
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-          double char_fraction = char_field[] / f[];
-
-          foreach_dimension()
-              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction);
-          break;
-        }
-
-        case L_KK: {
-          double lS_per = 0.430;
-          double lS_par = 0.766;
-          double leff_per = 1 / ((1. - porosity[] / f[]) / lS_per + porosity[] / f[] / lambdaGv_S[]);
-          double leff_par = (1. - porosity[] / f[]) * lS_par + porosity[] / f[] * lambdaGv_S[];
-          // longitudinal direction theta = 1.0
-          lambda1v.x[] = leff_par;
-          // transversal direction theta = 0.58
-          lambda1v.y[] = 0.58 * leff_par + (1. - 0.58) * leff_per;
-          break;
-        }
-
-        case L_LU: {
-          scalar moist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
-          double Cw = moist_field[] / f[];
-          if (OpenSMOKE_IndexOfSolidSpecies("BMOIST") >= 0) {
-            scalar bmoist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("BMOIST")];
-            Cw += bmoist_field[] / f[];
-          }
-
-          double char_fraction = 0.;
-          for (int jj=0; jj<n_char_species; jj++) {
-            if (OpenSMOKE_IndexOfSolidSpecies(char_species[jj]) >= 0) {
-              scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies(char_species[jj])];
-              char_fraction += char_field[] / f[];
-            }
-          }
-
-          scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
-          double ash_fraction = ash_field[] / f[];
-    
-          double char_cond = 0.071;
-          double ash_cond = 1.2;
-          double wood_cond = (0.129 - 4.9e-2*Cw)*
-                             (1 + (2.05 + 4*Cw)*1e-3*(TS[]/f[] - 273.15))*
-                             (0.986 + 2.695*Cw);
-          double rad_cont = 5.67e-8*pow(TS[]/f[], 3)*3.2e-6/emissivity(char_fraction, ash_fraction);
-
-          foreach_dimension()
-              lambda1v.x[] = (wood_cond*(1 - char_fraction - ash_fraction) + char_cond*char_fraction + ash_cond*ash_fraction)*(1. - porosity[]/f[]) 
-                             + porosity[]/f[] * lambdaGv_S[] + rad_cont;
-          break;
-        }
-
-        default:
-          fprintf(stderr, "ERROR: Unknown solid thermal conductivity model, unkown lambdaSmodel = %d \n", lambdaSmodel);
-          abort();
-          break;
-      }
-    }
-    
-    if (f[] < 1. - T_PROP) {
-      // Update the properties of the external gas phase
-      double xG[NGS];
-      double MWmixG;
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, gas_start);
-      MWmixG_G[] = MWmixG;
-
-      tsGh.T = TG0;
-      tsGh.P = Pref;
-      tsGh.x = xG;
-
-      rhoGv_G[] = tpG.rhov (&tsGh);
-      muGv_G[] = tpG.muv (&tsGh);
-      cpGv_G[] = tpG.cpv (&tsGh);
-      lambdaGv_G[] = tpG.lambdav (&tsGh);
-      tpG.diff (&tsGh, Diff_coeff);
-#ifdef MASS_DIFFUSION_ENTHALPY
-      double cpG[NGS];
-      tpG.cpvs (&tsGh, cpG);
-      for(int jj=0; jj<NGS; jj++) {
-        scalar cpGv = cpGList_G[jj];
-        cpGv[] = cpG[jj];
-        // fprintf(stderr, "cpGv[%d] = %g\n", jj, cpGv[]);
-      }
-#endif // MASS_DIFFUSION_ENTHALPY
-
-      for(int jj=0; jj<NGS; jj++) {
-        scalar DmixGv = DmixGList_G[jj];
-        #ifdef CONST_DIFF
-        DmixGv[] = CONST_DIFF;
-        #else
-        DmixGv[] = Diff_coeff[jj];
-        #endif
-      }
-    }
-  }
-}
 
 trace
 void update_properties (void) {
@@ -229,7 +33,7 @@ void update_properties (void) {
   foreach() {
     ThermoState tsGh, tsSh;
     double Diff_coeff[NGS];
-    if (f[] > T_PROP) {
+    if (f[] > F_ERR) {
       double xG[NGS], yG[NGS];
       double MWmixG;
       // Update internal gas properties
@@ -283,97 +87,15 @@ void update_properties (void) {
       rhoSv[] = tpS.rhov (&tsSh);
       cpSv[] = tpS.cpv (&tsSh);
     
-      switch (lambdaSmodel) {
-        case L_CONST:
-          foreach_dimension()
-              lambda1v.x[] = (1. - porosity[] / f[]) * lambdaS + porosity[] / f[] * lambdaGv_S[];
-          break;
-
-        case L_CORBETTA: {
-          double char_cond = 0.1405;
-          double bio_cond = 0.1937;
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-          double char_fraction = char_field[] / f[];
-          foreach_dimension()
-              lambda1v.x[] = char_cond * char_fraction + bio_cond * (1. - char_fraction) + porosity[]/f[] * lambdaGv_S[];
-          break;
-        }
-        
-        case L_HUANG: {
-          double char_cond = 0.071;
-          double bio_cond = 0.21;
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-          scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
-          double ash_fraction = ash_field[] / f[];
-          double char_fraction = char_field[] / f[];
-          foreach_dimension()
-              lambda1v.x[] = (char_cond * char_fraction + bio_cond * (1. - char_fraction))*(1. - porosity[]/f[])
-                              + 13.5 * 5.67e-8 * pow(TS[]/f[], 3) * 80e-06 / emissivity(char_fraction, ash_fraction) + porosity[]/f[] * lambdaGv_S[];
-          break;
-        }
-
-        case L_ANCACOUCE: {
-          double char_cond = 0.125;
-          double bio_cond = 0.056 + 2.6e-4 * tsSh.T;
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies("CHAR")];
-          double char_fraction = char_field[] / f[];
-          foreach_dimension()
-              lambda1v.x[] = char_cond* char_fraction + bio_cond * (1. - char_fraction);
-          break;
-        }
-
-        case L_KK: {
-          double lS_per = 0.430;
-          double lS_par = 0.766;
-          double leff_per = 1 / ((1. - porosity[] / f[]) / lS_per + porosity[] / f[] / lambdaGv_S[]);
-          double leff_par = (1. - porosity[] / f[]) * lS_par + porosity[] / f[] * lambdaGv_S[];
-          // longitudinal direction theta = 1.0
-          lambda1v.x[] = leff_par;
-          // transversal direction theta = 0.58
-          lambda1v.y[] = 0.58 * leff_par + (1. - 0.58) * leff_per;
-          break;
-        }
-
-        case L_LU: {
-          scalar moist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
-          double Cw = moist_field[] / f[];
-          if (OpenSMOKE_IndexOfSolidSpecies("BMOIST") >= 0) {
-            scalar bmoist_field = YSList[OpenSMOKE_IndexOfSolidSpecies("BMOIST")];
-            Cw += bmoist_field[] / f[];
-          }
-
-          double char_fraction = 0.;
-          for (int jj=0; jj<n_char_species; jj++) {
-            if (OpenSMOKE_IndexOfSolidSpecies(char_species[jj]) >= 0) {
-              scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies(char_species[jj])];
-              char_fraction += char_field[] / f[];
-            }
-          }
-
-          scalar ash_field = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
-          double ash_fraction = ash_field[] / f[];
-    
-          double char_cond = 0.071;
-          double ash_cond = 1.2;
-          double wood_cond = (0.129 - 4.9e-2*Cw)*
-                             (1 + (2.05 + 4*Cw)*1e-3*(TS[]/f[] - 273.15))*
-                             (0.986 + 2.695*Cw);
-          double rad_cont = 5.67e-8*pow(TS[]/f[], 3)*3.2e-6/emissivity(char_fraction, ash_fraction);
-
-          foreach_dimension()
-              lambda1v.x[] = (wood_cond*(1 - char_fraction - ash_fraction) + char_cond*char_fraction + ash_cond*ash_fraction)*(1. - porosity[]/f[]) 
-                             + porosity[]/f[] * lambdaGv_S[] + rad_cont;
-          break;
-        }
-
-        default:
-          fprintf(stderr, "ERROR: Unknown solid thermal conductivity model, unkown lambdaSmodel = %d \n", lambdaSmodel);
-          abort();
-          break;
-      }
+      coord lambda_pf = pseudo_phase_thermal_conductivity(point, lambdaGv_S[], 
+                                                          porosity[]/f[], 
+                                                          tsSh.T, 
+                                                          f);
+      foreach_dimension()
+        lambda1v.x[] = lambda_pf.x;
     }
 
-    if (f[] < 1. - T_PROP) {
+    if (f[] < 1. - F_ERR) {
       // Update external gas properties
       double xG[NGS], yG[NGS];
       double MWmixG;
@@ -418,10 +140,8 @@ void update_properties (void) {
   }
 }
 
-event init (i = 0) //Should be done in the default event but is executed before OS++ initialization otherwise
-{
-  update_properties_initial();
-  
+//Should  done in the default event but is executed before OS++ initialization otherwise
+event init (i = 0) {
   DYDtG_G = NULL;
   DYDtG_S = NULL;
 
@@ -463,6 +183,10 @@ event init (i = 0) //Should be done in the default event but is executed before 
 #endif
 }
 
+event properties (i = 0) {
+  update_properties();
+}
+
 event cleanup (t = end)
 {
   delete (DYDtG_G), free (DYDtG_G), DYDtG_G = NULL;
@@ -478,10 +202,6 @@ event reset_sources (i++) {
   reset (DYDtG_G, 0.);
   reset (DYDtG_S, 0.);
 }
-
-// event properties (i++) {
-//   update_properties();
-// }
 
 void update_divergence (void) {
 

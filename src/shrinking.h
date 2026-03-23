@@ -15,7 +15,7 @@ we implement various models to test their effect on the solution.
 
 #include "vofToLs.h"
 #include "velocity-potential.h"
-#include "common-evaporation.h"
+#include "common-phasechange.h"
 
 double eps0 = 0.5;
 double rhoS = 100.;

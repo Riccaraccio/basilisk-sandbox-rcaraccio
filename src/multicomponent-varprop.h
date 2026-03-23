@@ -10,54 +10,12 @@
   #include "diffusion.h"
 #endif
 
-const int n_char_species = 14;
-const char *char_species[] = {"CHAR", "COH2S", "CO2S", "COS", "CH3OHS", "CH4S", 
-"C2H4S", "C6H5OHS", "CH2OS", "H2S", "C2H6S", "LVGS", "CHARO", "COSTIFFS"};
-
-#include "common-evaporation.h"
+#include "common-phasechange.h"
 #include "memoryallocation-varprop.h"
 #include "int-temperature.h"
 #include "int-concentration.h"
 #include "multicomponent-properties.h"
 #include "chemistry.h"
-
-void check_and_correct_fractions(scalar* YList, int n, bool inverse) {
-  foreach() {
-    double denom = inverse ? (1. - f[]) : f[];
-      
-    if (denom < F_ERR) {
-      for (int jj = 0; jj < n; jj++) {
-        scalar Y = YList[jj];
-        Y[] = 0.;
-      }
-    } else {
-      double inv_denom = 1. / denom;
-      double sum = 0.;
-
-      double temp[n];
-
-      for (int jj = 0; jj < n; jj++) {
-        scalar Y = YList[jj];
-        double val = Y[] * inv_denom;
-        temp[jj] = (val < F_ERR) ? 0. : val;
-        sum += temp[jj];
-      }
-
-      if (sum > F_ERR) {
-        double scale = denom / sum;
-        for (int jj = 0; jj < n; jj++) {
-          scalar Y = YList[jj];
-          Y[] = temp[jj] * scale;
-        }
-      } else {
-        for (int jj = 0; jj < n; jj++) {
-          scalar Y = YList[jj];
-          Y[] = 0.;
-        }
-      }
-    }
-  }
-}
 
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
@@ -176,7 +134,6 @@ foreach() {
   }
 }
 #endif
-
 
 void update_mole_fields() {
   #ifdef MOLAR_DIFFUSION

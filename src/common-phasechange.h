@@ -1,15 +1,16 @@
 /**
-This is a copy of common-evaporation.h from Edoardo Cipriano's
-basilisk sandbox repository. All credits to him!
+This is mostly a copy of common-evaporation.h from Edoardo Cipriano's
+basilisk sandbox repository but with some modifications.
 We use it here to have useful functions for phase change problems.
 */
 
 /**
-# Common Evaporation
+# Common Phasechange functions
 
 We define tolerances and functions useful
 for evaporation models. */
 
+#pragma once
 
 #include "curvature.h"
 #include "adapt_wavelet_leave_interface.h"
@@ -17,20 +18,63 @@ for evaporation models. */
 #ifndef F_ERR
 # define F_ERR 1.e-10
 #endif
-#ifndef T_ERR
-# define T_ERR 0.
-#endif
 
-#ifndef I_TOL
-# define I_TOL 1.e-8
-#endif
+const int n_char_species = 14;
+const char *char_species[] = {"CHAR", "COH2S", "CO2S", "COS", "CH3OHS", 
+                              "CH4S", "C2H4S", "C6H5OHS", "CH2OS", "H2S", 
+                              "C2H6S", "LVGS", "CHARO", "COSTIFFS"};
 
-/**
-We define a custom for that simplifies
-loops over the chemical species. */
+double calculate_char_fraction(Point point, scalar * YList, scalar f) {
+  double char_fraction = 0.;
+  if (f[] > F_ERR) {
+    for (int jj = 0; jj < n_char_species; jj++) {
+      int index = OpenSMOKE_IndexOfSolidSpeciesWithoutError(char_species[jj]);
+      if (index >= 0) {
+        scalar YC = YList[index];
+        char_fraction += YC[]/f[];
+      }
+    }
+  }
+  return char_fraction;
+}
 
-#define foreach_elem(list, index) \
-  for (int index=0; index<list_len (list); index++)
+void check_and_correct_fractions (scalar* YList, int n, bool inverse) {
+  foreach() {
+    double denom = inverse ? (1. - f[]) : f[];
+      
+    if (denom < F_ERR) {
+      for (int jj = 0; jj < n; jj++) {
+        scalar Y = YList[jj];
+        Y[] = 0.;
+      }
+    } else {
+      double inv_denom = 1. / denom;
+      double sum = 0.;
+
+      double temp[n];
+
+      for (int jj = 0; jj < n; jj++) {
+        scalar Y = YList[jj];
+        double val = Y[] * inv_denom;
+        temp[jj] = (val < F_ERR) ? 0. : val;
+        sum += temp[jj];
+      }
+
+      if (sum > F_ERR) {
+        double scale = denom / sum;
+        for (int jj = 0; jj < n; jj++) {
+          scalar Y = YList[jj];
+          Y[] = temp[jj] * scale;
+        }
+      } else {
+        for (int jj = 0; jj < n; jj++) {
+          scalar Y = YList[jj];
+          Y[] = 0.;
+        }
+      }
+    }
+  }
+}
 
 /**
 We define the ghost index which is useful for loops over

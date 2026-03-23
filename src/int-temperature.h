@@ -105,13 +105,7 @@ void ijc_CoupledTemperature() {
       foreach_dimension()
         data.c.x = o.x;
 
-      double char_fraction = 0.;
-      for (int jj = 0; jj < n_char_species; jj++) {
-        if (OpenSMOKE_IndexOfSolidSpecies(char_species[jj]) >= 0) {
-          scalar char_field = YSList[OpenSMOKE_IndexOfSolidSpecies(char_species[jj])];
-          char_fraction += char_field[] / f[];
-        }
-      }
+      double char_fraction = calculate_char_fraction(point, YSList, f);
       double ash_fraction = YASH[]/f[];
       data.emissivity = emissivity(char_fraction, ash_fraction);
 

@@ -46,7 +46,7 @@ coord lambda_huang(Point point, double lambdaG, double porosity, double Temperat
     scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
     double ash_fraction = YASH[]/f[];
     double lambda = (char_cond*char_fraction + bio_cond*(1. - char_fraction))*(1. - porosity) 
-    + 13.5*5.67e-8*pow(Temperature/f[], 3)*80e-06/emissivity (char_fraction, ash_fraction) + porosity*lambdaG;
+    + 13.5*5.67e-8*pow(Temperature, 3)*80e-06/emissivity (char_fraction, ash_fraction) + porosity*lambdaG;
     return (coord){lambda, lambda};
 }
 
@@ -84,15 +84,13 @@ coord lambda_lu(Point point, double lambdaG, double porosity, double Temperature
 
     double char_cond = 0.071;
     double ash_cond = 1.2;
-    double wood_cond = (0.129 - 4.9e-2*Cw)*(1. + (2.05 + 4*Cw)*1e-3*(Temperature - 273.15))*(0.986 + 2.695*Cw);
-    double rad_cont = 5.67e-8*pow(Temperature/f[], 3)*3.2e-6/emissivity(char_fraction, ash_fraction);
+    double wood_cond = (0.129 - 4.9e-2*Cw)*(1. + (2.05 + 4.*Cw)*1e-3*(Temperature - 273.15))*(0.986 + 2.695*Cw);
+    double rad_cont = 5.67e-8*pow(Temperature, 3)*3.2e-6/emissivity(char_fraction, ash_fraction)*porosity;
     double lambda = (char_cond*char_fraction + wood_cond*(1. - char_fraction - ash_fraction) + ash_cond*ash_fraction)*\
                     (1. - porosity) + rad_cont + porosity*lambdaG;
     return (coord){lambda, lambda};
 }
 
-double wood_fraction_0;
-extern double eps0;
 coord lambda_galgano (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
   double char_fraction = calculate_char_fraction(point, YSList, f);
   double moisture_fraction = calculate_moisture_fraction(point, YSList, f);
@@ -152,17 +150,5 @@ event defaults (i = 0) {
       fprintf(stderr, "ERROR: Unknown solid thermal conductivity model, unkown lambdaSmodel = %d \n", lambdaSmodel);
       abort();
       break;
-  }
-}
-
-event init (i = 0) {
-  if (lambdaSmodel == L_GALGANO) {
-    double moisture_fraction = sol_start[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
-    int bmoist_idx = OpenSMOKE_IndexOfSolidSpeciesWithoutError("BMOIST");
-    if (bmoist_idx >= 0)
-      moisture_fraction += sol_start[bmoist_idx];
-
-    wood_fraction_0 = 1. - moisture_fraction; // Initial wood fraction, used for the Galgano model
-    fprintf (stderr, "Initial wood fraction for Galgano model: %g\n", wood_fraction_0);
   }
 }

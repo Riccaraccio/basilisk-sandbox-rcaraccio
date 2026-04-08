@@ -43,8 +43,13 @@ coord lambda_huang(Point point, double lambdaG, double porosity, double Temperat
     double char_cond = 0.071;
     double bio_cond = 0.21;
     double char_fraction = calculate_char_fraction(point, YSList, f);
-    scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
-    double ash_fraction = YASH[]/f[];
+
+    int ash_index = OpenSMOKE_IndexOfSolidSpeciesWithoutError("ASH");
+    scalar YASH;
+    if (ash_index >= 0)
+        YASH = YSList[ash_index];
+
+    double ash_fraction = (ash_index >= 0) ? YASH[]/f[] : 0.;
     double lambda = (char_cond*char_fraction + bio_cond*(1. - char_fraction))*(1. - porosity) 
     + 13.5*5.67e-8*pow(Temperature, 3)*80e-06/emissivity (char_fraction, ash_fraction) + porosity*lambdaG;
     return (coord){lambda, lambda};
@@ -81,6 +86,9 @@ coord lambda_lu(Point point, double lambdaG, double porosity, double Temperature
     double char_fraction = calculate_char_fraction(point, YSList, f);
     scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
     double ash_fraction = YASH[]/f[];
+
+    double conversion = 1. - (1. - porosity)/(1. - eps0)*(1. - char_fraction - Cw - ash_fraction);
+    conversion = clamp(conversion, 0., 1.);
 
     double char_cond = 0.071;
     double ash_cond = 1.2;

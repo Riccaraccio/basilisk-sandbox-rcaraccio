@@ -94,7 +94,11 @@ int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) 
 
 void ijc_CoupledTemperature() {
 
-  scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
+  scalar YASH;
+  int ash_index = OpenSMOKE_IndexOfSolidSpeciesWithoutError("ASH");
+  if (ash_index >= 0) {
+    YASH = YSList[ash_index];
+  }
   foreach() {
     if (f[]>F_ERR && f[] < 1.-F_ERR) {
       gsl_vector *unk = gsl_vector_alloc(1);
@@ -106,8 +110,11 @@ void ijc_CoupledTemperature() {
         data.c.x = o.x;
 
       double char_fraction = calculate_char_fraction(point, YSList, f);
-      double ash_fraction = YASH[]/f[];
-      data.emissivity = emissivity(char_fraction, ash_fraction);
+      if (ash_index >= 0) {
+        data.emissivity = emissivity(char_fraction, YASH[]/f[]);
+      } else {
+        data.emissivity = emissivity(char_fraction, 0.);
+      }
 
       fsolve_gsl (EqTemperature, unk, &data, "EqTemperature");
 

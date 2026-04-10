@@ -148,8 +148,8 @@ event init (i = 0) {
   for (int jj=0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "DYDtG_%s_G", OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "DYDtG_%s_G", OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     a.nodump = true;
     DYDtG_G = list_append (DYDtG_G, a);
@@ -159,8 +159,8 @@ event init (i = 0) {
   for (int jj=0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "DYDtG_%s_S", OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "DYDtG_%s_S", OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     a.nodump = true;
     DYDtG_S = list_append (DYDtG_S, a);

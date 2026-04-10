@@ -84,7 +84,7 @@ event defaults (i = 0) {
   We load the kinetic scheme using OpenSMOKE++ functions.
   */
 
-  char kinfolder_root[120];
+  char kinfolder_root[128];
   sprintf (kinfolder_root, "%s/kinetics/%s/kinetics",
       getenv ("OPENSMOKE_INTERFACE"), kinfolder);
 
@@ -116,8 +116,8 @@ event defaults (i = 0) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "%s_S",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     YGList_S = list_append (YGList_S, a);
   }
@@ -126,8 +126,8 @@ event defaults (i = 0) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "%s_G",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "%s_G",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     YGList_G = list_append (YGList_G, a);
   } 
@@ -136,8 +136,8 @@ event defaults (i = 0) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "%s_Int",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "%s_Int",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     YGList_Int = list_append (YGList_Int, a);
   }
@@ -147,8 +147,8 @@ event defaults (i = 0) {
   for (int jj = 0; jj<NSS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "%s",OpenSMOKE_NamesOfSolidSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "%s",OpenSMOKE_NamesOfSolidSpecies(jj));
     a.name = strdup (name);
     YSList = list_append (YSList, a);
   }
@@ -158,8 +158,8 @@ event defaults (i = 0) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar s = new scalar;
     free (s.name);
-    char name[20];
-    sprintf (name, "D_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "D_%s_S",OpenSMOKE_NamesOfSpecies(jj));
     s.name = strdup (name);
     DmixGList_S = list_append (DmixGList_S, s);
   }
@@ -168,8 +168,8 @@ event defaults (i = 0) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar s = new scalar;
     free (s.name);
-    char name[20];
-    sprintf (name, "D_%s_G",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "D_%s_G",OpenSMOKE_NamesOfSpecies(jj));
     s.name = strdup (name);
     DmixGList_G = list_append (DmixGList_G, s);
   }
@@ -181,10 +181,10 @@ for (int jj=0; jj<NGS; jj++) {
     scalar b = new scalar;
     free (a.name);
     free (b.name);
-    char aname[20];
-    char bname[20];
-    sprintf (aname, "sSexp_%s", OpenSMOKE_NamesOfSpecies(jj));
-    sprintf (bname, "sGexp_%s", OpenSMOKE_NamesOfSpecies(jj));
+    char aname[64];
+    char bname[64];
+    snprintf (aname, sizeof(aname), "sSexp_%s", OpenSMOKE_NamesOfSpecies(jj));
+    snprintf (bname, sizeof(bname), "sGexp_%s", OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (aname);
     b.name = strdup (bname);
     a.nodump = true;
@@ -200,8 +200,8 @@ for (int jj=0; jj<NGS; jj++) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "XG_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "XG_%s_S",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     XGList_S = list_append (XGList_S, a);
   }
@@ -210,8 +210,8 @@ for (int jj=0; jj<NGS; jj++) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "XG_%s_G",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "XG_%s_G",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     XGList_G = list_append (XGList_G, a);
   }
@@ -220,8 +220,8 @@ for (int jj=0; jj<NGS; jj++) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "XG_%s_Int",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "XG_%s_Int",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     XGList_Int = list_append (XGList_Int, a);
   }
@@ -231,8 +231,8 @@ for (int jj=0; jj<NGS; jj++) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "cpG_%s_G",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "cpG_%s_G",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     cpGList_G = list_append (cpGList_G, a);
   }
@@ -240,8 +240,8 @@ for (int jj=0; jj<NGS; jj++) {
   for (int jj = 0; jj<NGS; jj++) {
     scalar a = new scalar;
     free (a.name);
-    char name[20];
-    sprintf (name, "cpG_%s_S",OpenSMOKE_NamesOfSpecies(jj));
+    char name[64];
+    snprintf (name, sizeof(name), "cpG_%s_S",OpenSMOKE_NamesOfSpecies(jj));
     a.name = strdup (name);
     cpGList_S = list_append (cpGList_S, a);
   }

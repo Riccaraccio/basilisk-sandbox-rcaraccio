@@ -4,6 +4,7 @@
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
 #define GAS_PHASE_REACTIONS 1
+#define RADIATION_TEMP 300
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
@@ -17,7 +18,7 @@
 #include "view.h"
 #include "flame.h"
 
-const double Uin = 0.32; //inlet velocity
+const double Uin = 0.28; //inlet velocity
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
@@ -39,8 +40,8 @@ double solid_mass0 = 0.;
 int main() {
 
   lambdaSmodel = L_LU;
-  TS0 = 300.; TG0 = 1587.;
-  rhoS = 800; // not specified in the paper, from Swedish softwood density 
+  TS0 = 300.; TG0 = 1408.;
+  rhoS = 1250; // not specified in the paper, from Swedish softwood density 
   eps0 = 0.4; // guessed
 
   //dummy properties
@@ -60,11 +61,6 @@ int main() {
   L0 = 15*D0;
   origin (-L0/2, 0);
   init_grid(1 << maxlevel);
-
-#ifndef MOLAR_DIFFUSION
-  fprintf (stderr, "MOLAR_DIFFUSION is compulsory for this case\n");
-  return 1;
-#endif
 
   emissivity = emissivity_lu;
 
@@ -137,7 +133,7 @@ event output (t += 0.1) {
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
   static FILE * fp = fopen (name, "w");
-  fprintf(fp, "%g %g %g\n", t, solid_mass / solid_mass0, statsf(T).max);
+  fprintf(fp, "%g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max);
   fflush(fp);
 }
 
@@ -156,11 +152,11 @@ event adapt (i++) {
 #endif
 
 event movie (t += 1) {
-  scalar XH2O_G = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
-  scalar XH2O_S = XGList_S[OpenSMOKE_IndexOfSpecies ("H2O")];
-  scalar XH2O[];
+  scalar XCO_G = XGList_G[OpenSMOKE_IndexOfSpecies ("CO")];
+  scalar XCO_S = XGList_S[OpenSMOKE_IndexOfSpecies ("CO")];
+  scalar XCO[];
   foreach()
-    XH2O[] = XH2O_S[]*f[] + XH2O_G[]*(1. - f[]);
+    XCO[] = XCO_S[]*f[] + XCO_G[]*(1. - f[]);
 
   clear();
   view (theta=0, phi=0, psi=-pi/2., width = 1080, height = 1080);
@@ -169,7 +165,7 @@ event movie (t += 1) {
   isoline ("zmix - zsto", lw = 1.5, lc = {1., 1., 1.});
   draw_vof ("f", lw = 1.5);
   mirror ({0, 1}) {
-    squares ("XH2O", min = 0, max = 1., spread = -1, linear = true);
+    squares ("XCO", min = 0, max = 0.5, spread = -1, linear = true);
     isoline ("zmix - zsto", lw = 1.5, lc = {1., 1., 1.});
     draw_vof ("f", lw = 1.5);
   }

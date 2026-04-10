@@ -4,7 +4,7 @@
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
 #define GAS_PHASE_REACTIONS 1
-#define RADIATION_TEMP 1276
+#define RADIATION_TEMP 1273
 
 #include "axi.h" 
 #include "navier-stokes/centered-phasechange.h"
@@ -75,9 +75,6 @@ event init (i= 0) {
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.235;
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.594; // 93.5% biomass
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]   = 0.400; // 6.1% moisture
-  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]     = 0.006; // 0.6% ash
 
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]   = 0.3104;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")]   = 0.1175;
@@ -126,7 +123,7 @@ event output (t += 0.1) {
   //log mass profile
   double solid_mass = 0.;
   foreach (reduction(+:solid_mass))
-    solid_mass += (f[]-porosity[])*rhoS*dv();
+    solid_mass += (f[] - porosity[])*rhoS*dv();
 
   double T_center = interpolate (T, 0., 0.);
   
@@ -137,7 +134,7 @@ event output (t += 0.1) {
   double TS_avg = 0.;
   int count = 0;
   foreach (reduction(+:TS_avg) reduction(+:count)) {
-    if (f[] > F_ERR && f[] < 1.-F_ERR) {
+    if (f[] > F_ERR && f[] < 1. - F_ERR) {
       TS_avg += TS[]/f[];
       count++;
     }
@@ -149,18 +146,18 @@ event output (t += 0.1) {
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
   static FILE * fp = fopen (name, "w");
-  fprintf(fp, "%g %g %g %g %g %g\n", t, solid_mass / solid_mass0, statsf(T).max, T_center, T_surface, TS_avg);
+  fprintf(fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max, T_center, T_surface, TS_avg);
   fflush(fp);
 }
 
 #if TREE
 event adapt (i++) {
-  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
-  // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1, 1e-1}, maxlevel, minlevel, 2);
+    (double[]){1.e-1, 1.e-0, 1.e-0, 1e-1, 1e-1}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);
@@ -199,7 +196,9 @@ set yrange [0.:1.1]
 set xrange [0:100]
 
 plot  "../../data/lu/mass" u 1:(1 - ($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "black" notitle, \
-      "cluster/10/lu-combustion/OutputData-10" u 1:2 w l lw 2 lc "black" notitle
+      "cluster/10/lu-combustion/OutputData-10" u 1:2 w l lw 2 lc "black" t "Lu lambda", \
+      "cluster/galgano/lu-combustion/OutputData-9" u 1:2 w l lw 2 lc "red" t "Galgarno lambda",\
+      "cluster/ignition/lu-combustion/OutputData-9" u 1:2 w l lw 2 lc "blue" t "Increased rho"
 
 ~~~
 
@@ -213,11 +212,16 @@ set yrange [200:1900]
 set xrange [0:100]
 set key bottom right
 
+set dashtype 11 (2,2,2,2)
+
 plot  "../../data/lu/T-particle-core" u 1:(($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "black" notitle, \
       "../../data/lu/T-particle-surf" u 1:(($2 + $3)/2):(abs(($2 + $3)/2 -$2)) w yerrorbars pt 4 ps 0.8 lc "red" notitle, \
-      "cluster/10/lu-combustion/OutputData-10" u 1:4 w l lw 2 lc "black" title "Core", \
-      "cluster/10/lu-combustion/OutputData-10" u 1:6 w l lw 2 lc "red" title "Surface"
-
+      "cluster/10/lu-combustion/OutputData-10" u 1:4 w l lw 2 dt 1  lc "black" title "Lu lambda", \
+      "cluster/10/lu-combustion/OutputData-10" u 1:6 w l lw 2 dt 11 lc "black" notitle, \
+      "cluster/galgano/lu-combustion/OutputData-9" u 1:4 w l lw 2 dt 1  lc "red" title "Galgano lambda", \
+      "cluster/galgano/lu-combustion/OutputData-9" u 1:6 w l lw 2 dt 11 lc "red" notitle, \
+      "cluster/ignition/lu-combustion/OutputData-9" u 1:4 w l lw 2 dt 1 lc "blue" title "Increased rho", \
+      "cluster/ignition/lu-combustion/OutputData-9" u 1:6 w l lw 2 dt 11 lc "blue" notitle
 ~~~
 
 */

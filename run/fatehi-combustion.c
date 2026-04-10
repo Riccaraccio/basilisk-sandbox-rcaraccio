@@ -38,7 +38,7 @@ double solid_mass0 = 0.;
 
 int main() {
 
-  lambdaSmodel = L_HUANG;
+  lambdaSmodel = L_LU;
   TS0 = 300.; TG0 = 1123.;
   rhoS = 1550;
   eps0 = 0.2; // low, compressed pellet
@@ -66,7 +66,7 @@ int main() {
   return 1;
 #endif
 
-  emissivity = emissivity_diblasi;
+  emissivity = emissivity_lu;
 
   run();
 }
@@ -178,17 +178,17 @@ double path_average_XH2O (double x_interp, const int n_samples = 100, const doub
 
 event print_profile (t += 0.1; t <= 100) {
   const int time = (int) round(t);
+  scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+  scalar XOH = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
 
   // Temperature profiles
   print_profile (T, H0/2 + 2e-3, fTprofile_2mm, time, 200, L0/2);
   print_profile (T, H0/2 + 11e-3, fTprofile_11mm, time, 200, L0/2);
 
   // Water vapor mole fraction profile
-  scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
   print_profile (XH2O, H0/2 + 2e-3, fxH2Oprofile_2mm, time, 200, L0/2);
   print_profile (XH2O, H0/2 + 11e-3, fxH2Oprofile_11mm, time, 200, L0/2);
 
-  scalar XOH = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
   print_profile (XOH, H0/2 + 2e-3, fxOHprofile_2mm, time, 200, L0/2);
   print_profile (XOH, H0/2 + 11e-3, fxOHprofile_11mm, time, 200, L0/2);
 
@@ -243,7 +243,7 @@ event adapt (i++) {
   // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
-    (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1, 1e-1}, maxlevel, minlevel, 2);
+    (double[]){1.e-1, 1.e-0, 1.e-0, 1e-1, 1e-1}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);
@@ -337,11 +337,10 @@ set ylabel "Normalized solid mass [-]"
 set xrange [0:150]
 set yrange [0:1.05]
 
-plot "cluster/10/diblasi/fatehi-combustion/OutputData-10"     u 1:2 w l lw 2 lc "black" t "Diblasi", \
-     "cluster/10/const/fatehi-combustion/OutputData-10"       u 1:2 w l lw 2 lc "red" t "Constant", \
-     "cluster/10/diblasi-swl/fatehi-combustion/OutputData-10" u 1:2 w l lw 2 lc "blue" t "Diblasi-SWL", \
-     "cluster/10/lu/fatehi-combustion/OutputData-10"          u 1:2 w l lw 2 lc "orange" t "Lu", \
-     "../../data/fatehi/mass" u 1:2 w p pt 64 ps 1 lw 3 lc "black" notitle
+plot "cluster/new/lu/fatehi-combustion/OutputData-9"          u 1:2 w l lw 2 lc "black" t "Lu lambda model", \
+     "cluster/new/galgano/fatehi-combustion/OutputData-9"     u 1:2 w l lw 2 lc "red" t "Galgano lambda", \
+     "cluster/new/10/fatehi-combustion/OutputData-10"         u 1:2 w l lw 2 lc "blue" t "2^10", \
+     "../../data/fatehi/mass" u 1:2 w p pt 64 ps 1 lw 3 lc "black" t "Exp. data"
 ~~~
 
 ~~~gnuplot H2O mole fraction
@@ -353,7 +352,7 @@ set ylabel "H2O Mole Fraction [-]"
 set yrange [0.:0.5]
 set xrange [0:70]
 
-folder = "cluster/full-9/fatehi-combustion/"
+folder = "cluster/10/diblasi/fatehi-combustion/"
 
 error_margin = 0.03
 shift = 5

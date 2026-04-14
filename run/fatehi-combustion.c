@@ -138,11 +138,11 @@ event init (i= 0) {
 }
 
 // Prints profile of a scalar at a given x location for all y form 0 to L0/2
-void print_profile (scalar f, double x_interp, FILE* fp, int time, int n_samples = 100, const double length = L0/2) {
+void print_profile (scalar f, double x_interp, FILE* fp, double time, int n_samples = 100, const double length = L0/2) {
   double step = length/n_samples;
   for (double yy = 0.; yy <= length; yy += step) {
     double val = interpolate (f, x_interp, yy);
-    fprintf (fp, "%d %g %g\n", time, yy, val);
+    fprintf (fp, "%g %g %g\n", time, yy, val);
   }
 }
 
@@ -177,7 +177,6 @@ double path_average_XH2O (double x_interp, const int n_samples = 100, const doub
 }
 
 event print_profile (t += 0.1; t <= 100) {
-  const int time = (int) round(t);
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
   scalar XOH = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
 

@@ -137,7 +137,7 @@ event chemistry (i++) {
   because the volume of the solid phase is variable due to porosity changes.
   */
   foreach ()
-    if (f[] > F_ERR) {
+    if (f[] > F_ERR && TS[] > 0.) {
       porosity[] /= f[];
 
       double y0ode[NEQ];
@@ -241,7 +241,7 @@ event chemistry (i++) {
   */
 #ifdef GAS_PHASE_REACTIONS
     foreach() {
-      if (f[] < F_ERR) {
+      if (f[] < F_ERR && TG[] > 0.) {
 
         double y0ode[NGS + 1]; // NGS + T
         for (int jj=0; jj<NGS; jj++) {

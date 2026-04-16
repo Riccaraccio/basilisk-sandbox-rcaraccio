@@ -33,7 +33,7 @@ void update_properties (void) {
   foreach() {
     ThermoState tsGh, tsSh;
     double Diff_coeff[NGS];
-    if (f[] > F_ERR) {
+    if (f[] > F_ERR && TS[] > 0.) {
       double xG[NGS], yG[NGS];
       double MWmixG;
       // Update internal gas properties
@@ -95,7 +95,7 @@ void update_properties (void) {
         lambda1v.x[] = lambda_pf.x;
     }
 
-    if (f[] < 1. - F_ERR) {
+    if (f[] < 1. - F_ERR && TG[] > 0.) {
       // Update external gas properties
       double xG[NGS], yG[NGS];
       double MWmixG;

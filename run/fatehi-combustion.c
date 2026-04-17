@@ -57,7 +57,7 @@ int main() {
   kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
 
-  L0 = 20*D0;
+  L0 = 15*D0;
   origin (-L0/2, 0);
   init_grid(1 << maxlevel);
 
@@ -181,15 +181,15 @@ event print_profile (t += 0.1; t <= 100) {
   scalar XOH = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
 
   // Temperature profiles
-  print_profile (T, H0/2 + 2e-3, fTprofile_2mm, time, 200, L0/2);
-  print_profile (T, H0/2 + 11e-3, fTprofile_11mm, time, 200, L0/2);
+  print_profile (T, H0/2 + 2e-3, fTprofile_2mm, t, 200, L0/2);
+  print_profile (T, H0/2 + 11e-3, fTprofile_11mm, t, 200, L0/2);
 
   // Water vapor mole fraction profile
-  print_profile (XH2O, H0/2 + 2e-3, fxH2Oprofile_2mm, time, 200, L0/2);
-  print_profile (XH2O, H0/2 + 11e-3, fxH2Oprofile_11mm, time, 200, L0/2);
+  print_profile (XH2O, H0/2 + 2e-3, fxH2Oprofile_2mm, t, 200, L0/2);
+  print_profile (XH2O, H0/2 + 11e-3, fxH2Oprofile_11mm, t, 200, L0/2);
 
-  print_profile (XOH, H0/2 + 2e-3, fxOHprofile_2mm, time, 200, L0/2);
-  print_profile (XOH, H0/2 + 11e-3, fxOHprofile_11mm, time, 200, L0/2);
+  print_profile (XOH, H0/2 + 2e-3, fxOHprofile_2mm, t, 200, L0/2);
+  print_profile (XOH, H0/2 + 11e-3, fxOHprofile_11mm, t, 200, L0/2);
 
   fflush (fTprofile_2mm);
   fflush (fTprofile_11mm);

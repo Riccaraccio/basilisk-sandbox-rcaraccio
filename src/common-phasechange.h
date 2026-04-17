@@ -19,6 +19,7 @@ for evaporation models. */
 # define F_ERR 1.e-10
 #endif
 
+#ifdef OPENSMOKE
 const int n_char_species = 14;
 const char *char_species[] = {"CHAR", "COH2S", "CO2S", "COS", "CH3OHS", 
                               "CH4S", "C2H4S", "C6H5OHS", "CH2OS", "H2S", 
@@ -48,6 +49,7 @@ double calculate_moisture_fraction(Point point, const scalar * YList, scalar f) 
   }
   return Cw;
 }
+#endif
 
 void check_and_correct_fractions (scalar* YList, int n, bool inverse) {
   foreach() {

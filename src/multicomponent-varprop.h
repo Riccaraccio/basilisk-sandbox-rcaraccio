@@ -587,8 +587,10 @@ event tracer_diffusion (i++) {
   scalar theta1[], theta2[];
 
 #if TREE
-  theta1.refine = theta1.prolongation = fraction_refine;
-  theta2.refine = theta2.prolongation = fraction_refine;
+  theta1.refine = fraction_refine;
+  set_prolongation (theta1, fraction_refine);
+  theta2.refine = fraction_refine;
+  set_prolongation (theta2, fraction_refine);
 #endif
 
   // Internal gas diffusion

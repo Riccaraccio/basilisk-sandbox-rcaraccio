@@ -589,8 +589,6 @@ event tracer_diffusion (i++) {
 #if TREE
   theta1.refine = theta1.prolongation = fraction_refine;
   theta2.refine = theta2.prolongation = fraction_refine;
-  theta1.dirty = true;
-  theta2.dirty = true;
 #endif
 
   // Internal gas diffusion

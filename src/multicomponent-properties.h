@@ -167,9 +167,6 @@ event init (i = 0) {
   }
   reset (DYDtG_S, 0.);
 
-  MWmixG_G.dirty = true;
-  MWmixG_S.dirty = true;
-
 #if TREE
   for (scalar s in {drhodt}) {
 #if EMBED
@@ -178,7 +175,6 @@ event init (i = 0) {
     s.refine  = refine_linear;
 #endif
     s.restriction = restriction_volume_average;
-    s.dirty = true; // boundary conditions need to be updated
   }
 #endif
 }

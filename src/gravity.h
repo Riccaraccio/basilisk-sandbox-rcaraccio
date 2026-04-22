@@ -22,10 +22,8 @@ event acceleration (i++)
   position (f, phig, G1, Z, add = false);
 
 #if TREE
-  for (scalar f in {interfaces}) {
+  for (scalar f in {interfaces})
     f.prolongation = p.prolongation;
-    f.dirty = true; // boundary conditions need to be updated
-  }
 #endif
 
   scalar rhovar[];
@@ -35,7 +33,6 @@ event acceleration (i++)
 
 #if TREE
   rhovar.prolongation = p.prolongation;
-  rhovar.dirty = true;
 #endif
 
   face vector av = a, sth[];
@@ -69,9 +66,7 @@ event acceleration (i++)
   }
 
 #if TREE
-  for (scalar f in {interfaces}) {
+  for (scalar f in {interfaces})
     f.prolongation = fraction_refine;
-    f.dirty = true; // boundary conditions need to be updated
-  }
 #endif
 }

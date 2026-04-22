@@ -79,7 +79,7 @@ static void diffusion_boundary (Point point, int bid) {
   double ff = face_value_bid (point, f, bid);
   double jG[NGS], jGtot = 0.;
   for (int jj = 0; jj < NGS; jj++) {
-    if (ff < 1.-F_ERR) {
+    if (ff < 1. - F_ERR) {
       scalar YG = YGList_G[jj];
       double gradYG = face_gradient_bid (point, YG, bid);
       scalar Dmix2  = DmixGList_G[jj];
@@ -155,7 +155,7 @@ U[bottom] = dirichlet(1.);
 
 static void advection_boundary (Point point, int bid) {
 #ifdef MULTICOMPONENT
-  foreach_elem (YGList_G, jj) {
+  for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     double fluxYG = face_flux_bid (point, YG, bid);
 
@@ -168,7 +168,7 @@ static void advection_boundary (Point point, int bid) {
 
     mb.gas_mass_bdnow[jj] += rhoGh*fluxYG*dt;
   }
-  foreach_elem (YGList_S, jj) {
+  for (int jj=0; jj<NSS; jj++) {
     scalar YG = YGList_S[jj];
     double fluxYG = face_flux_bid (point, YG, bid);
     double rhoGh;

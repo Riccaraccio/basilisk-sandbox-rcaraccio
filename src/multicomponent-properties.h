@@ -170,11 +170,12 @@ event init (i = 0) {
 #if TREE
   for (scalar s in {drhodt}) {
 #if EMBED
-    s.refine = s.prolongation = refine_embed_linear;
+    s.refine = refine_embed_linear;
+    set_prolongation (s, refine_embed_linear);
 #else
     s.refine  = refine_linear;
 #endif
-    s.restriction = restriction_volume_average;
+    set_restriction (s, restriction_volume_average);
   }
 #endif
 }

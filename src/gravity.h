@@ -23,7 +23,7 @@ event acceleration (i++)
 
 #if TREE
   for (scalar f in {interfaces})
-    f.prolongation = p.prolongation;
+    set_prolongation (f, p.prolongation);
 #endif
 
   scalar rhovar[];
@@ -32,7 +32,7 @@ event acceleration (i++)
       rhovar[] = rhoGv_S[]*f[] + rhoGv_G[]*(1. - f[]);
 
 #if TREE
-  rhovar.prolongation = p.prolongation;
+  set_prolongation (rhovar, p.prolongation);
 #endif
 
   face vector av = a, sth[];
@@ -67,6 +67,6 @@ event acceleration (i++)
 
 #if TREE
   for (scalar f in {interfaces})
-    f.prolongation = fraction_refine;
+    set_prolongation (f, fraction_refine);
 #endif
 }

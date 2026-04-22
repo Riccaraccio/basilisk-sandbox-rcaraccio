@@ -161,6 +161,12 @@ We overload the init event in order to setup properties
 for the radiation models at the beginning of the simulation.
 */
 
+#if OPENSMOKE
+event defaults (i = 0) {
+  divq_rad = opensmoke_optically_thin;
+}
+#endif
+
 event init (i = 0) {
   if (divq_rad == optically_thin) {
 

@@ -78,6 +78,8 @@ scalar MWmixG_G[], MWmixG_S[]; // mixture molecular weights
 scalar fG[], fS[]; // phase fractions
 face vector fsS[], fsG[]; // face fractions
 
+bool restarted = false;
+
 event defaults (i = 0) {
 
   /*
@@ -398,69 +400,71 @@ for (int jj=0; jj<NGS; jj++) {
 }
 
 event init (i = 0) {
-  //initialize gas fractions fields
-  // check if the sum of the fractions is 1
-  double sum = 0.;
-  for (int jj=0; jj<NGS; jj++)
-    sum += gas_start[jj];
-  if (fabs(sum-1.) > 1e-10) {
-    fprintf(stderr, "Sum of gas fractions is not 1. Exiting...\n");
-    exit(1);
-  }
-
-  foreach() {
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_G[jj];
-      YG[] = gas_start[jj]*(1-f[]);
+  if (!restarted) {
+    //initialize gas fractions fields
+    // check if the sum of the fractions is 1
+    double sum = 0.;
+    for (int jj=0; jj<NGS; jj++)
+      sum += gas_start[jj];
+    if (fabs(sum - 1.) > 1e-10) {
+      fprintf(stderr, "Sum of gas fractions is not 1. Exiting...\n");
+      exit (1);
     }
 
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YG = YGList_S[jj];
-      YG[] = gas_start[jj]*f[];
-    }
-  }
+    foreach() {
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        YG[] = gas_start[jj]*(1. - f[]);
+      }
 
-  foreach() {
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YGInt = YGList_Int[jj];
-      YGInt[] = gas_start[jj];
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YG = YGList_S[jj];
+        YG[] = gas_start[jj]*f[];
+      }
     }
-  }
 
-  //initialize solid fractions fields
-  // check if the sum of the fractions is 1
-  sum = 0.;
-  for (int jj=0; jj<NSS; jj++)
-    sum += sol_start[jj];
-  if (fabs(sum-1.) > 1e-6) {
-    fprintf(stderr, "Sum of solid fractions is not 1. Exiting...\n");
-    exit(1);
-  }
-
-  foreach() {
-    for (int jj=0; jj<NSS; jj++) {
-      scalar YS = YSList[jj];
-      YS[] = sol_start[jj]*f[];
+    foreach() {
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YGInt = YGList_Int[jj];
+        YGInt[] = gas_start[jj];
+      }
     }
-  }
 
-  foreach() {
-    for (int jj=0; jj<NGS; jj++) {
-      scalar sSexp = sSexpList[jj];
-      scalar sGexp = sGexpList[jj];
-      sSexp[] = 0.;
-      sGexp[] = 0.;
+    //initialize solid fractions fields
+    // check if the sum of the fractions is 1
+    sum = 0.;
+    for (int jj=0; jj<NSS; jj++)
+      sum += sol_start[jj];
+    if (fabs(sum-1.) > 1e-6) {
+      fprintf(stderr, "Sum of solid fractions is not 1. Exiting...\n");
+      exit(1);
     }
-  }
+
+    foreach() {
+      for (int jj=0; jj<NSS; jj++) {
+        scalar YS = YSList[jj];
+        YS[] = sol_start[jj]*f[];
+      }
+    }
+
+    foreach() {
+      for (int jj=0; jj<NGS; jj++) {
+        scalar sSexp = sSexpList[jj];
+        scalar sGexp = sGexpList[jj];
+        sSexp[] = 0.;
+        sGexp[] = 0.;
+      }
+    }
 
 #ifdef SOLVE_TEMPERATURE
-  foreach() {
-    TS[] = TS0*f[];
-    TG[] = TG0*(1. - f[]);
-    T[]  = TS[] + TG[];
-    TInt[] = f[]<1-F_ERR && f[] > F_ERR ? TS0 : 0.;
-  }
+    foreach() {
+      TS[] = TS0*f[];
+      TG[] = TG0*(1. - f[]);
+      T[]  = TS[] + TG[];
+      TInt[] = f[]<1-F_ERR && f[] > F_ERR ? TS0 : 0.;
+    }
 #endif
+  }
 }
 
 event cleanup (t = end) {

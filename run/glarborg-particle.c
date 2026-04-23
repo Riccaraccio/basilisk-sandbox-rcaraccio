@@ -37,11 +37,11 @@ psi[right]    = neumann (0.);
 
 double tend = 10;
 int maxlevel = 9, minlevel = 3;
-double D0 = 3e-3, H0 = 0.;
 double solid_mass0 = 0.;
+double D0, H0;
 
-const double* D0 = {3e-3, 2.08e-3, 1.65e-3, 1.44e-3, 1.31e-3};
-const double* H0 = {0., 4.16e-3, 6.60e-3, 8.65e-3, 10.48e-3}; 
+double D0_arr[] = {3e-3, 2.08e-3, 1.65e-3, 1.44e-3, 1.31e-3};
+double H0_arr[] = {0., 4.16e-3, 6.60e-3, 8.65e-3, 10.48e-3}; 
 
 int main() {
   
@@ -62,8 +62,16 @@ int main() {
 
   kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
+  
+  if (CASE_NUMBER < 0 || CASE_NUMBER >= 5) {
+    fprintf(stderr, "Invalid CASE_NUMBER %d. Must be between 0 and 4.\n", CASE_NUMBER);
+    return 1;
+  } else {
+    D0 = D0_arr[CASE_NUMBER];
+    H0 = H0_arr[CASE_NUMBER];
+  }
 
-  L0 = 20*max(D0[CASE_NUMBER]);
+  L0 = 20*D0;
   origin (-L0/2, 0);
   emissivity = emissivity_lu;
   init_grid(1 << maxlevel);
@@ -76,9 +84,9 @@ int main() {
 double r0;
 event init (i= 0) {
   if (CASE_NUMBER == 0) {
-    fraction (f, circle(x, y, 0.5 * D0[CASE_NUMBER]));
+    fraction (f, circle(x, y, 0.5 * D0));
   } else {
-    fraction (f, superquadric (x, y, 20, 0.5*H0[CASE_NUMBER], 0.5*D0[CASE_NUMBER]));
+    fraction (f, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
   }
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
@@ -162,7 +170,7 @@ event movie (t += 0.1) {
   isoline ("zmix - zsto", lw = 1.5, lc = {1., 1., 1.});
   draw_vof ("f", lw = 1.5);
   mirror ({0, 1}) {
-    cells();
+    squares ("O2_G + O2_S", min = 0., max = 0.235, spread = -1, linear = true);
     isoline ("zmix - zsto", lw = 1.5, lc = {1., 0., 0.});
     draw_vof ("f", lw = 1.5);
   }

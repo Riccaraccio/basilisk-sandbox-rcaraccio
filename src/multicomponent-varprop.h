@@ -41,15 +41,10 @@ foreach() {
     fS[] = f[]; fG[] = 1. - f[];
   }
 
-//No more needed as this was fixed in adapt_wavelet_leave_interface.h when MPI is used
-// Avoid artifically created interfaces
-// interfacial cell can only exist at maximum refinement level
-// #if TREE
-//   for (int l = 1; l < grid->maxdepth; l++)
-//     foreach_level (l)
-//       f[] = (f[] > 0.5) ? 1. : 0.;
-// #endif
-  
+  //Compute face gradients
+  face_fraction (fS, fsS);
+  face_fraction (fG, fsG);
+
   check_and_correct_fractions (YGList_S, NGS, false);
   check_and_correct_fractions (YGList_G, NGS, true);
   check_and_correct_fractions (YSList,   NSS, false);
@@ -88,12 +83,11 @@ foreach() {
 
 #ifdef SOLVE_TEMPERATURE
   foreach_face() {
-    double ef = face_value(porosity, 0);
-    double ff = face_value(f, 0);
+    double ef = clamp(face_value(porosity, 0), 0., 1.);
 
     double rhoGvh_S, rhoSvh;
     double cpGvh_S, cpSvh;
-    
+
     #ifdef VARPROP
     rhoGvh_S = face_value(rhoGv_S, 0); rhoSvh = face_value(rhoSv, 0);
     cpGvh_S = face_value(cpGv_S, 0); cpSvh = face_value(cpSv, 0);
@@ -102,8 +96,10 @@ foreach() {
     cpGvh_S = cpG; cpSvh = cpS;
     #endif
 
-    u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoGvh_S*cpGvh_S)/(rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1.-ef)) : ufsave.x[];
-    // u_prime.x[] = (ff > F_ERR) ? ufsave.x[]*(rhoGvh_S*cpGvh_S)/(rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1.-ef))*ff + (1-ff)*ufsave.x[] : ufsave.x[];
+    u_prime.x[] = (fsS.x[] > F_ERR) ? 
+                  fsS.x[]*ufsave.x[]*(rhoGvh_S*cpGvh_S)/
+                  (rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1. - ef))
+                  : 0.;
   }
 
   advection_div({TS}, u_prime, dt);
@@ -112,10 +108,6 @@ foreach() {
 # endif
 #endif
 
-  // Reset the velocity field, just to be sure
-  foreach_face()
-    uf.x[] = ufsave.x[];
-  
   // recover tracer form
   foreach() {
     porosity[] = (f[] > F_ERR) ? porosity[]*f[] : 0.;
@@ -129,7 +121,7 @@ foreach() {
       scalar YG_G = YGList_G[jj];
 
       YG_S[] = (f[] > F_ERR) ? YG_S[]*f[] : 0.;
-      YG_G[] = (f[] < 1.-F_ERR) ? YG_G[]*(1.-f[]) : 0.;
+      YG_G[] = (f[] < 1.-F_ERR) ? YG_G[]*(1. - f[]) : 0.;
     }
   }
 }
@@ -199,9 +191,6 @@ event tracer_diffusion (i++) {
   update_mole_fields();
 #endif
 
-  //Compute face gradients
-  face_fraction (fS, fsS);
-  face_fraction (fG, fsG);
 
 #ifdef SOLVE_TEMPERATURE
   //interface temperature first guess
@@ -213,16 +202,16 @@ event tracer_diffusion (i++) {
 
   #ifdef FIXED_INT_TEMP //Force interface temperature = TG0
   foreach()
-    if (f[] > F_ERR && f[] < 1.-F_ERR)
+    if (f[] > F_ERR && f[] < 1. - F_ERR)
       TInt[] = TG0;
 
   #elif TEMPERATURE_PROFILE
   double tv = TemperatureProfile_GetT(t);
   foreach() {
-    if (f[] > F_ERR && f[] < 1.-F_ERR)
+    if (f[] > F_ERR && f[] < 1. - F_ERR)
       TInt[] = tv;
     
-    if (f[] < 1.-F_ERR)
+    if (f[] < 1. - F_ERR)
       TG[] = tv;
   }
 
@@ -236,7 +225,7 @@ event tracer_diffusion (i++) {
     for (int jj=0; jj<NGS; jj++) {
       scalar YGInt = YGList_Int[jj];
       YGInt[] = 0.;
-      if (f[] > F_ERR && f[] < 1.-F_ERR) {
+      if (f[] > F_ERR && f[] < 1. - F_ERR) {
         scalar YG_S = YGList_S[jj];
         scalar YG_G = YGList_G[jj];
         YGInt[] = (YG_G[] + YG_S[])/2;
@@ -250,7 +239,7 @@ event tracer_diffusion (i++) {
 
 #ifdef MOLAR_DIFFUSION // calculate the mole fractions at the interface
   foreach()
-    if (f[] > F_ERR && f[] < 1.-F_ERR) {
+    if (f[] > F_ERR && f[] < 1. - F_ERR) {
       double xG[NGS], yG[NGS], MWmixInt;
       for (int jj=0; jj<NGS; jj++) {
         scalar YGInt = YGList_Int[jj];
@@ -382,7 +371,7 @@ event tracer_diffusion (i++) {
 
 #ifdef MASS_DIFFUSION_ENTHALPY
   foreach() {
-    if (f[] > 1.-F_ERR) { //Internal gas phase
+    if (f[] > 1. - F_ERR) { //Internal gas phase
       double mdeGS = 0.;
       coord gTS = {0., 0., 0.};
       coord gYGj_S = {0., 0., 0.};

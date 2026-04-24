@@ -41,7 +41,7 @@ int main() {
 
   lambdaSmodel = L_LU;
   TS0 = 300.; TG0 = 1408.;
-  rhoS = 1250; // not specified in the paper, from Swedish softwood density 
+  rhoS = 1200; // not specified in the paper, from Swedish softwood density 
   eps0 = 0.4; // guessed
 
   //dummy properties
@@ -58,7 +58,7 @@ int main() {
   kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
 
-  L0 = 15*D0;
+  L0 = 20*D0;
   origin (-L0/2, 0);
   init_grid(1 << maxlevel);
 
@@ -108,16 +108,16 @@ event init (i= 0) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("CO2")) {
       YG[left] = dirichlet (0.8371);
-      YG[left] = dirichlet (0.8371);
+      YG[top] = dirichlet (0.8371);
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
       YG[left] = dirichlet (0.0272);
-      YG[left] = dirichlet (0.0272);
+      YG[top] = dirichlet (0.0272);
     } else if (jj == OpenSMOKE_IndexOfSpecies ("H2O")) {
       YG[left] = dirichlet (0.1357);
-      YG[left] = dirichlet (0.1357);
+      YG[top] = dirichlet (0.1357);
     } else {
       YG[left] = dirichlet (0.);
-      YG[left] = dirichlet (0.);
+      YG[top] = dirichlet (0.);
     }
   }
 

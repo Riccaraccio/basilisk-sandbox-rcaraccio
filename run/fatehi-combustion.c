@@ -57,7 +57,7 @@ int main() {
   kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
 
-  L0 = 15*D0;
+  L0 = 20*D0;
   origin (-L0/2, 0);
   init_grid(1 << maxlevel);
 
@@ -116,14 +116,14 @@ event init (i= 0) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
       YG[left] = dirichlet (0.765);
-      YG[left] = dirichlet (0.765);
+      YG[top] = dirichlet (0.765);
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
       YG[left] = dirichlet (0.235);
-      YG[left] = dirichlet (0.235);
+      YG[top] = dirichlet (0.235);
     }     
     else {
       YG[left] = dirichlet (0.);
-      YG[left] = dirichlet (0.);
+      YG[top] = dirichlet (0.);
     }
   }
 

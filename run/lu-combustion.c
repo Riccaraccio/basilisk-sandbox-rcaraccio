@@ -21,16 +21,19 @@ const double Uin = 0.6; //inlet velocity
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
+pf[left]     = neumann (0.);
 psi[left]    = dirichlet (0.);
 
+u.n[top]     = neumann (0.);
 psi[top]     = dirichlet (0.);
 
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
+pf[right]     = neumann (0.);
 psi[right]    = neumann (0.);
 
-const double tend = 100; //simulation time 300 s
+const double tend = 100; //simulation time 100 s
 int maxlevel = 10; int minlevel = 3;
 
 double D0 = 9.5e-3;
@@ -49,7 +52,7 @@ int main() {
 
   zeta_policy = ZETA_CONST;
 
-  DT = 1;
+  DT = 0.1;
 
   G.x = -9.81;
 
@@ -152,9 +155,8 @@ event output (t += 0.1) {
 
 #if TREE
 event adapt (i++) {
-  // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
-  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
     (double[]){1.e-1, 1.e-0, 1.e-0, 1e-1, 1e-1}, maxlevel, minlevel, 2);

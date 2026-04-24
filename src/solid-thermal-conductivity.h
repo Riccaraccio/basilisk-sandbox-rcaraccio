@@ -16,20 +16,21 @@ enum solid_thermal_conductivity_model {
   L_ANCACOUCE,
   L_KK,
   L_LU,
-  L_GALGANO
+  L_GALGANO,
+  L_LU_CONV,
 };
 
 enum solid_thermal_conductivity_model lambdaSmodel = L_CONST;
 
 // We return a coord because some models can be anisotropic
 // Constant solid thermal conductivity model
-coord lambda_const(Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+coord lambda_const (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
   double lambda = (1. - porosity) * lambdaS + porosity * lambdaG;
   return (coord){lambda, lambda};
 }
 
 // Corbetta model for solid thermal conductivity
-coord lambda_corbetta(Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+coord lambda_corbetta (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
     NOT_UNUSED(Temperature);
     double char_cond = 0.1405;
     double bio_cond = 0.1937;
@@ -39,7 +40,7 @@ coord lambda_corbetta(Point point, double lambdaG, double porosity, double Tempe
 }
 
 // Huang model for solid thermal conductivity
-coord lambda_huang(Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+coord lambda_huang (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
     double char_cond = 0.071;
     double bio_cond = 0.21;
     double char_fraction = calculate_char_fraction(point, YSList, f);
@@ -50,13 +51,15 @@ coord lambda_huang(Point point, double lambdaG, double porosity, double Temperat
         YASH = YSList[ash_index];
 
     double ash_fraction = (ash_index >= 0) ? YASH[]/f[] : 0.;
-    double lambda = (char_cond*char_fraction + bio_cond*(1. - char_fraction))*(1. - porosity) 
-    + 13.5*5.67e-8*pow(Temperature, 3)*80e-06/emissivity (char_fraction, ash_fraction) + porosity*lambdaG;
+    double lambda = (char_cond*char_fraction + 
+                     bio_cond*(1. - char_fraction))*(1. - porosity) 
+                    + 13.5*5.67e-8*pow(Temperature, 3)*80e-06/emissivity (char_fraction, ash_fraction)
+                    + porosity*lambdaG;
     return (coord){lambda, lambda};
 }
 
 // Ancacouce model for solid thermal conductivity
-coord lambda_ancacouce(Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+coord lambda_ancacouce (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
     NOT_UNUSED(porosity);
     double char_cond = 0.125;
     double bio_cond = 0.056 + 2.6e-4*Temperature;
@@ -66,7 +69,7 @@ coord lambda_ancacouce(Point point, double lambdaG, double porosity, double Temp
 }
 
 // KK model for solid thermal conductivity
-coord lambda_kk(Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+coord lambda_kk (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
     NOT_UNUSED(Temperature);
     double lS_per = 0.430;
     double lS_par = 0.766;
@@ -81,14 +84,11 @@ coord lambda_kk(Point point, double lambdaG, double porosity, double Temperature
 }
 
 // Lu model for solid thermal conductivity
-coord lambda_lu(Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+coord lambda_lu (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
     double Cw = calculate_moisture_fraction(point, YSList, f);
     double char_fraction = calculate_char_fraction(point, YSList, f);
     scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
     double ash_fraction = YASH[]/f[];
-
-    double conversion = 1. - (1. - porosity)/(1. - eps0)*(1. - char_fraction - Cw - ash_fraction);
-    conversion = clamp(conversion, 0., 1.);
 
     double char_cond = 0.071;
     double ash_cond = 1.2;
@@ -128,6 +128,30 @@ coord lambda_galgano (Point point, double lambdaG, double porosity, double Tempe
   return (coord){lambda, lambda};
 }
 
+double wood_fraction_0;
+coord lambda_lu_conv (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+    double Cw = calculate_moisture_fraction(point, YSList, f);
+    double char_fraction = calculate_char_fraction(point, YSList, f);
+    scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
+    double ash_fraction = YASH[]/f[];
+    double wood_fraction = 1. - char_fraction - Cw;
+
+    double conversion_wood = 1. - (1. - porosity)/(1. - eps0)*(1. - wood_fraction)/(1. - wood_fraction_0);
+    conversion_wood = clamp(conversion_wood, 0., 1.);
+
+    double char_cond = 0.071;
+    double ash_cond = 1.2;
+    double wood_cond = (0.129 - 4.9e-2*Cw)*(1. + (2.05 + 4.*Cw)*1e-3*(Temperature - 273.15))*(0.986 + 2.695*Cw);
+    double rad_cont = 5.67e-8*pow(Temperature, 3)*3.2e-6/emissivity(char_fraction, ash_fraction)*porosity;
+
+    double lambda = (char_cond*conversion_wood 
+                     + wood_cond*(1. - conversion_wood)
+                     + ash_cond*ash_fraction)*(1. - porosity) 
+                     + rad_cont 
+                     + porosity*lambdaG;
+    return (coord){lambda, lambda};
+}
+
 // Function pointer for the pseudophase thermal conductivity model
 coord (*pseudo_phase_thermal_conductivity) (Point point, double lambdaG, double porosity, double Temperature, scalar f) = lambda_const;
 
@@ -154,9 +178,17 @@ event defaults (i = 0) {
     case L_GALGANO:
       pseudo_phase_thermal_conductivity = lambda_galgano;
       break;
+    case L_LU_CONV:
+      pseudo_phase_thermal_conductivity = lambda_lu_conv;
+      break;
     default:
       fprintf(stderr, "ERROR: Unknown solid thermal conductivity model, unkown lambdaSmodel = %d \n", lambdaSmodel);
       abort();
       break;
   }
 }
+
+// event properties (i = 0) {
+//   if (lambdaSmodel == L_LU_CONV)
+//     wood_fraction_0 = 1. - calculate_char_fraction(point, YSList, f) - calculate_moisture_fraction(point, YSList, f);
+// }

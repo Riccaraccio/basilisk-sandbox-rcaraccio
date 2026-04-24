@@ -131,11 +131,12 @@ event output (t += 0.01) {
   //log mass profile
   double solid_mass = 0.;
   foreach (reduction(+:solid_mass))
-    solid_mass += (f[]-porosity[])*rhoS*dv();
+    solid_mass += (f[] - porosity[])*rhoS*dv();
 
   //calculate radius, only meaningful for spherical particles
   double radius = cbrt (3.*statsf(f).sum);
 
+  //FIXME: if restart, solid_mass0 = 0
   fprintf (fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max, radius/(D0/2.));
 
   fflush(fp);

@@ -35,7 +35,7 @@ int main () {
     lambdaSmodel = L_LU;
     emissivity = emissivity_lu;
 
-    TS0 = 750.; TG0 = 1173.;
+    TS0 = 650.; TG0 = 1173.;
     rhoS = 1500;
     eps0 = 0.4;
 
@@ -47,9 +47,10 @@ int main () {
     shift_prod = true;
 
     DT = 1.e-2;
-    kinfolder = "biomass/full-solid-gas";
+    // kinfolder = "biomass/full-solid-gas";
+    kinfolder = "biomass/dummy-solid-gas";
 
-    L0 = 10*D0;
+    L0 = 8*D0;
     init_grid(1 << maxlevel);
 
     run();
@@ -65,14 +66,16 @@ event init (i = 0) {
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
 
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4082;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.1991;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.0189;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.1536;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.1633;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")] = 0.0184;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")] = 0.0385;
-  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")] = 0.4082;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("XYHW")] = 0.1991;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")] = 0.0189;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGH")] = 0.1536;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGC")] = 0.1633;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TANN")] = 0.0184;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")] = 0.0385;
+  // sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.;
+
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 1.;
 
   foreach()
     porosity[] = eps0*f[];
@@ -111,29 +114,30 @@ void print_radial_profile (scalar f, FILE* fp, double time, int n_samples = 100,
 }
 
 event output (t += 0.01) {
-  scalar yC6H6 = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H6")];
-  scalar yC10H8 = YGList_G[OpenSMOKE_IndexOfSpecies ("C10H8")];
-  scalar yC12H8 = YGList_G[OpenSMOKE_IndexOfSpecies ("C12H8")];
-  scalar yC16H10 = YGList_G[OpenSMOKE_IndexOfSpecies ("C16H10")];
-  scalar yBINA = YGList_G[OpenSMOKE_IndexOfSpecies ("BIN1A")];
-  scalar yBINB = YGList_G[OpenSMOKE_IndexOfSpecies ("BIN1B")];
+  // scalar yC6H6 = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H6")];
+  scalar yC6H6 = YGList_G[OpenSMOKE_IndexOfSpecies ("CH4")];
+  // scalar yC10H8 = YGList_G[OpenSMOKE_IndexOfSpecies ("C10H8")];
+  // scalar yC12H8 = YGList_G[OpenSMOKE_IndexOfSpecies ("C12H8")];
+  // scalar yC16H10 = YGList_G[OpenSMOKE_IndexOfSpecies ("C16H10")];
+  // scalar yBINA = YGList_G[OpenSMOKE_IndexOfSpecies ("BIN1A")];
+  // scalar yBINB = YGList_G[OpenSMOKE_IndexOfSpecies ("BIN1B")];
 
-  scalar yBIN[];
-  foreach() {
-    yBIN[] = yBINA[] + yBINB[];
-  }
+  // scalar yBIN[];
+  // foreach() {
+  //   yBIN[] = yBINA[] + yBINB[];
+  // }
 
   print_radial_profile (yC6H6, fyC6H6, t);
-  print_radial_profile (yC10H8, fyC10H8, t);
-  print_radial_profile (yC12H8, fyC12H8, t);
-  print_radial_profile (yC16H10, fyC16H10, t);
-  print_radial_profile (yBIN, fyBIN, t);
+  // print_radial_profile (yC10H8, fyC10H8, t);
+  // print_radial_profile (yC12H8, fyC12H8, t);
+  // print_radial_profile (yC16H10, fyC16H10, t);
+  // print_radial_profile (yBIN, fyBIN, t);
 
   fflush(fyC6H6);
-  fflush(fyC10H8);
-  fflush(fyC12H8);
-  fflush(fyC16H10);
-  fflush(fyBIN);
+  // fflush(fyC10H8);
+  // fflush(fyC12H8);
+  // fflush(fyC16H10);
+  // fflush(fyBIN);
 
   double solid_mass = 0.;
   foreach (reduction(+:solid_mass))
@@ -147,8 +151,10 @@ event output (t += 0.01) {
 }
 
 event adapt (i++) {
-  scalar yLVG = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
-  scalar yC6H6 = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H6")];
+  // scalar yLVG = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
+  // scalar yC6H6 = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H6")];
+  scalar yLVG = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
+  scalar yC6H6 = YGList_G[OpenSMOKE_IndexOfSpecies ("CH4")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, yLVG, yC6H6, porosity}, {f},
     (double[]){1.e-1, 1.e-0, 1.e-0, 1e-1, 1e-1, 1e-0}, maxlevel, minlevel, 2);
@@ -156,10 +162,10 @@ event adapt (i++) {
 
 event stop (t = tend) {
   fclose(fyC6H6);
-  fclose(fyC10H8);
-  fclose(fyC12H8);
-  fclose(fyC16H10);
-  fclose(fyBIN);
+  // fclose(fyC10H8);
+  // fclose(fyC12H8);
+  // fclose(fyC16H10);
+  // fclose(fyBIN);
 }
 
 event movie (t += 0.01) {

@@ -410,8 +410,8 @@ set xlabel "Time [s]"
 set ylabel "Shrinking factor [-]"
 set xrange [0:650]
 set xtics 100
-set yrange [0.0:1.05]
-set ytics 0.2
+set yrange [0.5:1.05]
+set ytics 0.1
 set key bottom right
 set size square
 array dummy[1] = [0]
@@ -442,8 +442,8 @@ set xlabel "Time [s]"
 set ylabel "Shrinking factor [-]"
 set xrange [0:650]
 set xtics 100
-set yrange [0.0:1.05]
-set ytics 0.2
+set yrange [0.5:1.05]
+set ytics 0.1
 set key bottom right
 set size square
 array dummy[1] = [0]

@@ -198,6 +198,9 @@ event vof (i++) {
     ufsave.x[] = uf.x[];
     uf.x[] = ubf.x[];
   }
+@if _MPI
+  boundary ((scalar *){uf});
+@endif
 }
 
 /**
@@ -208,6 +211,9 @@ advection has been performed.
 event tracer_diffusion (i++) {
   foreach_face()
       uf.x[] = ufsave.x[];
+@if _MPI
+  boundary ((scalar *){uf});
+@endif
 }
 
 /**

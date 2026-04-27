@@ -83,10 +83,11 @@ int main() {
 
 double r0;
 event init (i= 0) {
+  scalar f0[];
   if (CASE_NUMBER == 0) {
-    fraction (f, circle(x, y, 0.5 * D0));
+    fraction (f0, circle(x, y, 0.5 * D0));
   } else {
-    fraction (f, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
+    fraction (f0, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
   }
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
@@ -103,11 +104,11 @@ event init (i= 0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.0930;
 
   foreach()
-    porosity[] = eps0*f[];
+    porosity[] = eps0*f0[];
 
   solid_mass0 = 0.;
   foreach (reduction(+:solid_mass0))
-    solid_mass0 += (f[] - porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
+    solid_mass0 += f0[]*(1. - eps0)*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
@@ -127,7 +128,18 @@ event init (i= 0) {
     }
   }
 
-  divq_rad = opensmoke_optically_thin;
+  if (restore (file = "last-snapshot", list = all)) {
+    fprintf (stderr, "Restart file found!\n");
+    restarted = true;
+  } else {
+    fprintf (stderr, "No restart file found, starting from scratch!\n");
+
+    foreach() {
+      f[] = f0[];
+      porosity[] = eps0*f[];
+    }
+  }
+
 }
 
 event output (t += 0.01) {
@@ -175,6 +187,10 @@ event movie (t += 0.1) {
     draw_vof ("f", lw = 1.5);
   }
   save ("movie.mp4");
+}
+
+event dump (t += 1) {
+  dump("last-snapshot");
 }
 
 event stop (t = tend);

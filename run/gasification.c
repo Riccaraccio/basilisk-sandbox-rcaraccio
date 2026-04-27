@@ -70,7 +70,8 @@ int main() {
 double r0;
 
 event init (i= 0) {
-  fraction (f, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
+  scalar f0[];
+  fraction (f0, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.0272;
   gas_start[OpenSMOKE_IndexOfSpecies ("CO2")] = 0.8371;
@@ -90,14 +91,9 @@ event init (i= 0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0017;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.0865;
 
-  foreach()
-    porosity[] = eps0*f[];
-
   solid_mass0 = 0.;
   foreach (reduction(+:solid_mass0))
-    solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
-  
-  fprintf(stderr, "Initial solid mass: %g kg\n", solid_mass0);
+    solid_mass0 += f0[]*(1. - eps0)*rhoS*dv();
 
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
@@ -121,7 +117,17 @@ event init (i= 0) {
     }
   }
 
-  divq_rad = opensmoke_optically_thin;
+  if (restore (file = "last-snapshot", list = all)) {
+    fprintf (stderr, "Restart file found!\n");
+    restarted = true;
+  } else {
+    fprintf (stderr, "No restart file found, starting from scratch!\n");
+
+    foreach() {
+      f[] = f0[];
+      porosity[] = eps0*f[];
+    }
+  }
 }
 
 event output (t += 0.1) {
@@ -141,7 +147,6 @@ event output (t += 0.1) {
 event adapt (i++) {
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
-  // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
     (double[]){1.e-1, 1.e-1, 1.e-1, 1e-1, 1e-1}, maxlevel, minlevel, 2);
@@ -172,6 +177,9 @@ event movie (t += 1) {
   save ("movie.mp4");
 }
 
+event dump (t += 1) {
+  dump ("last-snapshot");
+}
 
 event stop (t = tend);
 

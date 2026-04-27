@@ -34,7 +34,7 @@ pf[right]     = neumann (0.);
 psi[right]    = neumann (0.);
 
 const double tend = 100; //simulation time 100 s
-int maxlevel = 10; int minlevel = 3;
+int maxlevel = 9; int minlevel = 3;
 
 double D0 = 9.5e-3;
 double solid_mass0 = 0.;
@@ -56,7 +56,6 @@ int main() {
 
   G.x = -9.81;
 
-  // kinfolder = "biomass/dummy-solid-gas";
   kinfolder = "biomass/Red-gas-2507";
   shift_prod = true;
 
@@ -74,7 +73,9 @@ int main() {
 double r0;
 
 event init (i= 0) {
-  fraction (f, circle (x, y, 0.5*D0));
+
+  scalar f0[];
+  fraction (f0, circle (x, y, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.235;
@@ -90,15 +91,10 @@ event init (i= 0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]  = 0.1700;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("BMOIST")] = 0.2300;
 
-  foreach() {
-    porosity[] = eps0*f[];
-    u.x[] = Uin*(1. - f[]);
-  }
-
   solid_mass0 = 0.;
   foreach (reduction(+:solid_mass0))
-    solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
-  
+    solid_mass0 += f0[]*(1. - eps0)*rhoS*dv();
+
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
   TG[right] = neumann (0.);
@@ -119,7 +115,17 @@ event init (i= 0) {
     }
   }
 
-  divq_rad = opensmoke_optically_thin;
+  if (restore (file = "last-snapshot", list = all)) {
+    fprintf (stderr, "Restart file found!\n");
+    restarted = true;
+  } else {
+    fprintf (stderr, "No restart file found, starting from scratch!\n");
+
+    foreach() {
+      f[] = f0[];
+      porosity[] = eps0*f[];
+    }
+  }
 }
 
 event output (t += 0.1) {
@@ -184,6 +190,10 @@ event movie (t += 1) {
     draw_vof ("f", lw = 1.5);
   }
   save ("movie.mp4");
+}
+
+event dump (t += 1) {
+  dump("last-snapshot");
 }
 
 event stop (t = tend);

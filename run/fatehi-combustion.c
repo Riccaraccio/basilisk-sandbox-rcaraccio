@@ -80,7 +80,8 @@ FILE* fxH2Oprofile_2mm, * fxH2Oprofile_11mm;
 FILE* fxOHprofile_2mm, * fxOHprofile_11mm;
 
 event init (i= 0) {
-  fraction (f, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
+  scalar f0[];
+  fraction (f0, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
 
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.235;
@@ -103,7 +104,7 @@ event init (i= 0) {
 
   solid_mass0 = 0.;
   foreach (reduction(+:solid_mass0))
-    solid_mass0 += (f[]-porosity[])*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
+    solid_mass0 += f0[]*(1. - eps0)*rhoS*dv();
   
   fprintf(stderr, "Initial solid mass: %g kg\n", solid_mass0);
 
@@ -127,14 +128,40 @@ event init (i= 0) {
     }
   }
 
-  divq_rad = opensmoke_optically_thin;
+  if (restore (file = "last-snapshot", list = all)) {
+    fprintf (stderr, "Restart file found!\n");
+    restarted = true;
 
-  fTprofile_2mm = fopen("T_profile_2mm.dat", "w");
-  fTprofile_11mm = fopen("T_profile_11mm.dat", "w");
-  fxH2Oprofile_2mm = fopen("xH2O_profile_2mm.dat", "w");
-  fxH2Oprofile_11mm = fopen("xH2O_profile_11mm.dat", "w");
-  fxOHprofile_2mm = fopen("xOH_profile_2mm.dat", "w");
-  fxOHprofile_11mm = fopen("xOH_profile_11mm.dat", "w");
+    fTprofile_2mm = fopen("T_profile_2mm.dat", "a");
+    fTprofile_11mm = fopen("T_profile_11mm.dat", "a");
+    fxH2Oprofile_2mm = fopen("xH2O_profile_2mm.dat", "a");
+    fxH2Oprofile_11mm = fopen("xH2O_profile_11mm.dat", "a");
+    fxOHprofile_2mm = fopen("xOH_profile_2mm.dat", "a");
+    fxOHprofile_11mm = fopen("xOH_profile_11mm.dat", "a");
+  } else {
+    fprintf (stderr, "No restart file found, starting from scratch!\n");
+
+    foreach() {
+      f[] = f0[];
+      porosity[] = eps0*f[];
+    }
+    fTprofile_2mm = fopen("T_profile_2mm.dat", "w");
+    fTprofile_11mm = fopen("T_profile_11mm.dat", "w");
+    fxH2Oprofile_2mm = fopen("xH2O_profile_2mm.dat", "w");
+    fxH2Oprofile_11mm = fopen("xH2O_profile_11mm.dat", "w");
+    fxOHprofile_2mm = fopen("xOH_profile_2mm.dat", "w");
+    fxOHprofile_11mm = fopen("xOH_profile_11mm.dat", "w");
+  }
+  
+  if (fxH2Oprofile_11mm == NULL ||
+      fxH2Oprofile_2mm == NULL ||
+      fTprofile_11mm == NULL ||
+      fTprofile_2mm == NULL ||
+      fxOHprofile_11mm == NULL ||
+      fxOHprofile_2mm == NULL) {
+    fprintf(stderr, "Error opening profile output files!\n");
+    exit(1);
+  }
 }
 
 // Prints profile of a scalar at a given x location for all y form 0 to L0/2
@@ -220,18 +247,30 @@ event output (t += 0.1) {
   foreach (reduction(+:solid_mass))
     solid_mass += (f[]-porosity[])*rhoS*dv();
 
-  static FILE *fpxH2O = fopen("xH2OProfile.dat", "w");
+  static FILE *fpxH2O = fopen("xH2OProfile.dat", restarted ? "a" : "w");
+  if (fpxH2O == NULL) {
+    fprintf(stderr, "Error opening xH2O profile output file!\n");
+    exit(1);
+  }
   fprintf(fpxH2O, "%g %g %g %g %g %g\n", t, xH2O[0], xH2O[1], xH2O[2], xH2O[3], xH2O[4]);
   fflush(fpxH2O);
   
-  static FILE * fpT = fopen ("TemperatureProfile.dat", "w");
+  static FILE * fpT = fopen ("TemperatureProfile.dat", restarted ? "a" : "w");
+  if (fpT == NULL) {
+    fprintf(stderr, "Error opening temperature profile output file!\n");
+    exit(1);
+  }
   fprintf (fpT, "%g %g %g %g %g %g\n", t, Tavg[0], Tavg[1], Tavg[2], Tavg[3], Tavg[4]);
   fflush(fpT);
   
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
-  fprintf(fp, "%g %g %g\n", t, solid_mass / solid_mass0, statsf(T).max);
+  static FILE * fp = fopen (name, restarted ? "a" : "w");
+  if (fp == NULL) {
+    fprintf(stderr, "Error opening output data file!\n");
+    exit(1);
+  }
+  fprintf(fp, "%g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max);
   fflush(fp);
 }
 
@@ -239,7 +278,6 @@ event output (t += 0.1) {
 event adapt (i++) {
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
-  // scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("TAR")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
     (double[]){1.e-1, 1.e-0, 1.e-0, 1e-1, 1e-1}, maxlevel, minlevel, 2);
@@ -295,7 +333,7 @@ event save_fields (t += 10) {
 
   // CO
   scalar XCO_G = XGList_G[OpenSMOKE_IndexOfSpecies ("CO")];
-  scalar XCO_S = YGList_S[OpenSMOKE_IndexOfSpecies ("CO")];
+  scalar XCO_S = XGList_S[OpenSMOKE_IndexOfSpecies ("CO")];
   scalar XCO[];
   foreach()    
     XCO[] = XCO_S[]*f[] + XCO_G[]*(1. - f[]);
@@ -317,6 +355,10 @@ event save_fields (t += 10) {
   }
 }
 #endif
+
+event dump (t += 1) {
+  dump ("last-snapshot");
+}
 
 event stop (t = tend) {
   fclose(fTprofile_2mm);

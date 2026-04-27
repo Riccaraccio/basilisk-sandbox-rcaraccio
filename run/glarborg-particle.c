@@ -22,7 +22,7 @@
 #include "view.h"
 #include "flame.h"
 
-const double Uin = 0.02; //inlet velocity
+const double Uin = 1.5; //inlet velocity
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
@@ -35,7 +35,7 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = neumann (0.);
 
-double tend = 10;
+double tend = 15;
 int maxlevel = 9, minlevel = 3;
 double solid_mass0 = 0.;
 double D0, H0;

@@ -11,6 +11,10 @@ quantities and any other flame property.
 We assume that we are using OpenSMOKE to manage kinetics, thermodynamics, and
 transport properties. */
 
+#ifndef FLAME_PRINT_TIME
+# define FLAME_PRINT_TIME 0.1
+#endif
+
 scalar zmix[], zsto[], chi[];
 scalar flameind[];
 
@@ -24,7 +28,7 @@ event init (i = 0) {
   fprintf (fpflame, "# t t* Dx Dy De Dx/D0 Dy/D0 De/D0 Tflame Tmax DTmax DTmax/D0\n");
 }
 
-event flame (t += 0.1) {
+event flame (t += FLAME_PRINT_TIME) {
 
   /**
   We compute the mixture fraction using Bilger's formula. */

@@ -5,6 +5,7 @@
 #define MASS_DIFFUSION_ENTHALPY 1
 #define GAS_PHASE_REACTIONS 1
 #define NO_DARCY_CORRECTION 1
+#define FLAME_PRINT_TIME 0.01
 
 #ifndef CASE_NUMBER
 # define CASE_NUMBER 0
@@ -151,12 +152,18 @@ event output (t += 0.01) {
   //log mass profile
   double solid_mass = 0.;
   foreach (reduction(+:solid_mass))
-    solid_mass += (f[]-porosity[])*rhoS*dv();
+    solid_mass += (f[] - porosity[])*rhoS*dv();
 
-  //calculate radius, only meaningful for spherical particles
-  double radius = cbrt (3.*statsf(f).sum);
+  // Calaculate overall char mass
+  double char_mass = 0., wood_mass = 0.;
+  foreach (reduction(+:char_mass) reduction(+:wood_mass)) {
+    double local_char_fraction = calculate_char_fraction (point, YGList_S, f);
+    char_mass += local_char_fraction*(f[] - porosity[])*rhoS*dv();
+    wood_mass += (1. - local_char_fraction)*(f[] - porosity[])*rhoS*dv();
+  }
 
-  fprintf (fp, "%g %g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max, radius/(D0/2.));
+  fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max, 
+                                  char_mass/solid_mass0, wood_mass/solid_mass0);
 
   fflush(fp);
 }

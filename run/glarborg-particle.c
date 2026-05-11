@@ -4,7 +4,6 @@
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
 #define GAS_PHASE_REACTIONS 1
-#define NO_DARCY_CORRECTION 1
 #define FLAME_PRINT_TIME 0.01
 
 #ifndef CASE_NUMBER
@@ -147,7 +146,14 @@ event output (t += 0.01) {
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
+  static FILE * fp = fopen (name, restarted ? "a" : "w");
+  if (fp == NULL) {
+    fprintf (stderr, "Error opening OutputData\n");
+    exit(1);
+  }
+
+  if (i == 0)
+    fprintf (fp, "# t(1), Ms/Ms0(2), Tmax(3), Char/Ms0(4), Wood/Ms0(5)\n");
 
   //log mass profile
   double solid_mass = 0.;
@@ -157,9 +163,10 @@ event output (t += 0.01) {
   // Calaculate overall char mass
   double char_mass = 0., wood_mass = 0.;
   foreach (reduction(+:char_mass) reduction(+:wood_mass)) {
-    double local_char_fraction = calculate_char_fraction (point, YGList_S, f);
+    double local_char_fraction = calculate_char_fraction (point, YSList, f);
+    double local_moist_fraction = calculate_moisture_fraction (point, YSList, f);
     char_mass += local_char_fraction*(f[] - porosity[])*rhoS*dv();
-    wood_mass += (1. - local_char_fraction)*(f[] - porosity[])*rhoS*dv();
+    wood_mass += (1. - local_char_fraction - local_moist_fraction)*(f[] - porosity[])*rhoS*dv();
   }
 
   fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max, 

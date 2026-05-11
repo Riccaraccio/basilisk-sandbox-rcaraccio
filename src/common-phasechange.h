@@ -40,6 +40,10 @@ double calculate_char_fraction(Point point, const scalar * YList, scalar f) {
 }
 
 double calculate_moisture_fraction(Point point, const scalar * YList, scalar f) {
+
+  if (f[] < F_ERR)
+    return 0.;
+
   scalar moist_field = YList[OpenSMOKE_IndexOfSolidSpecies("MOIST")];
   double Cw = moist_field[]/f[];
   int idx_bmoist = OpenSMOKE_IndexOfSolidSpeciesWithoutError("BMOIST");

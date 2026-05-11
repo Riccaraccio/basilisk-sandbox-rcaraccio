@@ -378,10 +378,11 @@ set ylabel "Normalized solid mass [-]"
 set xrange [0:150]
 set yrange [0:1.05]
 
-plot "cluster/new/lu/fatehi-combustion/OutputData-9"          u 1:2 w l lw 2 lc "black" t "Lu lambda model", \
-     "cluster/new/galgano/fatehi-combustion/OutputData-9"     u 1:2 w l lw 2 lc "red" t "Galgano lambda", \
-     "cluster/new/10/fatehi-combustion/OutputData-10"         u 1:2 w l lw 2 lc "blue" t "2^10", \
-     "../../data/fatehi/mass" u 1:2 w p pt 64 ps 1 lw 3 lc "black" t "Exp. data"
+error_margin = 0.025
+
+plot "cluster/new/lu/fatehi-combustion/OutputData-9" u 1:2 w l lw 2 lc "black" notitle, \
+     "../../data/fatehi/mass" u 1:2:(error_margin) w yerrorbars pt 64 ps 1 lc "black" notitle, \
+     "../../data/fatehi/mass" u 1:2 w lp pt 64 ps 1 lc "black" notitle"
 ~~~
 
 ~~~gnuplot H2O mole fraction
@@ -393,17 +394,17 @@ set ylabel "H2O Mole Fraction [-]"
 set yrange [0.:0.5]
 set xrange [0:70]
 
-folder = "cluster/10/diblasi/fatehi-combustion/"
+folder = "cluster/new/lu/fatehi-combustion/"
 
 error_margin = 0.03
-shift = 5
+shift = 3
 
-plot  "../../data/fatehi/yH2O-11mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "gray" notitle  ,\
-      "../../data/fatehi/yH2O-2mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "light-coral" notitle  ,\
-      sprintf("%s%s", folder, "xH2OProfile.dat") u ($1-shift):4 w l lw 2 lc "gray" title "11 mm",\
-      sprintf("%s%s", folder, "xH2OProfile.dat") u ($1-shift):2 w l lw 2 lc "light-coral" title "2 mm", \
-      sprintf("%s%s", folder, "results_2mm/effective_values.dat") u ($1-shift):($3/100) w l lw 2 lc "red" title "2 mm effective", \
-      sprintf("%s%s", folder, "results_11mm/effective_values.dat") u ($1-shift):($3/100) w l lw 2 lc "black" title "11 mm effective" 
+plot  "../../data/fatehi/yH2O-11mm" every 2 u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "black" notitle  ,\
+      "../../data/fatehi/yH2O-2mm" every 2 u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "red" notitle  ,\
+      "../../data/fatehi/yH2O-2mm" every 2 u 1:2 w lp pt 64 ps 0.8 lc "red" notitle  ,\
+      "../../data/fatehi/yH2O-11mm" every 2 u 1:2 w lp pt 64 ps 0.8 lc "black" notitle  ,\
+      sprintf("%s%s", folder, "results_2mm/effective_values.dat") u ($1-shift):($5/100) w l lw 2 lc "red" title "2 mm", \
+      sprintf("%s%s", folder, "results_11mm/effective_values.dat") u ($1-shift):($5/100) w l lw 2 lc "black" title "11 mm" 
 ~~~
 
 ~~~gnuplot Temperature
@@ -415,17 +416,19 @@ set ylabel "Temperature [K]"
 set yrange [800:1900]
 set xrange [0:60]
 
-folder = "cluster/full-9/fatehi-combustion/"
+folder = "cluster/new/lu/fatehi-combustion/"
 
 error_margin = 50
 shift = 5
 
-plot  "../../data/fatehi/T-11mm" u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "black" notitle, \
-      "../../data/fatehi/T-2mm" u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "light-coral" notitle, \
-      sprintf("%s%s", folder, "TemperatureProfile.dat") u ($1-shift):5 w l lw 2 lc "gray" title "11 mm", \
-      sprintf("%s%s", folder, "TemperatureProfile.dat") u ($1-shift):2 w l lw 2 lc "light-coral" title "2 mm", \
-      sprintf("%s%s", folder, "results_2mm/effective_values.dat") u ($1-shift):2 w l lw 2 lc "red" title "2 mm effective", \
-      sprintf("%s%s", folder, "results_11mm/effective_values.dat") u ($1-shift):2 w l lw 2 lc "black" title "11 mm effective"
+plot  "../../data/fatehi/T-11mm" every 2 u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "black" notitle, \
+      "../../data/fatehi/T-2mm" every 2 u 1:2:(error_margin) w yerrorbars pt 4 ps 0.8 lw 1 lc "red" notitle, \
+      "../../data/fatehi/T-2mm" every 2 u 1:2 w lp pt 4 ps 0.8 lw 1 lc "red" notitle, \
+      "../../data/fatehi/T-11mm" every 2 u 1:2 w lp pt 4 ps 0.8 lw 1 lc "black" notitle, \
+      sprintf("%s%s", folder, "results_2mm/effective_values.dat") u ($1-shift):2 w l lw 2 lc "red" title "2 mm", \
+      sprintf("%s%s", folder, "results_11mm/effective_values.dat") u ($1-shift):2 w l lw 2 lc "black" title "11 mm", \
+      #sprintf("%s%s", folder, "TemperatureProfile.dat") u ($1-shift):5 w l lw 2 lc "gray" title "11 mm", \
+      #sprintf("%s%s", folder, "TemperatureProfile.dat") u ($1-shift):2 w l lw 2 lc "light-coral" title "2 mm", \
 ~~~
 
 ~~~gnuplot Temperature evolution
@@ -442,13 +445,13 @@ set yrange [800:2300]
 set xrange [-0.06:0.06]
 set title "Temperature 2mm"
 
-end_time = 60 
-step_time = 10
+end_time = 100 
+step_time = 20
 
 set cbrange [0:end_time]
 unset colorbox
 
-folder = "cluster/full-9/fatehi-combustion/"
+folder = "cluster/new/lu/fatehi-combustion/"
 
 plot for [t=0:end_time:step_time] sprintf("%s%s", folder, "T_profile_2mm.dat") u ($1==t ? $2 : 1/0):3:(t) w l lw 3 lc palette title sprintf("%d s", t), \
      for [t=0:end_time:step_time] sprintf("%s%s", folder, "T_profile_2mm.dat") u ($1==t ? -$2 : 1/0):3:(t) w l lw 3 lc palette notitle
@@ -468,10 +471,10 @@ set yrange [950:2500]
 set xrange [-0.06:0.06]
 set title "Temperature 11mm"
 
-folder = "cluster/full-9/fatehi-combustion/"
+folder = "cluster/new/lu/fatehi-combustion/"
 
-end_time = 60
-step_time = 10
+end_time = 100
+step_time = 20
 
 set cbrange [0:end_time]
 unset colorbox
@@ -492,8 +495,8 @@ set yrange [0:0.5]
 set xrange [-0.06:0.06]
 set title "xH2O 2mm"
 
-end_time = 60
-step_time = 10
+end_time = 100
+step_time = 20
 
 set cbrange [0:end_time]
 unset colorbox 
@@ -515,13 +518,13 @@ set yrange [0:0.5]
 set xrange [-0.06:0.06]
 set title "xH2O 11mm"
 
-end_time = 60
-step_time = 10
+end_time = 100
+step_time = 20
 
 set cbrange [0:end_time]
 unset colorbox 
 
-folder = "cluster/full-9/fatehi-combustion/"
+folder = "cluster/new/lu/fatehi-combustion/"
 
 plot for [t=0:end_time:step_time] sprintf("%s%s", folder, "xH2O_profile_11mm.dat") u ($1==t ? $2 : 1/0):3:(t) w l lw 2 lc palette title sprintf("%d s", t), \
      for [t=0:end_time:step_time] sprintf("%s%s", folder, "xH2O_profile_11mm.dat") u ($1==t ? -$2 : 1/0):3:(t) w l lw 2 lc palette notitle
@@ -541,9 +544,9 @@ endtime = 70
 step = 1
 n = endtime/step + 1
 error_margin = 0.03
-shift = 5
+shift = 3
 
-folder_path = "cluster/full-9/fatehi-combustion/"
+folder_path = "cluster/new/lu/fatehi-combustion/"
 
 # Define the upper space limit
 space_max = 0.015
@@ -553,16 +556,39 @@ system(sprintf("awk '$2 <= %f { sum[$1]+=$3; count[$1]++; if(!($1 in max) || $3>
 system(sprintf("awk '$2 <= %f { sum[$1]+=$3; count[$1]++; if(!($1 in max) || $3>max[$1]) max[$1]=$3 } END { for(t in sum) print t, sum[t]/count[t], max[t] }' %sxH2O_profile_11mm.dat | sort -n > %savg_h2o_11mm.dat", space_max, folder_path, folder_path))
 
 
-plot  "../../data/fatehi/yH2O-2mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "red" notitle, \
-      "../../data/fatehi/yH2O-11mm" u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "black" notitle, \
-      sprintf("%savg_h2o_11mm.dat", folder_path) u ($1-shift):3 w l lw 2 lc "black" t "max 11mm", \
-      sprintf("%savg_h2o_2mm.dat", folder_path) u ($1-shift):3 w l lw 2 lc "red" t "max 2mm", \
-      sprintf("%savg_h2o_11mm.dat", folder_path) u ($1-shift):2 w l lw 2 lc "gray" t "11mm", \
-      sprintf("%savg_h2o_2mm.dat", folder_path) u ($1-shift):2 w l lw 2 lc "light-coral" t "2mm"
+plot  "../../data/fatehi/yH2O-11mm" every 2 u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "black" notitle  ,\
+      "../../data/fatehi/yH2O-2mm" every 2 u 1:2:(error_margin) w yerrorbars pt 64 ps 0.8 lc "red" notitle  ,\
+      "../../data/fatehi/yH2O-2mm" every 2 u 1:2 w lp pt 64 ps 0.8 lc "red" notitle  ,\
+      "../../data/fatehi/yH2O-11mm" every 2 u 1:2 w lp pt 64 ps 0.8 lc "black" notitle  ,\
+      sprintf("%s%s", folder, "results_2mm/effective_values.dat") u ($1-shift):($7/100) w l lw 2 lc "red" title "2 mm", \
+      sprintf("%s%s", folder, "results_11mm/effective_values.dat") u ($1-shift):($7/100) w l lw 2 lc "black" title "11 mm" 
+      #sprintf("%savg_h2o_11mm.dat", folder_path) u ($1-shift):3 w l lw 2 lc "black" t "max 11mm", \
+      #sprintf("%savg_h2o_2mm.dat", folder_path) u ($1-shift):3 w l lw 2 lc "red" t "max 2mm", \
 
+~~~
 
+~~~gnuplot H2O mole fraction
+reset
+set terminal svg size 550, 350
+set output "xH2O-cd.svg"
+set xlabel "Time [s]"
+set ylabel "Column Desnity [% m]"
+set xrange [0:60]
+set yrange [0.:]
 
+folder = "cluster/new/lu/fatehi-combustion/"
+length = 0.015
 
+error_margin = 0.03*length*100
+
+shift = 3
+
+plot  "../../data/fatehi/yH2O-11mm" every 2 u 1:($2*length*100):(error_margin) w yerrorbars pt 64 ps 0.8 lc "black" notitle  ,\
+      "../../data/fatehi/yH2O-2mm" every 2 u 1:($2*length*100):(error_margin) w yerrorbars pt 64 ps 0.8 lc "red" notitle  ,\
+      "../../data/fatehi/yH2O-2mm" every 2 u 1:($2*length*100) w lp pt 64 ps 0.8 lc "red" notitle  ,\
+      "../../data/fatehi/yH2O-11mm" every 2 u 1:($2*length*100) w lp pt 64 ps 0.8 lc "black" notitle  ,\
+      sprintf("%s%s", folder, "results_2mm/cd_xH2O_2mm.dat") u ($1-shift):2 w l lw 2 lc "red" title "2 mm", \
+      sprintf("%s%s", folder, "results_11mm/cd_xH2O_11mm.dat") u ($1-shift):2 w l lw 2 lc "black" title "11 mm" 
 ~~~
 
 **/

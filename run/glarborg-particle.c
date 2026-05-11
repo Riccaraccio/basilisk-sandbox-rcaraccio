@@ -163,10 +163,12 @@ event output (t += 0.01) {
   // Calaculate overall char mass
   double char_mass = 0., wood_mass = 0.;
   foreach (reduction(+:char_mass) reduction(+:wood_mass)) {
-    double local_char_fraction = calculate_char_fraction (point, YSList, f);
-    double local_moist_fraction = calculate_moisture_fraction (point, YSList, f);
-    char_mass += local_char_fraction*(f[] - porosity[])*rhoS*dv();
-    wood_mass += (1. - local_char_fraction - local_moist_fraction)*(f[] - porosity[])*rhoS*dv();
+    if (f[] > F_ERR) {
+      double local_char_fraction = calculate_char_fraction(point, YSList, f);
+      double local_moist_fraction = calculate_moisture_fraction(point, YSList, f);
+      char_mass += local_char_fraction * (f[] - porosity[]) * rhoS * dv();
+      wood_mass += (1. - local_char_fraction - local_moist_fraction) * (f[] - porosity[]) * rhoS * dv();
+    }
   }
 
   fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max, 

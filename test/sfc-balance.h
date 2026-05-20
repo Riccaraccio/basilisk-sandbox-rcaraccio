@@ -60,14 +60,17 @@ Copy of `mpi_partitioning()` with `balanced_pid()` replaced by
 `new_balanced_pid()`. */
 
 trace
-void new_mpi_partitioning (scalar w)
-{
+void new_mpi_partitioning ((const) scalar w = {-1}) {
   prof_start ("new_mpi_partitioning");
 
   long nt = 0;
   foreach (serial) nt++;
-
+  
   //
+  // if weigths are not provided, we set unity field
+  if (w.i < 0)
+    w[] = 1.;
+
   double tot_load = 0.;
   //foreach (reduction (+:tot_load)) //fixme why does this not work
   foreach (serial)

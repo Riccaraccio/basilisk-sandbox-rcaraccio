@@ -1,0 +1,181 @@
+/**
+# A Preliminar test for a more general load balancing algorithm
+The current load balancing between processors using MPI divides
+the cells equally between each processor by cutting the space-filling
+curve into equal pieces. This can cause issues when some cells require
+significantly more computational power than others, since equal cell
+counts no longer mean equal load. We are here to tackle this issue.
+
+This first test case tries the new implementation on a static, uniformly
+refined grid. We create a ficticius weight, representative of the cell computational
+cost. The idea is to evenly split the cumulative weight function (CWF)
+into equally loaded intervals. The CWF is computed according to the Z-order,
+with the idea to still keep cells that are spatially close also on the same
+processor.
+*/
+
+
+#include "grid/quadtree.h"
+#include "test/refine_unbalanced.h"
+#include "sfc-balance.h"
+#include "view.h"
+
+const int maxlevel = 8;
+
+/**
+## Mesh setup
+
+Single root cell, every cell active and locally owned, then refined
+without MPI balancing, required by `*_mpi_partitioning()`. 
+see [this test](src/test/balance5.c)*/
+
+void prepare_grid (int maxlevel) {
+  init_grid (1);
+  foreach_cell() {
+    cell.pid = pid();
+    cell.flags |= active;
+  }
+  tree->dirty = true;
+  refine_unbalanced (level < maxlevel, NULL);
+}
+
+/**
+## Test weight field 
+A ficticius measure of the load in each processor*/
+
+void set_weights (scalar w) {
+  foreach()
+    w[] = 1.;
+}
+
+int main() {
+
+  /**
+  ### New partitioning method */
+
+  prepare_grid (maxlevel);
+  scalar w[], mpi_idx[];
+  set_weights (w);
+
+  long nt = 0;
+  foreach (serial) nt++;
+  double cf[nt];
+  compute_cf (cf, nt, w);
+
+  FILE * fcf = fopen ("cum_weight", "w");
+  fprintf (fcf, "#nt: %ld\n", nt);
+  for (long i = 0; i < nt; i++)
+    fprintf (fcf, "%ld %g\n", i, cf[i]);
+  fclose (fcf);
+
+  double ne = cf[nt - 1]/npe();
+  FILE * fb = fopen ("cum_bounds", "w");
+  for (int p = 1; p < npe(); p++) {
+    double target = p*ne;
+    long bidx = 0;
+    while (bidx < nt && cf[bidx] < target) bidx++;
+    fprintf (fb, "%ld %g\n", bidx, target);
+  }
+  fclose (fb);
+
+  new_mpi_partitioning (w);
+
+  long counter_new[npe()]; double load_new[npe()];
+  balance_score (counter_new, load_new, w);
+  fprintf (stdout, "Parallel efficency new: %g\n", parallel_efficency(load_new));
+
+  foreach()
+    mpi_idx[] = pid();
+
+  view (tx = -0.5, ty = -0.5);
+  squares ("mpi_idx", min = 0, max = npe() - 1);
+  save ("partition.png");
+
+  squares ("w", spread = -1);
+  save ("load.png");
+
+  /**
+  ### Baseline for comparison */
+
+  prepare_grid (maxlevel);
+  set_weights (w); 
+
+  mpi_partitioning();
+
+  long counter_old[npe()]; double load_old[npe()];
+  balance_score (counter_old, load_old, w);
+  fprintf (stdout, "Parallel efficency old: %g\n", parallel_efficency(load_old));
+
+  if (pid() == 0) {
+    fprintf (stderr, "#pid(1) n_old(2) load_old(3) n_new(4) load_new(5)\n");
+    for (int ne = 0; ne < npe(); ne++)
+      fprintf (stderr, "%d %ld %g %ld %g\n", ne,
+               counter_old[ne], load_old[ne],
+               counter_new[ne], load_new[ne]);
+  }
+}
+
+/**
+ 
+## Results
+
+![Weight field](balancing/load.png)
+![Partitioning](aslamsharp/partitpartition)
+
+
+~~~gnuplot Partitioning comparison: old vs new
+set terminal svg size 1000, 500
+set output "balance.svg"
+
+new_eff = system("grep 'Parallel efficency new' out | tail -1 | awk '{print $4}'")
+old_eff = system("grep 'Parallel efficency old' out | tail -1 | awk '{print $4}'")
+
+set multiplot layout 1,2 title "Partitioning comparison: old vs new"
+
+set xlabel "PID"
+set xtics 1
+
+set ylabel "n cells"
+set ytics nomirror
+set yrange [0:*]
+
+set y2label "load"
+set y2tics nomirror
+set y2range [0:*]
+
+set key bottom left opaque box 
+set style fill solid border -1
+set boxwidth 0.4
+
+set title sprintf("Old efficiency: %s", old_eff)
+plot "log" using ($1-0.2):2 axes x1y1 with boxes lc rgb "#d62728" title "n cells", \
+     "log" using ($1+0.2):3 axes x1y2 with boxes lc rgb "#1f77b4" title "load"
+
+set title sprintf("New efficiency: %s", new_eff)
+plot "log" using ($1-0.2):4 axes x1y1 with boxes lc rgb "#d62728" title "n cells", \
+     "log" using ($1+0.2):5 axes x1y2 with boxes lc rgb "#1f77b4" title "load"
+
+unset multiplot
+unset output
+~~~
+
+~~~gnuplot Cumulative weight and equal-load partition boundaries
+reset
+set terminal svg size 500, 500
+set output "cum_weight.svg"
+set xlabel "cell index (Z-order)"
+set ylabel "cumulative weight cf"
+set size square
+unset key
+
+stats "cum_bounds" using 1 nooutput
+nb = STATS_records
+
+plot "cum_weight" using 1:2 w l lw 2 lc rgb "#1f77b4" title "cf", \
+     for [i=1:nb] "cum_bounds" every ::i-1::i-1 using (0):2:1:(0) \
+     w vectors nohead lw 1 lc rgb "#d62728" notitle, \
+     for [i=1:nb] "cum_bounds" every ::i-1::i-1 using 1:(0):(0):2 \
+     w vectors nohead lw 1 lc rgb "#d62728" notitle
+~~~
+
+*/

@@ -17,105 +17,10 @@ processor.
 
 #include "grid/quadtree.h"
 #include "test/refine_unbalanced.h"
+#include "sfc-balance.h"
 #include "view.h"
 
 const int maxlevel = 8;
-
-/**
-## New partition policy
-
-Given a leaf's Z-order index, the global leaf count, the
-number of processes and the cumulative-weight array, return the
-process id
-*/
-
-static int new_balanced_pid (long index, long nt, int nproc, double* cf) {
-  double il = cf[nt - 1]/nproc; // ideal load per process
-  int idx = (int) floor ((cf[index] - cf[0])/il);
-  return min (idx, nproc - 1);
-}
-
-/**
-## Cumulative weight
-
-`cf[i]` is the cumulative sum of `w` over leaves, in the same
-order they are visited by the partitioning loop. */
-
-void compute_cf (double* cf, long nt, scalar w) {
-  long idx = 0;
-  double acc = 0.;
-  foreach_leaf() {
-    acc += w[];
-    cf[idx++] = acc;
-  }
-}
-
-/**
-## Per-process cell count and load 
-Performance monitor function that returns the number of cells 
-and the load in each processor*/
-
-void balance_score (long* counter, double* load, scalar w) {
-  for (int ne = 0; ne < npe(); ne++) {
-    counter[ne] = 0;
-    load[ne] = 0.;
-  }
-
-  foreach() {
-    counter[pid()] += 1;
-    load[pid()] += w[];
-  }
-
-  if (pid() == 0) {
-    MPI_Reduce(MPI_IN_PLACE, counter, npe(), MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
-    MPI_Reduce(MPI_IN_PLACE, load, npe(), MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  } else {
-    MPI_Reduce(counter, NULL, npe(), MPI_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
-    MPI_Reduce(load, NULL, npe(), MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-  }
-}
-
-/**
-## Static partitioning using the new policy
-
-Copy of `mpi_partitioning()` with `balanced_pid()` replaced by
-`new_balanced_pid()`. */
-
-trace
-void new_mpi_partitioning (scalar w)
-{
-  prof_start ("new_mpi_partitioning");
-
-  long nt = 0;
-  foreach (serial) nt++;
-
-  // We need to compute cf once before the loop
-  double cf[nt];
-  compute_cf (cf, nt, w);
-
-  long i = 0;
-  tree->dirty = true;
-  foreach_cell_post (is_active (cell))
-    if (is_active (cell)) {
-      if (is_leaf (cell)) {
-        cell.pid = new_balanced_pid (i++, nt, npe(), cf);
-        if (cell.neighbors > 0) {
-          int pid = cell.pid;
-          foreach_child() cell.pid = pid;
-        }
-        if (!is_local (cell)) cell.flags &= ~active;
-      }
-      else {
-        cell.pid = child(0).pid;
-        bool inactive = true;
-        foreach_child() if (is_active (cell)) { inactive = false; break; }
-        if (inactive) cell.flags &= ~active;
-      }
-    }
-  flag_border_cells();
-  prof_stop();
-  mpi_boundary_update_buffers();
-}
 
 /**
 ## Mesh setup
@@ -177,6 +82,7 @@ int main() {
 
   long counter_new[npe()]; double load_new[npe()];
   balance_score (counter_new, load_new, w);
+  fprintf (stdout, "Parallel efficency new: %g\n", parallel_efficency(load_new));
 
   foreach()
     mpi_idx[] = pid();
@@ -198,6 +104,7 @@ int main() {
 
   long counter_old[npe()]; double load_old[npe()];
   balance_score (counter_old, load_old, w);
+  fprintf (stdout, "Parallel efficency old: %g\n", parallel_efficency(load_old));
 
   if (pid() == 0) {
     fprintf (stderr, "#pid(1) n_old(2) load_old(3) n_new(4) load_new(5)\n");
@@ -219,11 +126,14 @@ int main() {
 ~~~gnuplot Partitioning comparison: old vs new
 set terminal svg size 1000, 500
 set output "balance.svg"
+
+new_eff = system("grep 'Parallel efficency new' out | tail -1 | awk '{print $4}'")
+old_eff = system("grep 'Parallel efficency old' out | tail -1 | awk '{print $4}'")
+
 set multiplot layout 1,2 title "Partitioning comparison: old vs new"
 
 set xlabel "PID"
 set xtics 1
-set xrange [-0.999:*]
 
 set ylabel "n cells"
 set ytics nomirror
@@ -237,11 +147,11 @@ set key bottom left opaque box
 set style fill solid border -1
 set boxwidth 0.4
 
-set title "Old partitioning"
+set title sprintf("Old efficiency: %s", old_eff)
 plot "log" using ($1-0.2):2 axes x1y1 with boxes lc rgb "#d62728" title "n cells", \
      "log" using ($1+0.2):3 axes x1y2 with boxes lc rgb "#1f77b4" title "load"
 
-set title "New partitioning"
+set title sprintf("New efficiency: %s", new_eff)
 plot "log" using ($1-0.2):4 axes x1y1 with boxes lc rgb "#d62728" title "n cells", \
      "log" using ($1+0.2):5 axes x1y2 with boxes lc rgb "#1f77b4" title "load"
 

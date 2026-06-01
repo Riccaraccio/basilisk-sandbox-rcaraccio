@@ -1,25 +1,27 @@
-
 /**
-## New partition policy
+## new partition policy
 
-Given a leaf's Z-order index, the global leaf count, the
+given a leaf's z-order index, the global leaf count, the
 number of processes and the cumulative-weight array, return the
 process id
+* *cw*: cumulative-weights up to this cell.
+* *tw*: total weight of the overall process.
+* *nproc*: number of available processors.
 */
 
-static int new_balanced_pid (long index, long nt, int nproc, double* cf) {
-  double il = cf[nt - 1]/nproc; // ideal load per process
-  int idx = (int) floor ((cf[index] - cf[0])/il);
+static int new_balanced_pid (double cw, double tw, int nproc) {
+  double il = tw/nproc;             // ideal load per process
+  int idx = (int) (cw/il);
   return min (idx, nproc - 1);
 }
 
 /**
-## Cumulative weight
+## cumulative weight
 
 `cf[i]` is the cumulative sum of `w` over leaves, in the same
 order they are visited by the partitioning loop. */
 
-void compute_cf (double* cf, long nt, scalar w) {
+void compute_cf (double* cf, long nt, (const) scalar w) {
   long idx = 0;
   double acc = 0.;
   foreach_leaf() {
@@ -28,12 +30,13 @@ void compute_cf (double* cf, long nt, scalar w) {
   }
 }
 
+
 /**
-## Per-process cell count and load 
-Performance monitor function that returns the number of cells 
+## per-process cell count and load 
+performance monitor function that returns the number of cells 
 and the load in each processor*/
 
-void balance_score (long* counter, double* load, scalar w) {
+void balance_score (long* counter, double* load, (const) scalar w) {
   for (int ne = 0; ne < npe(); ne++) {
     counter[ne] = 0;
     load[ne] = 0.;
@@ -54,48 +57,36 @@ void balance_score (long* counter, double* load, scalar w) {
 }
 
 /**
-## Static partitioning using the new policy
+## static partitioning using the new policy
 
-Copy of `mpi_partitioning()` with the new partitioning method*/
+copy of `mpi_partitioning()` with the new partitioning method*/
 
 trace
-void new_mpi_partitioning ((const) scalar w = {-1}) {
+void new_mpi_partitioning ((const) scalar w = unity) {
   prof_start ("new_mpi_partitioning");
 
   long nt = 0;
   foreach (serial) nt++;
   
-  //
-  // if weigths are not provided, we set unity field
-  if (w.i < 0)
-    w[] = 1.;
-
   double tot_load = 0.;
   //foreach (reduction (+:tot_load)) //fixme why does this not work
   foreach (serial)
     tot_load += w[];
   //fprintf (stdout, "tot_load: %g\n", tot_load);
 
-  double target_load = tot_load/npe();
+  //double target_load = tot_load/npe();
   //fprintf (stdout, "#target_load: %g\n", target_load);
-  int current_rank = 0;
-  double running_load = 0.;
-  //
 
-  //long i = 0;
+  double running_load = 0.;
   tree->dirty = true;
+  //long i = 0;
   foreach_cell_post (is_active (cell))
     if (is_active (cell)) {
       if (is_leaf (cell)) {
 
-        cell.pid = current_rank;
-        running_load += w[];
         //fprintf (stdout, "%ld %g\n", i++, running_load);
-
-        if (running_load >= target_load && current_rank < npe() - 1) {
-          current_rank += 1;
-          running_load = 0.;
-        }
+        cell.pid = new_balanced_pid (running_load, tot_load, npe());
+        running_load += w[];
 
         //cell.pid = new_balanced_pid (i++, nt, npe(), cf);
         if (cell.neighbors > 0) {
@@ -127,9 +118,121 @@ double parallel_efficency (double* load) {
   return (tot_load/npe())/max_load;
 }
 
+/**
+# *z_weights()*: fills *cw* with the cumulative z-ordering weights.
+   
+if `leaves` is `true` only leaves are used, otherwise all active
+cells. 
+
+on the master process (`pid() == 0`), the function returns the
+total load (and -1 on all other processes).
+
+on a single processor, we would just need something
+like (for leaves), given a weight scalar field w;
+
+~~~literatec
+scalar w[];
+double rw = 0; // running weight
+foreach() {
+  cw[] = rw;   // weight of all leaves *before* this one
+  rw += w[];
+}
+~~~
+
+in parallel, this is a bit more difficult. */
 
 trace
-bool new_balance((const) scalar w = {-1}) {
+double z_weights (scalar cw, (const) scalar w, bool leaves)
+{
+  /**
+  This function fills 'cw' with the cumulative-weight computed along
+  the z-order for each cell given a weight scalar field 'w' (if 'leaves'
+  is true, only leaves are counted).
+
+  we first compute the weight of each subtree, stored in 'sw'. this is
+  the weight analog of `size` in z_indexing(): we keep 'w' intact (the
+  per-cell own weight) and accumulate the subtree sums into 'sw' via a
+  (parallel) restriction from fine to coarse. a separate field is
+  required because the indexing loop below needs both the parent's own
+  weight and each child's subtree weight at the same time. */
+
+  scalar sw[];
+  foreach()
+    sw[] = w[];                            // own weight (set on leaves)
+
+  boundary_iterate (restriction, {sw}, depth());
+  for (int l = depth() - 1; l >= 0; l--) {
+    foreach_coarse_level(l) {
+      double sum = leaves ? 0. : w[];      // parent's own contribution
+      foreach_child()
+        sum += sw[];
+      sw[] = sum;
+    }
+    boundary_iterate (restriction, {sw}, l);
+  }
+
+  /**
+  The total load is the weight of the entire tree (i.e. the value of
+  `sw` in the root cell on the master process). */
+
+  double tl = -1.;
+  if (pid() == 0)
+    foreach_level(0, serial)
+      tl = sw[];
+
+  /**
+  We now push the cumulative offset down the tree, exactly as
+  z_indexing() does with the integer index. 'cw[]' on a cell is the
+  cumulative weight of its subtree; the first child starts at the 
+  parent's offset (plus the parent's own weight when indexing all cells), 
+  and each subsequent sibling is offset by the preceding sibling's 
+  subtree weight 'sw[]'. */
+
+  // seed the root: master cell starts at 0
+  foreach_level(0)
+    cw[] = 0.;
+
+  for (int l = 0; l < depth(); l++) {
+    boundary_iterate (restriction, {cw}, l); // sync cw across mpi processes
+    foreach_cell() {
+      if (level == l) {
+        if (is_leaf(cell)) {
+          if (is_local(cell) && cell.neighbors) {
+            double i = cw[];                 // ghost children share the offset
+            foreach_child()
+              cw[] = i;
+          }
+        }
+        else { // not leaf
+          bool loc = is_local(cell);
+          if (!loc)
+            foreach_child()
+              if (is_local(cell)) {
+                loc = true; break;
+              }
+          if (loc) {
+            double i = cw[] + (leaves ? 0. : w[]); // parent's own slot
+            foreach_child() {
+              cw[] = i;
+              i += sw[];                           // child's subtree weight
+            }
+          }
+        }
+        continue; // level == l
+      }
+      if (is_leaf(cell))
+        continue;
+    }
+  }
+  boundary_iterate (restriction, {cw}, depth());
+
+  return tl;
+}
+
+
+trace
+bool new_balance((const) scalar w = unity) {
+
   if (npe() == 1)
     return false;
 
@@ -137,19 +240,12 @@ bool new_balance((const) scalar w = {-1}) {
 
   check_flags();
 
-  //if weigths are not set, we set the unity field 
-  if (w.i < 0)
-    w[] = 1.;
-
   long nl = 0, nt = 0;
-  double tot_load = 0.;
   foreach_cell() {
     if (is_local(cell)) {
       nt++;
-      if (is_leaf(cell)) {
+      if (is_leaf(cell))
         nl++;
-        tot_load += w[]; // fixme: is it correct to count only leaves?
-      }
     }
     if (is_leaf(cell))
       continue;
@@ -158,25 +254,20 @@ bool new_balance((const) scalar w = {-1}) {
   grid->n = grid->tn = nl;
   grid->maxdepth = depth();
   long nmin = nl, nmax = nl;
-  double lmax = tot_load; //
+
   // fixme: do all reductions in one go
-  mpi_all_reduce (tot_load, MPI_DOUBLE, MPI_SUM);
   mpi_all_reduce (nmax, MPI_LONG, MPI_MAX);
   mpi_all_reduce (nmin, MPI_LONG, MPI_MIN);
-  mpi_all_reduce (lmax, MPI_DOUBLE, MPI_MAX); // max load
   mpi_all_reduce (grid->tn, MPI_LONG, MPI_SUM);
   mpi_all_reduce (grid->maxdepth, MPI_INT, MPI_MAX);
+
   if (mpi.leaves)
     nt = grid->tn;
   else
     mpi_all_reduce (nt, MPI_LONG, MPI_SUM);
 
-  assert (tot_load == nt); // todo: debug assertion, passed if w is unity
-  double target_load = tot_load/npe(); // ideal load on each processor
-
   long ne = max(1, nt/npe());
 
-  // todo: minimum number of cells?
   if (ne < mpi.min) {
     mpi.npe = max(1, nt/mpi.min);
     ne = max(1, nt/mpi.npe);
@@ -184,19 +275,10 @@ bool new_balance((const) scalar w = {-1}) {
   else
     mpi.npe = npe();
 
-  // todo: early stopping? 99% efficency? 1% load? Maybe is never reached
-  if (nmax - nmin <= 1)
-    return false;
-
-  if (pid() == 0) 
-    fprintf (stderr, "efficency = %g\n", tot_load/npe()/lmax);
-  if ((tot_load/npe())/lmax > 0.99)
-    return false;
-
   scalar newpid[];
-  double zn = z_indexing (newpid, mpi.leaves);
-  if (pid() == 0)
-    assert (zn + 1 == nt);
+  double tl = z_weights (newpid, w, mpi.leaves);
+  // We need to know the total load on all processors
+  mpi_all_reduce (tl, MPI_DOUBLE, MPI_MAX);
 
   FILE * fp = NULL;
 #ifdef DEBUGCOND
@@ -209,20 +291,9 @@ bool new_balance((const) scalar w = {-1}) {
 
   // compute new pid, stored in newpid[]
   bool next = false, prev = false;
-  double running_load = 0.;
-  int current_rank = 0;
   foreach_cell_all() {
     if (is_local(cell)) {
-
-      //int pid = current_rank;
-      running_load += w[];
-      if (running_load >= target_load && current_rank < npe() - 1) {
-        current_rank += 1;
-        running_load = 0.;
-      }
-      fprintf (stderr, "id: %g, rl: %g, pid: %d", newpid[], running_load, current_rank); 
-
-      int pid = balanced_pid (newpid[], nt, mpi.npe);
+      int pid = new_balanced_pid (newpid[], tl, mpi.npe);
       pid = clamp (pid, cell.pid - 1, cell.pid + 1);
       if (pid == pid() + 1)
         next = true;
@@ -259,7 +330,7 @@ bool new_balance((const) scalar w = {-1}) {
       if (NEWPID()->leaf)
         assert (is_leaf(cell));
     }
-    fclose (fp);  
+    fclose (fp);
   }
 #endif // DEBUGCOND
 
@@ -352,5 +423,3 @@ bool new_balance((const) scalar w = {-1}) {
 
   return pid_changed;
 }
-
-

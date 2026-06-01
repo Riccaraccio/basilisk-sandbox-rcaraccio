@@ -27,21 +27,22 @@ void set_unused_pids()
       cell.pid = npe();
 }
 
+(const) scalar w[] = 1.;
 void partition (const char * prog)
 {
   // generates reference solution (in ref)
   init_grid (1);
-  
+
   foreach_cell() {
     cell.pid = pid();
     cell.flags |= active;
   }
   tree->dirty = true;
-  
+
   refine_unbalanced (level < 5, NULL);
 
   refine_unbalanced (level <= 9 && sq(x - 0.5) + sq(y - 0.5) < sq(0.05), NULL);
-  
+
   new_mpi_partitioning();
   set_unused_pids();
 
@@ -61,7 +62,7 @@ void partition (const char * prog)
 int main (int argc, char * argv[])
 {
   partition (argv[0]);
-  
+
   init_grid (32);
 
   scalar s[];
@@ -71,22 +72,22 @@ int main (int argc, char * argv[])
     s[] = 1;
   foreach_face()
     u.x[] = 1;
-  
+
   boundary ({s,u});
   scalar * list = {s,u};
 
   /** the loop below is the prototype for grid/tree-common.h:refine()
-      Fixes made here must also be applied to refine() */
-  
+    Fixes made here must also be applied to refine() */
+
   int refined, n = 0;
   do {
     refined = 0;
     tree->refined.n = 0;
     foreach_leaf()
       if (level <= 9 && sq(x - 0.5) + sq(y - 0.5) < sq(0.05)) {
-	refine_cell (point, list, 0, &tree->refined);
-	refined++;
-	continue;
+        refine_cell (point, list, 0, &tree->refined);
+        refined++;
+        continue;
       }
     mpi_all_reduce (refined, MPI_INT, MPI_SUM);
     if (refined) {
@@ -96,17 +97,16 @@ int main (int argc, char * argv[])
       boundary (list);
       image();
       while (new_balance()) {
-	foreach()
-	  foreach_neighbor()
-            assert (s[] == 1);
-	foreach_face()
-	  for (int i = -2; i <= 2; i++)
-	    assert ((u.x[0,i] == 1));
-	image();
+        foreach()
+          foreach_neighbor()
+          assert (s[] == 1);
+        foreach_face()
+          for (int i = -2; i <= 2; i++)
+            assert ((u.x[0,i] == 1));
+        image();
       }
     }
     n++;
-    fprintf (stderr, "%d\n", n);
   } while (refined);
 
   set_unused_pids();

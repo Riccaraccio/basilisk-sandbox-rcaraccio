@@ -36,7 +36,7 @@ p[right]      = dirichlet (0.);
 psi[right]    = neumann (0.);
 
 double tend = 15;
-int maxlevel = 9, minlevel = 3;
+int maxlevel = 10, minlevel = 3;
 double solid_mass0 = 0.;
 double D0, H0;
 
@@ -166,8 +166,8 @@ event output (t += 0.01) {
     if (f[] > F_ERR) {
       double local_char_fraction = calculate_char_fraction(point, YSList, f);
       double local_moist_fraction = calculate_moisture_fraction(point, YSList, f);
-      char_mass += local_char_fraction * (f[] - porosity[]) * rhoS * dv();
-      wood_mass += (1. - local_char_fraction - local_moist_fraction) * (f[] - porosity[]) * rhoS * dv();
+      char_mass += local_char_fraction*(f[] - porosity[])*rhoS*dv();
+      wood_mass += (1. - local_char_fraction - local_moist_fraction)*(f[] - porosity[])*rhoS*dv();
     }
   }
 
@@ -183,7 +183,7 @@ event adapt (i++) {
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
 
   adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
-    (double[]){1.e-1, 1.e-0, 1.e-0, 1e-1, 1e-1}, maxlevel, minlevel, 2);
+    (double[]){5.e0, 1.e-1, 1.e-1, 1e-1, 1e-2, 1e-1}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);

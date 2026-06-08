@@ -10,8 +10,8 @@ process id
 */
 
 static int new_balanced_pid (double cw, double tw, int nproc) {
-  double il = tw/nproc;             // ideal load per process
-  int idx = (int) (cw/il);
+  double il = tw/nproc; // ideal load per process
+  int idx = il > 0. ? (int) (cw/il) : 0;
   return min (idx, nproc - 1);
 }
 
@@ -29,7 +29,6 @@ void compute_cf (double* cf, long nt, (const) scalar w) {
     cf[idx++] = acc;
   }
 }
-
 
 /**
 ## per-process cell count and load 
@@ -68,27 +67,19 @@ void new_mpi_partitioning ((const) scalar w = unity) {
   long nt = 0;
   foreach (serial) nt++;
   
-  double tot_load = 0.;
-  //foreach (reduction (+:tot_load)) //fixme why does this not work
+  double tl = 0.;
   foreach (serial)
-    tot_load += w[];
-  //fprintf (stdout, "tot_load: %g\n", tot_load);
+    tl += w[];
 
-  //double target_load = tot_load/npe();
-  //fprintf (stdout, "#target_load: %g\n", target_load);
-
-  double running_load = 0.;
+  double cw = 0.;
   tree->dirty = true;
-  //long i = 0;
   foreach_cell_post (is_active (cell))
     if (is_active (cell)) {
       if (is_leaf (cell)) {
 
-        //fprintf (stdout, "%ld %g\n", i++, running_load);
-        cell.pid = new_balanced_pid (running_load, tot_load, npe());
-        running_load += w[];
+        cell.pid = new_balanced_pid (cw, tl, npe());
+        cw += w[];
 
-        //cell.pid = new_balanced_pid (i++, nt, npe(), cf);
         if (cell.neighbors > 0) {
           int pid = cell.pid;
           foreach_child() cell.pid = pid;
@@ -156,7 +147,7 @@ double z_weights (scalar cw, (const) scalar w, bool leaves)
   required because the indexing loop below needs both the parent's own
   weight and each child's subtree weight at the same time. */
 
-  scalar sw[];
+  scalar sw[];                             // is this field needed?
   foreach()
     sw[] = w[];                            // own weight (set on leaves)
 
@@ -198,7 +189,7 @@ double z_weights (scalar cw, (const) scalar w, bool leaves)
       if (level == l) {
         if (is_leaf(cell)) {
           if (is_local(cell) && cell.neighbors) {
-            double i = cw[];                 // ghost children share the offset
+            double i = cw[]; // ghost children share the offset
             foreach_child()
               cw[] = i;
           }
@@ -214,7 +205,7 @@ double z_weights (scalar cw, (const) scalar w, bool leaves)
             double i = cw[] + (leaves ? 0. : w[]); // parent's own slot
             foreach_child() {
               cw[] = i;
-              i += sw[];                           // child's subtree weight
+              i += sw[]; // child's subtree weight
             }
           }
         }
@@ -228,7 +219,6 @@ double z_weights (scalar cw, (const) scalar w, bool leaves)
 
   return tl;
 }
-
 
 trace
 bool new_balance((const) scalar w = unity) {
@@ -423,3 +413,84 @@ bool new_balance((const) scalar w = unity) {
 
   return pid_changed;
 }
+
+/**
+## Automatic Load Balancing weights with TRACE
+If 'TRACE' is enabled we can use it to compute the weight field automatically.
+*/
+
+#ifdef LB_AUTO
+# if !_MPI || TRACE < 2
+#  error "LB_AUTO requires an MPI build with tracing: compile with -D_MPI=<n> -DTRACE=2"
+# else
+
+/**
+Traced functions where a rank is genuinely blocked waiting for other ranks.
+Names not present in Trace.index (e.g. on a multigrid where mpi_waitany is
+never called) simply never match, so listing extras is harmless.
+*/
+static const char * mpi_wait_funcs[] = {
+  "mpi_waitany",      // point-to-point halo receive waits
+  "rcv_pid_wait",     // send-completion waits (MPI_Wait)
+  "mpi_all_reduce0",  // collective all-reduce / global synchronization
+  NULL
+};
+
+/**
+Helper function to extract the cumulative time of a list of specific functions
+*/
+static double trace_self_time (const char ** names) {
+  double s = 0.;
+  int len = Trace.index.len/sizeof(TraceIndex);
+  TraceIndex * t = (TraceIndex *) Trace.index.p;
+  for (int i = 0; i < len; i++, t++)
+    for (const char ** n = names; *n; n++)
+      if (!strcmp (t->func, *n)) {
+        s += t->self;
+        break;
+      }
+  return s;
+}
+
+/**
+Fills weights with the values computed trough the tracing algorithm.
+Each core has a total time t_wall = t_busy + t_wait. We want to extract 
+t_busy = t_wall - t_wait. Therfore, we compute the elapsed time of the 
+wait functions between each trace_weight function call.
+*/
+void trace_weights (scalar weights) {
+  static double t_prev = -1., wait_prev = 0.;
+  struct timeval tv; gettimeofday (&tv, NULL); // Could use Trace.t0
+
+  double now = tv.tv_sec + tv.tv_usec/1e6;
+  if (t_prev < 0) { // At the first execution we just initialize t_prev and wait_prev
+    t_prev = now;
+    wait_prev = trace_self_time (mpi_wait_funcs);
+    foreach()
+      weights[] = 1.; // Return uniform weights
+    return;
+  }
+
+  double dt_wall = now - t_prev; t_prev = now;
+  double wait_now = trace_self_time (mpi_wait_funcs);
+
+  if (wait_now < wait_prev) 
+    wait_prev = 0.;   // trace_print() may have reset counter
+
+  double dt_wait = wait_now - wait_prev; wait_prev = wait_now;
+  double t_busy = max (dt_wall - dt_wait, 0.);
+
+  // Not exact per cell but should converge to the optimal split
+  double per_cell = grid->n > 0 ? t_busy/grid->n : 0.;
+
+  foreach()
+    weights[] = per_cell + 1e-30;
+}
+# endif // !_MPI || TRACE < 2
+
+# ifndef LB_ITER
+#  define LB_ITER 1 // refresh weights every LB_ITER steps
+# endif
+
+#endif  // LB_AUTO
+

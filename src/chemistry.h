@@ -275,8 +275,7 @@ event chemistry (i++) {
 
         for (int jj=0; jj<NGS; jj++) {
           scalar YG = YGList_G[jj];
-          YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1.-f[]) : 0.;
-          YG[] = y0ode[jj]*(1.-f[]);
+          YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1. - f[]) : 0.;
 
 #ifdef VARPROP
           scalar DYDtGjj = DYDtG_G[jj];
@@ -285,7 +284,7 @@ event chemistry (i++) {
         }
 
 #ifdef SOLVE_TEMPERATURE
-        TG[] = y0ode[NGS]*(1.-f[]);
+        TG[] = y0ode[NGS]*(1. - f[]);
 # ifdef VARPROP
         DTDtG[] += sources[NGS]*cm[];
 # endif

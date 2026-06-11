@@ -199,20 +199,20 @@ event chemistry (i++) {
 
       double totgasmass = 0;
       for (int jj=0; jj<NGS; jj++)
-        totgasmass += y0ode[jj];
+        totgasmass += fmax (0., y0ode[jj]);
 
       for (int jj=0; jj<NGS; jj++) {
         scalar YG = YGList_S[jj];
-        YG[] = (totgasmass < 1e-8) ? 0. : y0ode[jj]/totgasmass*f[];
+        YG[] = (totgasmass < 1e-8) ? 0. : fmax (0., y0ode[jj])/totgasmass*f[];
       }
 
       double totsolidmass = 0;
       for (int jj=0; jj<NSS; jj++)
-        totsolidmass += y0ode[jj+NGS];
+        totsolidmass += fmax (0., y0ode[jj+NGS]);
 
-      for (int jj=0; jj<NSS; jj++) { 
+      for (int jj=0; jj<NSS; jj++) {
         scalar YS = YSList[jj];
-        YS[] = (totsolidmass < 1e-8) ? 0. : y0ode[jj+NGS]/totsolidmass*f[];
+        YS[] = (totsolidmass < 1e-8) ? 0. : fmax (0., y0ode[jj+NGS])/totsolidmass*f[];
       }
 
       porosity[] = y0ode[NGS+NSS]*f[];

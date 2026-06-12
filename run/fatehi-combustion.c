@@ -276,11 +276,14 @@ event output (t += 0.1) {
 
 #if TREE
 event adapt (i++) {
-  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
 
-  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
-    (double[]){1.e-1, 1.e-0, 1.e-0, 1e-1, 1e-1}, maxlevel, minlevel, 2);
+  scalar zdiff[];
+  foreach()
+    zdiff[] = zmix[] - zsto[];
+
+  adapt_wavelet_leave_interface ({T, oxidiser, zmix}, {f},
+    (double[]){5e0, 1e-2, 2e-3}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);
@@ -375,12 +378,12 @@ set terminal svg size 450, 450
 set output "mass-fatehi.svg"
 set xlabel "Time [s]"
 set ylabel "Normalized solid mass [-]"
-set xrange [0:150]
+set xrange [0:110]
 set yrange [0:1.05]
 
 error_margin = 0.025
 
-plot "cluster/new/lu/fatehi-combustion/OutputData-9" u 1:2 w l lw 2 lc "black" notitle, \
+plot "cluster/new/galgano/fatehi-combustion/OutputData-9" u 1:2 w l lw 2 lc "black" notitle, \
      "../../data/fatehi/mass" u 1:2:(error_margin) w yerrorbars pt 64 ps 1 lc "black" notitle, \
      "../../data/fatehi/mass" u 1:2 w lp pt 64 ps 1 lc "black" notitle"
 ~~~
@@ -409,7 +412,7 @@ plot  "../../data/fatehi/yH2O-11mm" every 2 u 1:2:(error_margin) w yerrorbars pt
 
 ~~~gnuplot Temperature
 reset
-set terminal svg size 550, 350
+set terminal svg size 450, 450
 set output "temperature-fatehi.svg"
 set xlabel "Time [s]"
 set ylabel "Temperature [K]"
@@ -435,7 +438,7 @@ plot  "../../data/fatehi/T-11mm" every 2 u 1:2:(error_margin) w yerrorbars pt 4 
 reset
 set terminal svg size 550, 550 
 set output "temperature-evolution-fatehi-2mm.svg"
-load "/root/gnuplot-palettes/inferno.pal"
+load "/home/rcaraccio/gnuplot-palettes/inferno.pal"
 
 set xlabel "y position"
 set ylabel "Temperature"
@@ -461,7 +464,7 @@ plot for [t=0:end_time:step_time] sprintf("%s%s", folder, "T_profile_2mm.dat") u
 reset
 set terminal svg size 550, 550
 set output "temperature-evolution-fatehi-11mm.svg"
-load "/root/gnuplot-palettes/inferno.pal"
+load "/home/rcaraccio/gnuplot-palettes/inferno.pal"
 
 set xlabel "Axial distance [m]"
 set ylabel "Temperature [K]"
@@ -487,7 +490,7 @@ plot for [t=0:end_time:step_time] sprintf("%s%s", folder, "T_profile_11mm.dat") 
 reset
 set terminal svg size 550, 550
 set output "xH2O-evolution-fatehi-2mm.svg"
-load "/root/gnuplot-palettes/inferno.pal"
+load "/home/rcaraccio/gnuplot-palettes/inferno.pal"
 set xlabel "y position"
 set ylabel "H2O Mole Fraction"
 set key right top
@@ -510,7 +513,7 @@ plot for [t=0:end_time:step_time] "cluster/full-9/fatehi-combustion/xH2O_profile
 reset
 set terminal svg size 550, 550
 set output "xH2O-evolution-fatehi-11mm.svg"
-load "/root/gnuplot-palettes/inferno.pal"
+load "/home/rcaraccio/gnuplot-palettes/inferno.pal"
 set xlabel "y position"
 set ylabel "H2O Mole Fraction"
 set key right top
@@ -533,7 +536,7 @@ plot for [t=0:end_time:step_time] sprintf("%s%s", folder, "xH2O_profile_11mm.dat
 
 ~~~gnuplot Test plot
 reset
-set terminal svg size 550, 350
+set terminal svg size 450, 450
 set output "test-plot-fatehi.svg"
 set xlabel "Time [s]"
 set ylabel "H2O Mole Fraction[-]"

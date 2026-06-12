@@ -18,6 +18,7 @@ enum solid_thermal_conductivity_model {
   L_LU,
   L_GALGANO,
   L_LU_CONV,
+  L_TENWOLDE
 };
 
 enum solid_thermal_conductivity_model lambdaSmodel = L_CONST;
@@ -83,19 +84,32 @@ coord lambda_kk (Point point, double lambdaG, double porosity, double Temperatur
     return (coord){lambda_par, lambda_per};
 }
 
-// Lu model for solid thermal conductivity
+// Lu et al. 2008, eqs 17–19 + Table 4 (Ouelhazi wet-wood correlation)
 coord lambda_lu (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
     double Cw = calculate_moisture_fraction(point, YSList, f);
     double char_fraction = calculate_char_fraction(point, YSList, f);
     scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
     double ash_fraction = YASH[]/f[];
 
-    double char_cond = 0.071;
-    double ash_cond = 1.2;
-    double wood_cond = (0.129 - 4.9e-2*Cw)*(1. + (2.05 + 4.*Cw)*1e-3*(Temperature - 273.15))*(0.986 + 2.695*Cw);
+    double char_cond = 0.071;   // k_C
+    double ash_cond  = 1.2;     // k_A
+
+    // Ouelhazi wet-wood conductivity, tangential direction (Table 4, both branches)
+    double Tc = Temperature - 273.15;
+    double wood_cond_tan = (Cw > 0.4)
+      ? (9.32e-2 + 6.5e-3*Cw)*(1. + 3.65e-3*Tc)*(0.986 + 2.695*Cw)
+      : (0.129 - 4.9e-2*Cw)*(1. + (2.05 + 4.*Cw)*1e-3*Tc)*(0.986 + 2.695*Cw);
+
+    // Lu adopts the average of axial (2.5x) and tangential directions
+    double wood_cond = 1.75*wood_cond_tan;
+
     double rad_cont = 5.67e-8*pow(Temperature, 3)*3.2e-6/emissivity(char_fraction, ash_fraction)*porosity;
-    double lambda = (char_cond*char_fraction + wood_cond*(1. - char_fraction - ash_fraction) + ash_cond*ash_fraction)*\
-                    (1. - porosity) + rad_cont + porosity*lambdaG;
+
+    double lambda = (char_cond*char_fraction
+                     + wood_cond*(1. - char_fraction - ash_fraction)
+                     + ash_cond*ash_fraction)*(1. - porosity)
+                    + rad_cont
+                    + porosity*lambdaG;
     return (coord){lambda, lambda};
 }
 
@@ -152,6 +166,27 @@ coord lambda_lu_conv (Point point, double lambdaG, double porosity, double Tempe
     return (coord){lambda, lambda};
 }
 
+// TenWolde model, Wood as an Engineering Material
+coord lambda_tenwolde (Point point, double lambdaG, double porosity, double Temperature, scalar f) {
+    double Cw  = calculate_moisture_fraction(point, YSList, f);
+    double xch = calculate_char_fraction(point, YSList, f);
+    scalar YASH = YSList[OpenSMOKE_IndexOfSolidSpecies("ASH")];
+    double xash = YASH[]/f[];
+    double xwood = 1. - xch - xash;
+
+    double M  = 100.*Cw/max(1. - Cw, 1e-3);          // moisture, % dry basis
+    double Gs = rhoS/1000.;                            // cell-wall specific gravity
+    double ls_wood = Gs*(0.1941 + 0.004064*M);        // close to 0.30+0.006M, TenWolde-derived l_s
+    double ls = xwood*ls_wood + xch*0.071 + xash*1.2;
+
+    double dp  = 4.0e-5 + xch*(2.0e-4 - 4.0e-5);      // wood->char pore growth
+    double rad = 4.*dp*porosity/(1. - porosity)
+                 *5.67e-8*pow(Temperature,3)*emissivity(xch, xash);
+
+    double lambda = (1. - porosity)*ls + porosity*lambdaG + rad;
+    return (coord){lambda, lambda};
+}
+
 // Function pointer for the pseudophase thermal conductivity model
 coord (*pseudo_phase_thermal_conductivity) (Point point, double lambdaG, double porosity, double Temperature, scalar f) = lambda_const;
 
@@ -180,6 +215,9 @@ event defaults (i = 0) {
       break;
     case L_LU_CONV:
       pseudo_phase_thermal_conductivity = lambda_lu_conv;
+      break;
+    case L_TENWOLDE:
+      pseudo_phase_thermal_conductivity = lambda_tenwolde;
       break;
     default:
       fprintf(stderr, "ERROR: Unknown solid thermal conductivity model, unkown lambdaSmodel = %d \n", lambdaSmodel);

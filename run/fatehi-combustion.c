@@ -38,7 +38,7 @@ double solid_mass0 = 0.;
 
 int main() {
 
-  lambdaSmodel = L_LU;
+  lambdaSmodel = L_TENWOLDE;
   TS0 = 300.; TG0 = 1123.;
   rhoS = 1550;
   eps0 = 0.2; // low, compressed pellet
@@ -47,7 +47,7 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  zeta_policy = ZETA_SHRINK;
+  zeta_policy = ZETA_CONST;
 
   DT = 1;
 
@@ -282,8 +282,8 @@ event adapt (i++) {
   foreach()
     zdiff[] = zmix[] - zsto[];
 
-  adapt_wavelet_leave_interface ({T, oxidiser, zmix}, {f},
-    (double[]){5e0, 1e-2, 2e-3}, maxlevel, minlevel, 2);
+  adapt_wavelet_leave_interface ({T, oxidiser, zdiff}, {f},
+    (double[]){5e0, 1e-2, 1e-2}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);

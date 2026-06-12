@@ -161,11 +161,14 @@ event output (t += 0.1) {
 
 #if TREE
 event adapt (i++) {
-  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
 
-  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
-    (double[]){1.e-1, 1.e-0, 1.e-0, 1e-1, 1e-1}, maxlevel, minlevel, 2);
+  scalar zdiff[];
+  foreach()
+    zdiff[] = zmix[] - zsto[];
+
+  adapt_wavelet_leave_interface ({T, oxidiser, zdiff}, {f},
+    (double[]){5e0, 1.e-2, 1.e-2}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);

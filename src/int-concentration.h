@@ -120,9 +120,13 @@ void intConcentration () {
 
       fsolve_gsl (EqSpecies, unk, &data, "EqSpecies");
 
+      double sum = 0.;
+      for (int jj = 0; jj < NGS; jj++)
+        sum += clamp (gsl_vector_get(unk, jj), 0., 1.);
+
       for (int jj = 0; jj < NGS; jj++) {
         scalar YGInt = YGList_Int[jj];
-        YGInt[] = gsl_vector_get(unk, jj);
+        YGInt[] = (sum > 0.) ? clamp (gsl_vector_get(unk, jj), 0., 1.)/sum : 0.;
       }
       gsl_vector_free(unk);
     }

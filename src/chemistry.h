@@ -18,6 +18,14 @@ extern scalar zeta;
 extern scalar T;
 extern scalar porosity;
 
+#ifdef STORE_SOURCES
+/**
+Optional diagnostic: when `STORE_SOURCES` is defined, the full per-cell
+`data.sources` vector (length NEQ) computed by the reactor is copied into the
+user-provided field list `sourcesList`. */
+extern scalar * sourcesList;
+#endif
+
 #ifndef TURN_OFF_REACTIONS
 
 /**
@@ -161,7 +169,11 @@ event chemistry (i++) {
 # endif
 #endif
       double sources[NEQ];
-      data.sources = sources;
+#ifdef STORE_SOURCES
+      for (int jj = 0; jj < NEQ; jj++) 
+        sources[jj] = 0.; // solid-species slots are never written
+#endif
+      data.sources = NULL; // do not fill sources during integration; predict after the solve
 
       double gasmass[NGS];
       double rhoGvh;
@@ -171,16 +183,16 @@ event chemistry (i++) {
       rhoGvh = rhoG;
       #endif
 
-      for (int jj=0; jj<NGS; jj++) {
+      for (int jj = 0; jj < NGS; jj++) {
         scalar YG = YGList_S[jj];
         gasmass[jj] = YG[]/f[]*rhoGvh*porosity[];
         y0ode[jj] = gasmass[jj];
       }
 
       double solidmass[NSS];
-      for (int jj=0; jj<NSS; jj++) {
+      for (int jj = 0; jj < NSS; jj++) {
         scalar YS = YSList[jj];
-        solidmass[jj] = YS[]/f[]*rhoS*(1-porosity[]);
+        solidmass[jj] = YS[]/f[]*rhoS*(1. - porosity[]);
         y0ode[jj+NGS] = solidmass[jj];
       }
 
@@ -194,20 +206,29 @@ event chemistry (i++) {
     // ODESolverEXP (batch, NEQ, dt, y0ode, &data);
       RungeKutta45EXP (batch, NEQ, dt, y0ode, &data);
 #else //default
-      OpenSMOKE_ODESolver (batch, NEQ, dt, y0ode, &data); 
+      OpenSMOKE_ODESolver (batch, NEQ, dt, y0ode, &data);
 #endif
 
+      /**
+      The source term is predicted once, at the converged end-of-step state
+      (exact as dt -> 0), rather than being accumulated from the solver's
+      internal RHS evaluations. */
+
+      data.sources = sources;
+      double dy_tmp[NEQ];
+      batch (y0ode, dt, dy_tmp, &data);
+
       double totgasmass = 0;
-      for (int jj=0; jj<NGS; jj++)
+      for (int jj = 0; jj < NGS; jj++)
         totgasmass += fmax (0., y0ode[jj]);
 
-      for (int jj=0; jj<NGS; jj++) {
+      for (int jj = 0; jj < NGS; jj++) {
         scalar YG = YGList_S[jj];
         YG[] = (totgasmass < 1e-8) ? 0. : fmax (0., y0ode[jj])/totgasmass*f[];
       }
 
       double totsolidmass = 0;
-      for (int jj=0; jj<NSS; jj++)
+      for (int jj = 0; jj < NSS; jj++)
         totsolidmass += fmax (0., y0ode[jj+NGS]);
 
       for (int jj=0; jj<NSS; jj++) {
@@ -218,7 +239,7 @@ event chemistry (i++) {
       porosity[] = y0ode[NGS+NSS]*f[];
 
 #ifdef VARPROP
-      for (int jj=0; jj<NGS; jj++) {
+      for (int jj = 0; jj < NGS; jj++) {
         scalar DYDtGjj = DYDtG_S[jj];
         DYDtGjj[] += sources[jj]*cm[];
       }
@@ -231,6 +252,12 @@ event chemistry (i++) {
 # endif
 #endif
       omega[] = sources[NGS+NSS];
+#ifdef STORE_SOURCES
+      for (int jj = 0; jj < NEQ; jj++) {
+        scalar src = sourcesList[jj];
+        src[] = sources[jj];
+      }
+#endif
     }
 
   /**
@@ -244,17 +271,17 @@ event chemistry (i++) {
       if (f[] < F_ERR && TG[] > 0.) {
 
         double y0ode[NGS + 1]; // NGS + T
-        for (int jj=0; jj<NGS; jj++) {
+        for (int jj = 0; jj < NGS; jj++) {
           scalar YG = YGList_G[jj];
-          y0ode[jj] = YG[]/(1.-f[]);
+          y0ode[jj] = YG[]/(1. - f[]);
         }
-        y0ode[NGS] = TG[]/(1.-f[]);
+        y0ode[NGS] = TG[]/(1. - f[]);
 
         UserDataODE data;
         data.P = Pref + p[];
         data.T = y0ode[NGS];
-        double sources[NGS + 1];
-        data.sources = sources;
+        double sources[NGS+1];
+        data.sources = NULL; // do not fill sources during integration; predict after the solve
 #ifdef VARPROP
         data.rhog = rhoGv_G[];
 #else
@@ -273,7 +300,15 @@ event chemistry (i++) {
         */
         OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dt, y0ode, &data);
 
-        for (int jj=0; jj<NGS; jj++) {
+        /**
+        The source term is predicted once, at the converged end-of-step state
+        (exact as dt -> 0), rather than accumulated during integration. */
+
+        data.sources = sources;
+        double dy_tmp[NGS + 1];
+        gas_batch_nonisothermal_constantpressure (y0ode, dt, dy_tmp, &data);
+
+        for (int jj = 0; jj < NGS; jj++) {
           scalar YG = YGList_G[jj];
           YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1. - f[]) : 0.;
 

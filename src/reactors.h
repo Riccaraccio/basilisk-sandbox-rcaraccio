@@ -102,7 +102,8 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
 
   //epsilon equation
   dy[NGS+NSS] = -totsolidreaction*(1-epsilon)*(1-z)/rhos;
-  sources[NGS+NSS] = -totsolidreaction;
+  if (sources)
+    sources[NGS+NSS] = -totsolidreaction;
 }
 
 /**
@@ -191,7 +192,8 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]* (rgas[jj]*(1-epsilon) + rgas_pure[jj]*epsilon);
-    data.sources[jj] = gas_MWs[jj]*rgas_pure[jj]*epsilon; //to be checked
+    if (data.sources)
+      data.sources[jj] = gas_MWs[jj]*rgas_pure[jj]*epsilon; //to be checked
   }
 
   for (int jj=0; jj<NSS; jj++) {
@@ -205,16 +207,19 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
 
   //epsilon equation
   dy[NGS+NSS] = -totsolreaction*(1-epsilon)*(1-data.zeta)/data.rhos;
-  data.sources[NGS+NSS] = -totsolreaction;
+  if (data.sources)
+    data.sources[NGS+NSS] = -totsolreaction;
 
   //Temperature equation
   double QRsol = OpenSMOKE_SolProp_HeatRelease (rgas, rsolid);
 
   dy[NGS+NSS+1] = (QRsol*(1-epsilon) + QRgas*epsilon)/((data.rhog*data.cpg*epsilon) + data.rhos*data.cps*(1-epsilon));
-  data.sources[NGS+NSS+1] = QRsol*(1-epsilon) + QRgas*epsilon;
+  if (data.sources)
+    data.sources[NGS+NSS+1] = QRsol*(1-epsilon) + QRgas*epsilon;
   #ifdef TURN_OFF_HEAT_OF_REACTION
   dy[NGS+NSS+1] *= 0.;
-  data.sources[NGS+NSS+1] *= 0.;
+  if (data.sources)
+    data.sources[NGS+NSS+1] *= 0.;
   #endif
 }
 
@@ -268,12 +273,14 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]*rgas[jj]/data.rhog;
-    data.sources[jj] = dy[jj]*data.rhog; // source term for gas expansion
+    if (data.sources)
+      data.sources[jj] = dy[jj]*data.rhog; // source term for gas expansion
   }
 
   //Temperature equation
   dy[NGS] = (QRgas +  divq_rad (&otp))/(data.rhog*data.cpg);
-  data.sources[NGS] = dy[NGS]*data.rhog*data.cpg;
+  if (data.sources)
+    data.sources[NGS] = dy[NGS]*data.rhog*data.cpg;
 #ifdef TURN_OFF_HEAT_OF_REACTION
   dy[NGS] *= 0.;
 #endif

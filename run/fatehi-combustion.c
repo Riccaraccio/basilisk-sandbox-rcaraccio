@@ -173,16 +173,16 @@ void print_profile (scalar f, double x_interp, FILE* fp, double time, int n_samp
   }
 }
 
-// Calculates the H2O-density path-averaged temperarure
+// Calculates the H2O-density path-averaged temperature
 double T_H2O_weigthed_average (double x_interp, int n_samples = 100, const double length = L0/2) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
-  double step = length/n_samples;
   double numerator = 0., denominator = 0.;
-  for (double yy = 0.; yy <= length; yy += step) {
-    double xH2O_local = interpolate (XH2O, x_interp, yy);
-    numerator += xH2O_local * step;
-    denominator += xH2O_local / interpolate (T, x_interp, yy) * step; 
+  coord pos, box[2] = {{x_interp, 0.}, {x_interp, length}}, nn = {1, n_samples};
+  foreach_region (pos, box, nn, reduction(+:numerator) reduction(+:denominator)) {
+    double xH2O_local = interpolate_linear (point, XH2O, pos.x, pos.y, pos.z);
+    numerator   += xH2O_local;
+    denominator += xH2O_local / interpolate_linear (point, T, pos.x, pos.y, pos.z);
   }
 
   if (denominator < SEPS) // avoid division by 0
@@ -191,16 +191,18 @@ double T_H2O_weigthed_average (double x_interp, int n_samples = 100, const doubl
   return numerator/denominator;
 }
 
-// Calculates the path-averaged xH2O mole fractions
-// NOTE: if too high, can be weighted by 1/T
+// Calculates the path-averaged xH2O mole fraction 
 double path_average_XH2O (double x_interp, const int n_samples = 100, const double length = L0/2) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
-  double step = length/n_samples, numerator = 0.;
-  for (double yy = 0.; yy <= length; yy += step)
-    numerator += interpolate (XH2O, x_interp, yy) * step;
+  double numerator = 0., count = 0.;
+  coord pos, box[2] = {{x_interp, 0.}, {x_interp, length}}, nn = {1, n_samples};
+  foreach_region (pos, box, nn, reduction(+:numerator) reduction(+:count)) {
+    numerator += interpolate_linear (point, XH2O, pos.x, pos.y, pos.z);
+    count += 1.;
+  }
 
-  return numerator/(length);
+  return count > 0. ? numerator/count : 0.;
 }
 
 event print_profile (t += 0.1; t <= 100) {

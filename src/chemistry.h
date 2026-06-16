@@ -129,6 +129,46 @@ event reset_sources (i++) {
     omega[] = 0.;
 }
 
+#ifdef BINNING
+/**
+Scale the gas tracers (species + temperature) of the current cell by a common
+factor. `1/(1-f)` maps the VOF-tracer form (`Y*(1-f)`) to the actual mass
+fractions the reactor expects; `(1-f)` is the inverse. */
+
+static void scale_gas_tracers (Point point, double factor) {
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    YG[] *= factor;
+  }
+  TG[] *= factor;
+}
+#endif
+
+#ifdef VARPROP
+/**
+Predict the gas-phase reaction source at the (post-integration) state `y0ode`
+(species mass fractions in `[0..NGS-1]`, temperature in `[NGS]`) and accumulate
+it into the divergence/energy source fields of the current cell. Shared by the
+binning and per-cell paths. */
+
+static void accumulate_gas_sources (Point point, double * y0ode) {
+  UserDataODE data;
+  data.P = Pref + p[];
+  data.T = y0ode[NGS];
+  double sources[NGS + 1];
+  data.sources = sources;
+
+  double dy_tmp[NGS + 1];
+  gas_batch_nonisothermal_constantpressure (y0ode, dt, dy_tmp, &data);
+
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar DYDtGjj = DYDtG_G[jj];
+    DYDtGjj[] += sources[jj]*cm[];
+  }
+  DTDtG[] += sources[NGS]*cm[];
+}
+#endif
+
 event chemistry (i++) {
 
 #ifdef SOLVE_TEMPERATURE
@@ -266,66 +306,128 @@ event chemistry (i++) {
   no solid present (i.e. f < F_ERR). The system is solved in terms of mass
   fraction as the volume is occupied only by the gas phase.
   */
-#ifdef GAS_PHASE_REACTIONS
-    foreach() {
-      if (f[] < F_ERR && TG[] > 0.) {
 
-        double y0ode[NGS + 1]; // NGS + T
-        for (int jj = 0; jj < NGS; jj++) {
-          scalar YG = YGList_G[jj];
-          y0ode[jj] = YG[]/(1. - f[]);
-        }
-        y0ode[NGS] = TG[]/(1. - f[]);
-
-        UserDataODE data;
-        data.P = Pref + p[];
-        data.T = y0ode[NGS];
-        double sources[NGS+1];
-        data.sources = NULL; // do not fill sources during integration; predict after the solve
-#ifdef VARPROP
-        data.rhog = rhoGv_G[];
-#else
-        data.rhog = rhoG;
-#endif
-#ifdef SOLVE_TEMPERATURE
-# ifdef VARPROP
-        data.cpg = cpGv_G[];
-# else
-        data.cpg = cpG;
+#ifdef BINNING
+# ifndef VARPROP
+#   error "BINNING requires VARPROP (it uses rhoGv_G/cpGv_G and the DYDtG_G/DTDtG sources)"
 # endif
-#endif
-        /**
+
+  /**
+  The bin partitioning is driven by a case-provided list of thermochemical
+  `targets` and a per-target tolerance `eps` (mixed-radix bin id, see
+  binning.h). */
+
+  extern scalar * targets;
+  extern double * eps;
+
+  /**
+  Flag the pure-gas cells (the same set integrated by the non-binning branch)
+  and convert their gas fields from VOF-tracer form (`Y*(1-f)`) to the actual
+  mass fractions the reactor expects. */
+
+  scalar gasmask[];
+  foreach() {
+    gasmask[] = (f[] < 1. - F_ERR && TG[] > 0.) ? 1. : 0.;
+    if (gasmask[])
+      scale_gas_tracers (point, 1./(1. - f[]));
+  }
+
+  /**
+  Agglomerate the flagged cells into bins of similar thermochemical state and
+  integrate the stiff chemistry ODE once per bin. `bin->phi[j]` holds the
+  mass-averaged value of `fields[j]`: entries `[0..NGS-1]` are the gas species
+  and entry `[NGS]` is the temperature. */
+
+  scalar * fields = list_concat (YGList_G, {TG});
+
+  BinTable * table = binning (fields, targets, eps, rhoGv_G, cpGv_G, gasmask);
+
+  foreach_bin (table) {
+    double y0ode[NGS + 1];
+    for (size_t j = 0; j < bin->nfields; j++)
+      y0ode[j] = bin->phi[j];
+
+    UserDataODE data;
+    data.P = Pref + bin_average (bin, p);
+    data.sources = NULL;
+    data.rhog = bin->rho;
+    data.cpg = bin->cp;
+
+    OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
+        NGS + 1, dt, y0ode, &data);
+
+    for (size_t j = 0; j < bin->nfields; j++)
+      bin->phi[j] = (j < (size_t)NGS) ? fmax (0., y0ode[j]) : y0ode[j];
+
+    bin->rho = data.rhog;
+    bin->cp = data.cpg;
+  }
+
+  binning_remap (table, fields, rhoGv_G, cpGv_G);
+  binning_cleanup (table);
+  free (fields), fields = NULL;
+
+  /**
+  Predict the gas-phase source terms at the post-reaction state (one local
+  evaluation per cell), then restore the VOF-tracer form of the gas fields. */
+
+  foreach() {
+    if (gasmask[]) {
+      double y0ode[NGS + 1]; // NGS + T
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        y0ode[jj] = YG[];
+      }
+      y0ode[NGS] = TG[];
+
+      accumulate_gas_sources (point, y0ode);
+      scale_gas_tracers (point, 1. - f[]); // restore VOF-tracer form
+    }
+  }
+#else // !BINNING
+
+  foreach() {
+    if (f[] < F_ERR && TG[] > 0.) {
+
+      double y0ode[NGS + 1]; // NGS + T
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        y0ode[jj] = YG[]/(1. - f[]);
+      }
+      y0ode[NGS] = TG[]/(1. - f[]);
+
+      UserDataODE data;
+      data.P = Pref + p[];
+      data.T = y0ode[NGS];
+      data.sources = NULL; // do not fill sources during integration; predict after the solve
+# ifdef VARPROP
+      data.rhog = rhoGv_G[];
+      data.cpg = cpGv_G[];
+# else
+      data.rhog = rhoG;
+      data.cpg = cpG;
+# endif
+      /**
         Using an explicit solver for gas-phase reactions is not
         recommended as they are usually stiff.
         */
-        OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dt, y0ode, &data);
+      OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dt, y0ode, &data);
 
-        /**
+      /**
         The source term is predicted once, at the converged end-of-step state
         (exact as dt -> 0), rather than accumulated during integration. */
 
-        data.sources = sources;
-        double dy_tmp[NGS + 1];
-        gas_batch_nonisothermal_constantpressure (y0ode, dt, dy_tmp, &data);
-
-        for (int jj = 0; jj < NGS; jj++) {
-          scalar YG = YGList_G[jj];
-          YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1. - f[]) : 0.;
-
-#ifdef VARPROP
-          scalar DYDtGjj = DYDtG_G[jj];
-          DYDtGjj[] += sources[jj]*cm[];
-#endif
-        }
-
-#ifdef SOLVE_TEMPERATURE
-        TG[] = y0ode[NGS]*(1. - f[]);
 # ifdef VARPROP
-        DTDtG[] += sources[NGS]*cm[];
+      accumulate_gas_sources (point, y0ode);
 # endif
-#endif
+
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1. - f[]) : 0.;
       }
+      TG[] = y0ode[NGS]*(1. - f[]);
     }
-#endif // GAS_PHASE_REACTIONS
+  }
+#endif // BINNING
 }
 #endif // TURN_OFF_REACTIONS

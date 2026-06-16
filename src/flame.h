@@ -28,16 +28,18 @@ event init (i = 0) {
   fprintf (fpflame, "# t t* Dx Dy De Dx/D0 Dy/D0 De/D0 Tflame Tmax DTmax DTmax/D0\n");
 }
 
-event flame (t += FLAME_PRINT_TIME) {
+/**
+Compute the Bilger mixture fraction field `zmix` from the current gas
+composition (bulk + pore gas). The fuel stream is the gas released at the
+interface (`avg_interface`), the oxidizer stream is the ambient `gas_start`.
+Exposed as a function so it can be reused outside the periodic `flame` event,
+e.g. as a per-step binning target for a multi-species (fuel-less) scheme. */
 
-  /**
-  We compute the mixture fraction using Bilger's formula. */
-
-  double z_frac_fuel[NGS], z_frac_stoi[NGS];
+void mixture_fraction (scalar zmix) {
+  double z_frac_fuel[NGS];
   for (int jj=0; jj<NGS; jj++) {
     scalar YGInt = YGList_Int[jj];
     z_frac_fuel[jj] = avg_interface (YGInt, f, F_ERR);
-    z_frac_stoi[jj] = 0.;
   }
 
   foreach() {
@@ -50,10 +52,26 @@ event flame (t += FLAME_PRINT_TIME) {
 
     zmix[] = OpenSMOKE_GetMixtureFractionFromMassFractions (z_frac_mix,
         z_frac_fuel, gas_start);
+  }
+}
 
+event flame (t += FLAME_PRINT_TIME) {
+
+  /**
+  We compute the mixture fraction using Bilger's formula. */
+
+  mixture_fraction (zmix);
+
+  double z_frac_fuel[NGS], z_frac_stoi[NGS];
+  for (int jj=0; jj<NGS; jj++) {
+    scalar YGInt = YGList_Int[jj];
+    z_frac_fuel[jj] = avg_interface (YGInt, f, F_ERR);
+    z_frac_stoi[jj] = 0.;
+  }
+
+  foreach()
     zsto[] = OpenSMOKE_GetMixtureFractionFromMassFractions (z_frac_stoi,
         z_frac_fuel, gas_start);
-  }
 
   vector gzmix[];
   gradients ({zmix}, {gzmix});

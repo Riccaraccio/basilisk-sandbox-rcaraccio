@@ -109,8 +109,8 @@ event init (i= 0) {
       }
     }
 
-  if (restore (file = "snapshot", list = all)) {
-    fprintf (stderr, "Restart file found!\n");
+  if (restore (file = "last-snapshot", list = all)) {
+    fprintf (stderr, "Restart file found!\n);
     restarted = true;
   } else {
     fprintf (stderr, "No restart file found, starting from scratch!\n");
@@ -122,11 +122,14 @@ event init (i= 0) {
   }
 }
 
-event output (t += 0.01) {
+event output (i += 10) {
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
+  static FILE * fp = fopen (name, restarted ? "a" : "w");
+
+  if (i == 1)
+    fprintf (fp, "# t(1), Ms/Ms0(2), T_max(3), R/R0(4)\n"); 
 
   //log mass profile
   double solid_mass = 0.;
@@ -156,7 +159,7 @@ event adapt (i++) {
 #endif
 
 event dump (i = 100) {
-  dump("snapshot");
+  dump("last-snapshot");
 
   clear();
   squares ("T", linear = true);

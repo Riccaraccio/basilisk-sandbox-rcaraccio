@@ -59,14 +59,6 @@ event init(i = 0) {
 
   foreach()
     porosity[] = eps0*f[];
-
-  clear();
-  view (tx = -L0/2);
-  cells();
-  box();
-  draw_vof("f", "k", lw = 2);
-  save ("initial.png");
-
 }
 
 event chemistry(i++) {

@@ -76,7 +76,7 @@ event init (i = 0) {
   fraction (c, circle(x,y));
 }
 
-#define end 0.785398
+#define end 0.785398/4
 
 event velocity (i++) {
 #if TREE

@@ -420,7 +420,7 @@ If 'TRACE' is enabled we can use it to compute the weight field automatically.
 */
 
 #ifdef LB_AUTO
-# if !_MPI || TRACE < 2
+# if TRACE < 2
 #  error "LB_AUTO requires an MPI build with tracing: compile with -D_MPI=<n> -DTRACE=2"
 # else
 
@@ -486,7 +486,7 @@ void trace_weights (scalar weights) {
   foreach()
     weights[] = per_cell + 1e-30;
 }
-# endif // !_MPI || TRACE < 2
+# endif // TRACE < 2
 
 # ifndef LB_ITER
 #  define LB_ITER 1 // refresh weights every LB_ITER steps

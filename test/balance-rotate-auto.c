@@ -2,33 +2,31 @@
 # Rotation of a circular interface - MPI Load Balancing test
 
 This test is a modified version of [rotate.c](/src/test/rotate.c).
-The goal is to test the correct split of load between processors, given a 
-assinged scalar field 'weights', a representative of the computational load being
-carried out in a specific cell.
-The goal is to test the automatic detection of the load balancing weights 
-trough the TRACE profiling ([See here for the implementation](/src/grid/balance.h))
-This is also a twin to the test [balance-rotate.c](/src/test/balance-rotate.c)
+The goal is to test the correct split of load between processors, given
+a assinged scalar field 'weights', a representative of the computational
+load being carried out in a specific cell.  The goal is to test the
+automatic detection of the load balancing weights trough the TRACE
+profiling ([See here for the implementation](/src/grid/balance.h)) This
+is also a twin to the test [balance-rotate.c](/src/test/balance-rotate.c)
 where instead the weights are user specified.
 
-We advect a circular interface along a circular path. To simulate an inbalance 
-in the load between cells, we add an intensive calculation only in the region
-marked by the 'c' field. 
+We advect a circular interface along a circular path. To simulate an
+inbalance in the load between cells, we add an intensive calculation
+only in the region marked by the 'c' field.
 
-The total load is defined as the sum of the individual weights of each cells.
-Ideally, each processor gets total_load/n_proc amout of work.
-This is also the configuration that minimze the idle time between processor 
-waiting for the other to finish their computations. 
-*/
+The total load is defined as the sum of the individual weights of each
+cells.  Ideally, each processor gets total_load/n_proc amout of work.
+This is also the configuration that minimze the idle time between
+processor waiting for the other to finish their computations.  */
 
 #include "advection.h"
 #include "vof.h"
 
 /**
-Diagnostic functions needed for intresting statistics.
-'balance_score' computes the number of cells and the load assigned to 
-each processor.
-'parallel_efficency' gives a quantitative measure of the imbalance.
-*/
+Diagnostic functions needed for intresting statistics.  'balance_score'
+computes the number of cells and the load assigned to each processor.
+'parallel_efficency' gives a quantitative measure of the imbalance.  */
+
 void balance_score (long* counter, double* load, (const) scalar w) {
   for (int ne = 0; ne < npe(); ne++) {
     counter[ne] = 0;
@@ -60,6 +58,19 @@ double parallel_efficency (double* load) {
   return (tot_load/npe())/max_load;
 }
 
+/**
+'measured_efficiency' returns the parallel efficiency (mean/max) of
+a per-rank scalar measurement 'busy' (the wall-clock time spent in the
+heavy region).  Unlike the weight-based score it needs no user cost model:
+it reports the real measured cost. */
+
+double measured_efficiency (double busy) {
+  double busy_sum = busy, busy_max = busy;
+  mpi_all_reduce (busy_sum, MPI_DOUBLE, MPI_SUM);
+  mpi_all_reduce (busy_max, MPI_DOUBLE, MPI_MAX);
+  return (busy_sum/npe())/busy_max;   // serial: macros are no-ops -> 1
+}
+
 scalar c[];
 scalar * interfaces = {c}, * tracers = NULL;
 int MAXLEVEL = 8;
@@ -76,7 +87,7 @@ event init (i = 0) {
   fraction (c, circle(x,y));
 }
 
-#define end 0.785398/4
+#define end 0.785398
 
 event velocity (i++) {
 #if TREE
@@ -93,7 +104,7 @@ event velocity (i++) {
 event logfile (i++) {
 
   long ncells[npe()]; double load[npe()];
-  balance_score (ncells, load, weights);
+  balance_score (ncells, load, balance_weights);
 
   if (pid() == 0 && i > 1) {
     fprintf (stderr, "%g %g ", t, parallel_efficency (load));
@@ -108,6 +119,7 @@ We simulate a hefty computational cost in the cell with a non-zero
 volume fraction.
 */
 event slowdown (i++) {
+  timer ts = timer_start();
   foreach()
     if (c[] > 1e-10) {
       double s = 0.;
@@ -116,6 +128,16 @@ event slowdown (i++) {
       // force the result to be observed so -O2 can't drop the loop
       if (s == HUGE) fprintf (stderr, "unreachable %g\n", s);
     }
+  // foreach() over local cells does no MPI, so this is pure on-rank busy
+  // time: an independent, weight-free measure of the real load imbalance.
+  double busy = timer_elapsed (ts);
+
+  double eff = measured_efficiency (busy);   // collective: all ranks
+  if (pid() == 0 && i > 1) {
+    static FILE * fp = fopen ("perf", "w");
+    fprintf (fp, "%g %g\n", t, eff);
+    fflush (fp);
+  }
 }
 
 #if TRACE > 1
@@ -130,13 +152,24 @@ event stop (t = end);
 /**
 ## Results
 
-~~~gnuplot parallel efficiency
+~~~gnuplot weighted parallel efficiency
 set xlabel "Time"
-set ylabel "Parallel efficiency"
+set ylabel "Weighted Parallel efficiency"
 
 set yrange [0:1]
 
 plot "log" u 1:2 w l lw 3 lc "red" notitle
+~~~
+~~~gnuplot measured parallel efficiency
+set xlabel "Time"
+set ylabel "Measured parallel efficiency"
+
+set yrange [0:1]
+
+# weight-free: mean/max of the per-rank wall-clock time spent in the heavy
+# region (event slowdown), measured with a separate clock and therefore
+# independent of the mpi_time-derived auto weights.
+plot "perf" u 1:2 w l lw 3 lc "blue" notitle
 ~~~
 ~~~gnuplot cells per processor (stacked)
 

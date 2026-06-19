@@ -107,6 +107,11 @@ event logfile (i++) {
   balance_score (ncells, load, balance_weights);
 
   if (pid() == 0 && i > 1) {
+    double pe = parallel_efficency (load);
+
+    if (i > 10) // skip the initalization effect on the balancing
+      assert (pe > 0.9);
+
     fprintf (stderr, "%g %g ", t, parallel_efficency (load));
     for (int ne = 0; ne < npe(); ne++) fprintf (stderr, "%ld ", ncells[ne]);
     for (int ne = 0; ne < npe(); ne++) fprintf (stderr, "%g ", load[ne]);
@@ -134,6 +139,10 @@ event slowdown (i++) {
 
   double eff = measured_efficiency (busy);   // collective: all ranks
   if (pid() == 0 && i > 1) {
+
+    if (i > 10) // skip the initalization effect on the balancing
+      assert (eff > 0.5);
+
     static FILE * fp = fopen ("perf", "w");
     fprintf (fp, "%g %g\n", t, eff);
     fflush (fp);

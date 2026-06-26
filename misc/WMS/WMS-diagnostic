@@ -1,0 +1,31 @@
+#!/bin/bash
+
+if [ -z "$1" ]; then
+  echo "ERROR: Must provide a folder"
+  echo "WMS-diagnostic /path/to/folder"
+  exit 1
+elif [ ! -d "$1" ]; then
+  echo "ERROR: Folder not found"
+  exit 1
+fi
+
+if [ -z "$2" ]; then
+  echo "ERROR: Must specify the distance at which to compute the WMS"
+  exit 1
+fi
+
+folder=$1
+heigth=$2
+
+# Resolve WMS.py and the partition function relative to this script so the tool
+# is self-contained wherever the misc/ folder lives.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+python "$SCRIPT_DIR/WMS.py"  \
+    --temp "$folder/T_profile_${heigth}mm.dat" \
+    --h2o "$folder/xH2O_profile_${heigth}mm.dat" \
+    --L 1.5 \
+    --space-unit m \
+    --output "$folder/results_${heigth}mm" \
+    --plot-every 0 \
+    --partfun "$SCRIPT_DIR/Partfun_H16OH.txt"

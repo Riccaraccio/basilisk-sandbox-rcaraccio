@@ -15,3 +15,6 @@
 
 # Include data folder
 !data/**
+
+# Track post-processing tools kept under misc/
+!misc/**

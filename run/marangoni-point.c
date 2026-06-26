@@ -24,13 +24,13 @@ or directly:     qcc -D_MPI=1 -O2 -disable-dimensions -I../src \
 
 #define F_ERR 1e-10
 
-#include "grid/multigrid.h"
 #include "axi.h"
 #include "navier-stokes/centered.h"
 #include "two-phase-clsvof.h"
 #include "integral.h"
 #include "gradients.h"
 #include "diffusion.h"
+#include "adapt_wavelet_leave_interface.h"
 
 scalar sigmav[], tr[], sexp[];
 
@@ -146,6 +146,11 @@ event tracer_diffusion (i++) {
 
   foreach()
     tr[] *= f[];
+}
+
+event adapt (i++) {
+  adapt_wavelet_leave_interface ({tr}, {f},
+    (double[]){1e-1}, runlevel, padding=2);
 }
 
 /** Uptake history + early-stop on saturation. The core concentration is a

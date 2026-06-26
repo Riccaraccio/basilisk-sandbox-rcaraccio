@@ -2,27 +2,33 @@
 # =============================================================================
 # Cluster (Ma, Sc) sweep for the Marangoni -> D_eff correction  (SGE / qsub).
 #
-# Job ARRAY: one (Ma,Sc) point per array task, MPI-parallel within each task.
-# Runs the lean single-point binary `marangoni-point` (no GL/movies, MPI-safe
-# master-only writes, early-stop at saturation). Aggregate with marangoni-fit.py
-# once every task has finished.
+# Job ARRAY: one (Ma,Sc) point per array task, each task SERIAL (1 core).
+# Runs the lean single-point binary `marangoni-point` (no GL/movies, early-stops
+# at saturation). Aggregate with marangoni-fit.py once every task has finished.
 #
-# Layout: this file lives in misc/marangoni/, but qsub it FROM run/ (where
-# marangoni-point.c and the Makefile are). Copy or symlink it next to the source:
+# WHY SERIAL: the physics stack uses two-phase-clsvof.h, whose level-set
+# redistancing is NOT MPI-parallel (verified: MPI_ERR_TRUNCATE on >1 rank, even
+# with stock tension.h). Each point is a small 2D-axi multigrid that runs serial
+# in minutes, and the array gives the parallelism across the 46 points -- so MPI
+# per point would buy nothing here anyway. Do NOT add `-pe mpi` / mpirun.
 #
-#   cd ~/basilisk/basilisk-sandbox-rcaraccio/run
-#   qsub ../misc/marangoni/marangoni-sweep.sge      # SGE honours -cwd = run/
+# Self-contained: drop these 3 files into one folder on the cluster and qsub
+# from there (-cwd runs the job in that folder):
+#     marangoni-point.c   marangoni-sweep.sge   marangoni-fit.py
+#
+#   cd ~/my-marangoni-run
+#   mkdir -p logs                 # SGE needs the -o/-e dir to exist before submit
+#   qsub marangoni-sweep.sge
 #
 # When all tasks are done, aggregate + fit:
-#   cd results && python3 ../../misc/marangoni/marangoni-fit.py .
+#   cd results && python3 ../marangoni-fit.py .
 # =============================================================================
 
-# ---- SGE directives (mirror the working glarborg-particle setup) ------------
+# ---- SGE directives (mirror the working glarborg job; single slot per task) -
 #$ -q cmic1.q
 #$ -N marangoni-sweep
 #$ -cwd
 #$ -V
-#$ -pe mpi 4
 #$ -t 1-46                 # 1 baseline + 9 Ma x 5 Sc = 46 tasks (SGE is 1-based)
 #$ -o logs/
 #$ -e logs/
@@ -30,9 +36,10 @@
 
 set -euo pipefail
 
-# ---- toolchain / environment (same as the glarborg job) ---------------------
+# ---- toolchain (same as the glarborg job); qcc uses CC99 for the C compiler --
 set-gcc-13.2
 export CC=/software/chimica2/tools/gcc/gcc-13.2.0/bin/gcc
+export CC99="$CC"
 export BASILISK=$HOME/basilisk/basilisk/src
 export PATH=$BASILISK:$PATH
 
@@ -43,14 +50,16 @@ BIN="$PWD/marangoni-point"
 OUT="$PWD/results"
 mkdir -p "$OUT" logs
 
-# ---- build the MPI binary once (flock so only the first task compiles) ------
-# Uses the run/Makefile bare target, which carries the ecipriano -I for
-# gradients.h. -D_MPI=$NSLOTS matches the mpirun rank count below.
+# ---- build once (serial qcc; flock so only the first array task compiles) ----
+# marangoni-point.c needs only Basilisk core + gradients.h (ecipriano sandbox)
+# for plic_gradient; no repo src/ or OpenSMOKE. No -D_MPI (serial).
 (
   flock 9
   if [ ! -x "$BIN" ]; then
-    echo "[$(date +%T)] building $BIN with $NSLOTS-rank MPI ..."
-    CC="mpicc -D_MPI=$NSLOTS" make marangoni-point
+    echo "[$(date +%T)] building $BIN (serial) ..."
+    qcc -O2 -disable-dimensions \
+        -I"$HOME/basilisk/basilisk-sandbox-ecipriano/src" \
+        marangoni-point.c -o "$BIN" -lm
   fi
 ) 9>"$PWD/.marangoni-build.lock"
 [ -x "$BIN" ] || { echo "build failed: $BIN missing"; exit 1; }
@@ -77,18 +86,18 @@ if [ "$TASK" -ge "$NTOT" ]; then echo "task $TASK >= $NTOT, nothing to do"; exit
 
 IFS=: read -r MA SC MAR <<< "${POINTS[$TASK]}"
 echo "[$(date +%T)] task $SGE_TASK_ID: Ma=$MA Sc=$SC marangoni=$MAR Ca=$CA"\
-" level=$LEVEL Re=$(awk "BEGIN{print $MA/$SC}") ranks=$NSLOTS"
+" level=$LEVEL Re=$(awk "BEGIN{print $MA/$SC}")"
 
-# ---- run (master-only file writes land in results/, filenames unique per pt) -
+# ---- run serial (filenames are unique per point -> shared results/ is safe) --
 cd "$OUT"
-mpirun -np "$NSLOTS" "$BIN" "$MA" "$SC" "$CA" "$MAR" "$LEVEL" "$TAUMAX"
+"$BIN" "$MA" "$SC" "$CA" "$MAR" "$LEVEL" "$TAUMAX"
 
 # =============================================================================
 # If you change MAS/SCS, recompute NTOT = 1 + len(MAS)*len(SCS) and update the
-# `#$ -t 1-NTOT` directive above. Adjust `#$ -pe mpi N` for ranks per point
-# (level-7 2D-axi is light; 4 is plenty, serial also works).
+# `#$ -t 1-NTOT` directive above.
 #
 # Smoke-test one point interactively before submitting:
-#   CC="mpicc -D_MPI=1" make marangoni-point
+#   qcc -O2 -disable-dimensions -I$HOME/basilisk/basilisk-sandbox-ecipriano/src \
+#       marangoni-point.c -o marangoni-point -lm
 #   ./marangoni-point 100 30 0.05 1 7        # serial, ~minutes
 # =============================================================================

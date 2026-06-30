@@ -20,6 +20,17 @@ or directly:     qcc -D_MPI=1 -O2 -disable-dimensions -I../src \
                    -I$OPENSMOKE_INTERFACE/src \
                    -I$HOME/basilisk/basilisk-sandbox-ecipriano/src \
                    marangoni-point.c -o marangoni-point -lm
+
+Movies (opt-in): compile with -DMOVIE and link the headless software GL
+backend (fb_tiny -> no OpenGL/OSMesa needed); needs ffmpeg in PATH at run time.
+  qcc -O2 -disable-dimensions -DMOVIE [-DMOVIE_NFRAMES=50] \
+      -I$HOME/basilisk/basilisk-sandbox-ecipriano/src \
+      marangoni-point.c -o marangoni-point \
+      -L$BASILISK/gl -lglutils -lfb_tiny -lm
+Writes `movie-<tag>.mp4` into the cwd: a fixed MOVIE_NFRAMES snapshots per run
+regardless of (Ma,Sc) -- under MOVIE the saturation early-stop is disabled so
+every case integrates the full taumax window. On the cluster, enable via the
+sweep script (MOVIE=1 qsub marangoni-sweep.sge).
 */
 
 #define F_ERR 1e-10
@@ -31,6 +42,17 @@ or directly:     qcc -D_MPI=1 -O2 -disable-dimensions -I../src \
 #include "gradients.h"
 #include "diffusion.h"
 #include "adapt_wavelet_leave_interface.h"
+
+#ifdef MOVIE
+#include "view.h"
+#ifndef MOVIE_NFRAMES
+#define MOVIE_NFRAMES 50        // snapshots per run, independent of setup (override -D)
+#endif
+double movie_dt = 1.;           // frame interval in t; real value set in main() once
+                                // tEnd is known. MUST be a positive placeholder here:
+                                // Basilisk reads it at event registration (before main)
+                                // to enable the periodic event; 0 would disable it.
+#endif
 
 scalar sigmav[], tr[], sexp[];
 
@@ -57,6 +79,9 @@ int main (int argc, char ** argv) {
   sigma0 = dsigma/Ca;
   U      = dsigma;
   tEnd   = taumax*R0*R0/lambda;
+#ifdef MOVIE
+  movie_dt = tEnd/MOVIE_NFRAMES;         // fixed snapshot count over the whole run
+#endif
 
   rho1 = rho2 = 1.;
   mu1  = mu2  = 1.;
@@ -176,8 +201,10 @@ event logfile (i += 5) {
     fprintf (fp_uptake, "%g %g %g %g %g %g\n",
              tau, Cbar, 1. - Cbar, maxu/U, ke, Ccore);
 
+#ifndef MOVIE
   if (Cbar > 0.995 && tau > 0.02)           // saturated -> stop (collective)
-    return 1;
+    return 1;                               // (disabled under MOVIE: run the full
+#endif                                      //  window so every case yields MOVIE_NFRAMES)
 }
 
 event profiles (i++) {
@@ -226,3 +253,22 @@ event end (t = tEnd) {
     if (fp_angnu)  { fclose (fp_angnu);  fp_angnu  = NULL; }
   }
 }
+
+#ifdef MOVIE
+/** A fixed number of snapshots (MOVIE_NFRAMES) per run, independent of setup:
+the interval is tEnd/MOVIE_NFRAMES, and the saturation early-stop is disabled
+under MOVIE (see logfile) so every case integrates the full window. The period
+must be a global set in main() -- Basilisk captures a `t += <expr>` increment at
+event registration, before main() assigns tEnd, so an inline expression would
+evaluate with tEnd=0 and never fire (the placeholder init enables the event).
+Rendering uses the software fb_tiny backend. */
+event movie (t += movie_dt) {
+  clear();
+  view(tx=-0.20, ty=-0.20, fov=8);
+  draw_vof ("f", lw=2);
+  squares ("tr", min=0, max=1);
+  char name[120];
+  sprintf (name, "movie-%s.mp4", tag);
+  save(name);
+}
+#endif

@@ -46,7 +46,30 @@ export PATH=$BASILISK:$PATH
 CA=0.05
 LEVEL=7
 TAUMAX=1.0          # safety cap; early-stop at Cbar>0.995 ends most runs sooner
-BIN="$PWD/marangoni-point"
+
+# ---- movies (opt-in) --------------------------------------------------------
+# Off by default (lean, GL-free binary). Enable for a run with:
+#     MOVIE=1 qsub marangoni-sweep.sge
+# Renders movie-<tag>.mp4 into results/ for every point, using Basilisk's
+# software framebuffer (fb_tiny -> no OpenGL/OSMesa) + ffmpeg (set-ffmpeg).
+# MOVIE_NFRAMES = snapshots per run, the same for every (Ma,Sc): under MOVIE the
+# saturation early-stop is disabled so each case runs the full taumax window.
+# NOTE: disabling early-stop + software rendering makes movie runs noticeably
+# slower than production runs; to movie only a subset, narrow the `#$ -t` range.
+MOVIE=${MOVIE:-0}
+MOVIE_NFRAMES=${MOVIE_NFRAMES:-50}
+
+QCCMOVIE=""
+GLLIBS=""
+BINSUFFIX=""
+if [ "$MOVIE" = "1" ]; then
+  set-ffmpeg                                   # ffmpeg in PATH for save() at run time
+  QCCMOVIE="-DMOVIE -DMOVIE_NFRAMES=$MOVIE_NFRAMES"
+  GLLIBS="-L$BASILISK/gl -lglutils -lfb_tiny"  # software GL backend; order matters
+  BINSUFFIX="-movie"                           # separate binary from the lean build
+fi
+
+BIN="$PWD/marangoni-point${BINSUFFIX}"
 OUT="$PWD/results"
 mkdir -p "$OUT" logs
 
@@ -56,10 +79,10 @@ mkdir -p "$OUT" logs
 (
   flock 9
   if [ ! -x "$BIN" ]; then
-    echo "[$(date +%T)] building $BIN (serial) ..."
-    qcc -O2 -disable-dimensions \
+    echo "[$(date +%T)] building $BIN (serial, MOVIE=$MOVIE) ..."
+    qcc -O2 -disable-dimensions $QCCMOVIE \
         -I"$HOME/basilisk/basilisk-sandbox-ecipriano/src" \
-        marangoni-point.c -o "$BIN" -lm
+        marangoni-point.c -o "$BIN" $GLLIBS -lm
   fi
 ) 9>"$PWD/.marangoni-build.lock"
 [ -x "$BIN" ] || { echo "build failed: $BIN missing"; exit 1; }
@@ -100,4 +123,9 @@ cd "$OUT"
 #   qcc -O2 -disable-dimensions -I$HOME/basilisk/basilisk-sandbox-ecipriano/src \
 #       marangoni-point.c -o marangoni-point -lm
 #   ./marangoni-point 100 30 0.05 1 7        # serial, ~minutes
+#
+# With a movie (needs ffmpeg via set-ffmpeg):
+#   qcc -O2 -disable-dimensions -DMOVIE -I$HOME/basilisk/basilisk-sandbox-ecipriano/src \
+#       marangoni-point.c -o marangoni-point-movie -L$BASILISK/gl -lglutils -lfb_tiny -lm
+#   ./marangoni-point-movie 100 30 0.05 1 7  # writes movie-Ma100-Sc30.mp4
 # =============================================================================

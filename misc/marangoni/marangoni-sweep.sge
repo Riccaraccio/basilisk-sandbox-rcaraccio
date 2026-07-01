@@ -2,18 +2,19 @@
 # =============================================================================
 # Cluster (Ma, Sc) sweep for the Marangoni -> D_eff correction  (SGE / qsub).
 #
-# Job ARRAY: one (Ma,Sc) point per array task. Runs the lean single-point
-# binary `marangoni-point` (no GL/movies, early-stops at saturation). Aggregate
-# with marangoni-fit.py once every task has finished.
+# Job ARRAY: one (Ma,Sc) point per array task, each task SERIAL (1 core).
+# Runs the lean single-point binary `marangoni-point` (no GL/movies, early-stops
+# at saturation). Aggregate with marangoni-fit.py once every task has finished.
 #
-# PARALLELISM (two levels): the array fans the 46 points across the queue, and
-# each task runs its point with MPI on the NSLOTS cores granted by the `-pe`
-# directive below. MPI within a point matters now that maxlevel is derived from
-# CELLS_BL: high-Ma points reach level 12-13 (low-Ma ones are minutes at ~7).
-# The old serial-only restriction (two-phase-clsvof.h redistancing failing with
-# MPI_ERR_TRUNCATE on >1 rank) no longer applies -- verified working with
-# CC='mpicc -D_MPI=4' make marangoni-point.tst. With NSLOTS=1 (qsub -pe mpi 1,
-# or PE line removed) the task falls back to the serial binary, no mpirun.
+# WHY SERIAL: the two-phase-clsvof.h stack is NOT MPI-safe (verified 2026-07-01,
+# Basilisk + ecipriano sandbox current versions). On multigrid it still crashes
+# (MPI_ERR_TRUNCATE at level 7, glibc heap corruption at level 9); on quadtree
+# it runs WITHOUT warnings but produces spurious interface velocities that grow
+# with refinement (maxu/U vs serial: ~1x at level 7, 1.7x at level 8, 20x and
+# runaway ke at level 9) while Cbar stays deceptively correct. Serial results
+# are grid-converged and mutually consistent across levels 7-9. Do NOT add
+# `-pe`/mpirun until the upstream clsvof-MPI bug is fixed; validate serial vs
+# mpirun at level >= 9 (uptake AND maxu/ke columns) before trusting it.
 #
 # Self-contained: drop these 3 files into one folder on the cluster and qsub
 # from there (-cwd runs the job in that folder):
@@ -33,9 +34,6 @@
 #$ -cwd
 #$ -V
 #$ -t 1-46                 # 1 baseline + 9 Ma x 5 Sc = 46 tasks (SGE is 1-based)
-#$ -pe mpi 4               # cores per task (sets NSLOTS); override at submit with
-#                          #   qsub -pe mpi 8 marangoni-sweep.sge
-#                          # PE name is cluster-specific: check `qconf -spl`.
 #$ -o logs/
 #$ -e logs/
 # -----------------------------------------------------------------------------
@@ -49,45 +47,26 @@ export CC99="$CC"
 export BASILISK=$HOME/basilisk/basilisk/src
 export PATH=$BASILISK:$PATH
 
-# ---- MPI (cores per task = NSLOTS from the -pe directive) --------------------
-# NSLOTS > 1 -> build a separate MPI binary (qcc backend = mpicc) and run it
-# under mpirun. If mpicc isn't already in PATH, load the cluster's MPI module
-# here (must match the gcc above). OMPI_CC pins OpenMPI's wrapper to that gcc.
-NP=${NSLOTS:-1}
-QCCMPI=""
-MPISUFFIX=""
-if [ "$NP" -gt 1 ]; then
-  command -v mpicc >/dev/null 2>&1 || \
-    { echo "NSLOTS=$NP but mpicc not in PATH -- load an MPI module"; exit 1; }
-  export OMPI_CC="$CC"
-  # keep Basilisk's default backend flags (config: C99_FLAGS + _GNU_SOURCE);
-  # a bare `CC99=mpicc` loses them and the build fails on MADV_DONTNEED.
-  export CC99="mpicc -std=c99 -D_XOPEN_SOURCE=700 -D_GNU_SOURCE=1"
-  QCCMPI="-D_MPI=1"          # enables MPI in qcc; ranks are set by mpirun -np
-  MPISUFFIX="-mpi"           # keep the MPI binary separate from the serial one
-fi
-
 CA=0.05
 CELLS_BL=8          # target grid points across the concentration BL; marangoni-point
                     # derives maxlevel = ceil(log2(L0*CELLS_BL*sqrt(Ma)/R0)) per point
                     # (Pe=Ma -> delta_c ~ R0/sqrt(Ma)), so the level rises with Ma.
 TAUMAX=1.0          # safety cap; early-stop at Cbar>0.995 ends most runs sooner
 
-BIN="$PWD/marangoni-point${MPISUFFIX}"
+BIN="$PWD/marangoni-point"
 OUT="$PWD/results"
 mkdir -p "$OUT" logs
 
-# ---- build once (flock so only the first array task compiles) ----------------
+# ---- build once (serial qcc; flock so only the first array task compiles) ----
 # marangoni-point.c needs only Basilisk core + gradients.h (ecipriano sandbox)
-# for plic_gradient; no repo src/ or OpenSMOKE. Serial and MPI variants get
-# distinct binary names, so switching options never reuses a stale binary.
-# Movies (-DMOVIE in the .c) are NOT handled here -- run those manually, see
-# the note at the bottom.
+# for plic_gradient; no repo src/ or OpenSMOKE. No -D_MPI (serial -- see WHY
+# SERIAL above). Movies (-DMOVIE in the .c) are NOT handled here -- run those
+# manually, see the note at the bottom.
 (
   flock 9
   if [ ! -x "$BIN" ]; then
-    echo "[$(date +%T)] building $BIN (NP=$NP) ..."
-    qcc -O2 -disable-dimensions $QCCMPI \
+    echo "[$(date +%T)] building $BIN (serial) ..."
+    qcc -O2 -disable-dimensions \
         -I"$HOME/basilisk/basilisk-sandbox-ecipriano/src" \
         marangoni-point.c -o "$BIN" -lm
   fi
@@ -116,16 +95,12 @@ if [ "$TASK" -ge "$NTOT" ]; then echo "task $TASK >= $NTOT, nothing to do"; exit
 
 IFS=: read -r MA SC MAR <<< "${POINTS[$TASK]}"
 echo "[$(date +%T)] task $SGE_TASK_ID: Ma=$MA Sc=$SC marangoni=$MAR Ca=$CA"\
-" cells_bl=$CELLS_BL Re=$(awk "BEGIN{print $MA/$SC}") np=$NP (maxlevel derived per point)"
+" cells_bl=$CELLS_BL Re=$(awk "BEGIN{print $MA/$SC}") (maxlevel derived per point)"
 
-# ---- run (filenames are unique per point -> shared results/ is safe) ---------
+# ---- run serial (filenames are unique per point -> shared results/ is safe) --
 # arg 5 is CELLS_BL (grid points across the BL); the binary derives maxlevel.
 cd "$OUT"
-if [ "$NP" -gt 1 ]; then
-  mpirun -np "$NP" "$BIN" "$MA" "$SC" "$CA" "$MAR" "$CELLS_BL" "$TAUMAX"
-else
-  "$BIN" "$MA" "$SC" "$CA" "$MAR" "$CELLS_BL" "$TAUMAX"
-fi
+"$BIN" "$MA" "$SC" "$CA" "$MAR" "$CELLS_BL" "$TAUMAX"
 
 # =============================================================================
 # If you change MAS/SCS, recompute NTOT = 1 + len(MAS)*len(SCS) and update the
@@ -136,13 +111,6 @@ fi
 #       marangoni-point.c -o marangoni-point -lm
 #   ./marangoni-point 100 30 0.05 1 8        # serial; maxlevel derived (=9 here)
 #
-# MPI smoke-test (mpicc in PATH; ranks are chosen at run time by mpirun):
-#   CC99='mpicc -std=c99 -D_XOPEN_SOURCE=700 -D_GNU_SOURCE=1' \
-#     qcc -O2 -disable-dimensions -D_MPI=1 \
-#       -I$HOME/basilisk/basilisk-sandbox-ecipriano/src \
-#       marangoni-point.c -o marangoni-point-mpi -lm
-#   mpirun -np 4 ./marangoni-point-mpi 100 30 0.05 1 8
-#
 # Movies are MANUAL-ONLY (not wired into this script). Build with -DMOVIE and
 # the fb_tiny software GL backend, ffmpeg in PATH (set-ffmpeg), then run the
 # points you want by hand (early-stop is disabled under MOVIE -> full taumax):
@@ -152,8 +120,7 @@ fi
 #
 # COST NOTE: maxlevel scales with Ma (level ~= ceil(log2(CELLS_BL*sqrt(Ma)/R0))),
 # so high-Ma tasks reach level 12-13 and are far heavier than the low-Ma ones (each
-# extra level ~= 4x cells + ~2x steps in 2D-axi). The per-task MPI ranks (-pe mpi N)
-# absorb some of that, but the low-Ma points won't scale past a few ranks (too few
-# cells per rank), so don't request large N for the whole array; expect a long tail
-# on the high-Ma corner regardless. Lower CELLS_BL (e.g. 4) for a cheaper first pass.
+# extra level ~= 4x cells + ~2x steps in 2D-axi). All serial (see WHY SERIAL), so
+# expect a long tail on the high-Ma corner. Lower CELLS_BL (e.g. 4) for a cheaper
+# first pass.
 # =============================================================================

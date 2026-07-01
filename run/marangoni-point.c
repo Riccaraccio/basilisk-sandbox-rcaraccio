@@ -9,7 +9,13 @@ just strips the in-binary loop and the `view.h` movies (no GL on compute nodes),
 adds MPI-safe master-only file writes, and an early-stop at saturation so
 high-enhancement / high-Sc points don't integrate a full (long) diffusive time.
 
-  ./marangoni-point Ma Sc Ca marangoni(0/1) level [taumax]
+  ./marangoni-point Ma Sc Ca marangoni(0/1) cells_per_bl [taumax]
+
+`cells_per_bl` is the number of grid points to place across the interfacial
+concentration boundary layer; `maxlevel` is derived from it (see main()) rather
+than being set directly. With this nondimensionalization Pe = U*R0/D = Ma, so
+delta_c ~ R0/sqrt(Ma) and level = ceil(log2(L0*cells_per_bl*sqrt(Ma)/R0)),
+clamped to [level_min, level_max].
 
 Outputs into the cwd: `uptake-Ma%g-Sc%g.dat` (or `baseline-Sc%g.dat`),
 `profile-...-tau%.2f.dat`, `angnu-...dat`. Aggregate + fit with marangoni-fit.py.
@@ -29,8 +35,8 @@ backend (fb_tiny -> no OpenGL/OSMesa needed); needs ffmpeg in PATH at run time.
       -L$BASILISK/gl -lglutils -lfb_tiny -lm
 Writes `movie-<tag>.mp4` into the cwd: a fixed MOVIE_NFRAMES snapshots per run
 regardless of (Ma,Sc) -- under MOVIE the saturation early-stop is disabled so
-every case integrates the full taumax window. On the cluster, enable via the
-sweep script (MOVIE=1 qsub marangoni-sweep.sge).
+every case integrates the full taumax window. Movie runs are manual-only (the
+sweep script builds without -DMOVIE); launch the points you want by hand.
 */
 
 #define F_ERR 1e-10
@@ -56,7 +62,9 @@ double movie_dt = 1.;           // frame interval in t; real value set in main()
 
 scalar sigmav[], tr[], sexp[];
 
-int runlevel = 7;
+int runlevel = 7;                  // derived in main() from cells_bl (see below)
+int level_min = 6, level_max = 13; // floor / cap on the derived level
+double cells_bl = 2.;              // target grid points across the concentration BL
 double R0 = 0.3, tbc = 1.;
 double Ma = 100., Sc = 1., Ca = 0.05, taumax = 1.0;
 bool marangoni = true;
@@ -71,7 +79,7 @@ int main (int argc, char ** argv) {
   if (argc > 2) Sc        = atof (argv[2]);
   if (argc > 3) Ca        = atof (argv[3]);
   if (argc > 4) marangoni = atoi (argv[4]);
-  if (argc > 5) runlevel  = atoi (argv[5]);
+  if (argc > 5) cells_bl  = atof (argv[5]);
   if (argc > 6) taumax    = atof (argv[6]);
 
   lambda = 1./Sc;
@@ -83,6 +91,17 @@ int main (int argc, char ** argv) {
   movie_dt = tEnd/MOVIE_NFRAMES;         // fixed snapshot count over the whole run
 #endif
 
+  /* Resolve the interfacial concentration boundary layer. With this
+     nondimensionalization Pe = U*R0/D = Ma, so delta_c ~ R0/sqrt(Ma). To put
+     cells_bl grid points across it we need Delta = delta_c/cells_bl, i.e.
+     level = ceil(log2(L0/Delta)) = ceil(log2(L0*cells_bl/delta_c)), clamped to
+     [level_min, level_max]. delta_c uses the (thinner) plain Ma^-1/2 estimate,
+     so the Sc^1/6 high-Sc correction never causes under-resolution. */
+  double delta_c = R0/sqrt(Ma);
+  double lvl = ceil (log2 (L0*cells_bl/delta_c));
+  runlevel = (int) clamp (lvl, (double) level_min, (double) level_max);
+  double cells_actual = delta_c*(1 << runlevel)/L0;
+
   rho1 = rho2 = 1.;
   mu1  = mu2  = 1.;
   d.sigmaf = sigmav;
@@ -90,11 +109,18 @@ int main (int argc, char ** argv) {
 
   init_grid (1 << runlevel);
 
-  if (pid() == 0)
+  if (pid() == 0) {
     fprintf (stderr, "# Ma=%g Sc=%g Ca=%g marangoni=%d level=%d taumax=%g | "
-             "D=%g Dsigma=%g sigma0=%g U=%g Re=%g tEnd=%g\n",
+             "D=%g Dsigma=%g sigma0=%g U=%g Re=%g tEnd=%g | "
+             "delta_c=%g cells_bl(target=%g actual=%g)\n",
              Ma, Sc, Ca, marangoni, runlevel, taumax,
-             lambda, dsigma, sigma0, U, Ma/Sc, tEnd);
+             lambda, dsigma, sigma0, U, Ma/Sc, tEnd,
+             delta_c, cells_bl, cells_actual);
+    if (cells_actual < cells_bl - 0.5)
+      fprintf (stderr, "# WARNING: BL under-resolved (level capped at %d): "
+               "%g < %g cells across delta_c\n",
+               level_max, cells_actual, cells_bl);
+  }
 
   run();
 }
@@ -207,7 +233,7 @@ event logfile (i += 5) {
 #endif                                      //  window so every case yields MOVIE_NFRAMES)
 }
 
-event profiles (i++) {
+event profiles (i += 20) {
   if (!marangoni)
     return 0;
   double tau = t*lambda/(R0*R0);

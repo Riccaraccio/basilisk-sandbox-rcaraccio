@@ -52,12 +52,16 @@ sweep script builds without -DMOVIE); launch the points you want by hand.
 #ifdef MOVIE
 #include "view.h"
 #ifndef MOVIE_NFRAMES
-#define MOVIE_NFRAMES 50        // snapshots per run, independent of setup (override -D)
+#define MOVIE_NFRAMES 80        // snapshots per run, independent of setup (override -D)
 #endif
 double movie_dt = 1.;           // frame interval in t; real value set in main() once
                                 // tEnd is known. MUST be a positive placeholder here:
                                 // Basilisk reads it at event registration (before main)
                                 // to enable the periodic event; 0 would disable it.
+double movie_vecscale = 2e-5;   // vectors() scale; rescaled in main() by ~U^-0.75 so
+                                // the arrow length (scale*|u|, |u|~U) is *mostly* Ma-
+                                // independent but still grows ~U^0.25 -- big enough to
+                                // read "faster" at high Ma without arrows exploding.
 #endif
 
 scalar sigmav[], tr[], sexp[];
@@ -89,6 +93,12 @@ int main (int argc, char ** argv) {
   tEnd   = taumax*R0*R0/lambda;
 #ifdef MOVIE
   movie_dt = tEnd/MOVIE_NFRAMES;         // fixed snapshot count over the whole run
+  /* Arrow length ~ scale*|u| and |u| ~ U = dsigma, which grows with Ma. Compensate
+     only partially (U^-0.75, ALPHA below) so arrows stay readable at high Ma yet
+     still grow ~U^0.25 -- you can see the flow is faster without arrows exploding.
+     Calibrated to the value that looked right at the (Ma=100, Sc=30) reference. */
+  double Uref = 100./(R0*30.), ALPHA = 0.75;
+  movie_vecscale = 2e-5*pow (Uref/U, ALPHA);
 #endif
 
   /* Resolve the interfacial concentration boundary layer. With this
@@ -293,6 +303,7 @@ event movie (t += movie_dt) {
   view(tx=-0.20, ty=-0.20, fov=8);
   draw_vof ("f", lw=2);
   squares ("tr", min=0, max=1);
+  vectors ("u", scale=movie_vecscale);
   char name[120];
   sprintf (name, "movie-%s.mp4", tag);
   save(name);

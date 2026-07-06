@@ -695,9 +695,9 @@ foreach() {
     cpGvh_S = cpG; cpSvh = cpS;
     #endif
 
-    u_prime.x[] = (fsS.x[] > F_ERR) ? 
-                  fsS.x[]*ufsave.x[]*(rhoGvh_S*cpGvh_S)/
-                  (rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1. - ef))
+    double denom = rhoGvh_S*cpGvh_S*ef + rhoSvh*cpSvh*(1. - ef);
+    u_prime.x[] = (fsS.x[] > F_ERR && denom > 0.) ? // denom==0 in unfilled solid faces -> 0/0
+                  fsS.x[]*ufsave.x[]*(rhoGvh_S*cpGvh_S)/denom
                   : 0.;
   }
 

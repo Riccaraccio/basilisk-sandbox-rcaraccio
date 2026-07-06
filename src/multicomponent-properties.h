@@ -34,6 +34,9 @@ void update_properties (void) {
     ThermoState tsGh, tsSh;
     double Diff_coeff[NGS];
     if (f[] > F_ERR && TS[] > 0.) {
+      // porosity fraction eps in [0,1]; the raw ratio can undershoot negative
+      // in f~F_ERR sliver cells, which makes pow(.,4./3.) a NaN (FE_INVALID).
+      double eps_frac = clamp (porosity[]/f[], 0., 1.);
       double xG[NGS], yG[NGS];
       double MWmixG;
       // Update internal gas properties
@@ -65,9 +68,9 @@ void update_properties (void) {
       for(int jj=0; jj<NGS; jj++) {
         scalar DmixGv = DmixGList_S[jj];
         #ifdef CONST_DIFF
-        DmixGv[] = CONST_DIFF*pow(porosity[]/f[], 4./3.);
+        DmixGv[] = CONST_DIFF*pow(eps_frac, 4./3.);
         #else
-        DmixGv[] = Diff_coeff[jj]*pow(porosity[]/f[], 4./3.);
+        DmixGv[] = Diff_coeff[jj]*pow(eps_frac, 4./3.);
         #endif
       }
       
@@ -87,9 +90,9 @@ void update_properties (void) {
       rhoSv[] = tpS.rhov (&tsSh);
       cpSv[] = tpS.cpv (&tsSh);
     
-      coord lambda_pf = pseudo_phase_thermal_conductivity(point, lambdaGv_S[], 
-                                                          porosity[]/f[], 
-                                                          tsSh.T, 
+      coord lambda_pf = pseudo_phase_thermal_conductivity(point, lambdaGv_S[],
+                                                          eps_frac,
+                                                          tsSh.T,
                                                           f);
       foreach_dimension()
         lambda1v.x[] = lambda_pf.x;

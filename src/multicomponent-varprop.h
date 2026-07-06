@@ -180,7 +180,8 @@ event tracer_diffusion (i++) {
         scalar XG = XGList_S[jj];
         scalar XGInt = XGList_Int[jj];
         double Strgrad = ebmgrad (point, XG, fS, fG, fsS, fsG, false, XGInt[], &success);
-        jS[jj] = rhoGvh_S*DmixG[]*Strgrad*gas_MWs[jj]/MWmixG_S[];
+        jS[jj] = (MWmixG_S[] > 0.) ?
+          rhoGvh_S*DmixG[]*Strgrad*gas_MWs[jj]/MWmixG_S[] : 0.; // MW==0 in unfilled cells -> 0/0
         #else
         scalar YG    = YGList_S[jj];
         scalar YGInt = YGList_Int[jj];
@@ -222,7 +223,8 @@ event tracer_diffusion (i++) {
         scalar XG = XGList_G[jj];
         scalar XGInt = XGList_Int[jj];
         double Gtrgrad = ebmgrad (point, XG, fS, fG, fsS, fsG, true, XGInt[], &success);
-        jG[jj] = rhoGvh_G*DmixG[]*Gtrgrad*gas_MWs[jj]/MWmixG_G[];
+        jG[jj] = (MWmixG_G[] > 0.) ?
+          rhoGvh_G*DmixG[]*Gtrgrad*gas_MWs[jj]/MWmixG_G[] : 0.; // MW==0 in unfilled cells -> 0/0
 #else
         scalar YG    = YGList_G[jj];
         scalar YGInt = YGList_Int[jj];

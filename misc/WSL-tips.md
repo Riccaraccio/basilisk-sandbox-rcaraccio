@@ -52,7 +52,7 @@ From **PowerShell as Administrator**:
 ```powershell
 wsl --shutdown
 wsl -l -v                             # find the exact distro name
-wsl --manage <Distro> --set-sparse true
+wsl --manage {Distro} --set-sparse true
 ```
 
 `--set-sparse true` also makes the vhdx auto-shrink going forward, so this stops
@@ -62,7 +62,7 @@ recurring. To compact manually instead:
 wsl --shutdown
 diskpart
 # in diskpart:
-select vdisk file="C:\Users\<you>\AppData\Local\Packages\<UbuntuPkg>\LocalState\ext4.vhdx"
+select vdisk file="C:\Users\{you}\AppData\Local\Packages\{UbuntuPkg}\LocalState\ext4.vhdx"
 attach vdisk readonly
 compact vdisk
 detach vdisk
@@ -85,10 +85,11 @@ ws://localhost:7100
 ```
 
 (WSL2 forwards `localhost` to the distro, but not the `.localdomain` hostname.)
+If this still fails, try switching browser. 
 
 ## MPI runs limited by WSL core count
 
-If an MPI build (`CC='mpicc -D_MPI=<n>' make <case>.tst`) can't use as many ranks as
+If an MPI build (`CC='mpicc -D_MPI={n}' make {case}.tst`) can't use as many ranks as
 expected, WSL may be capped below your physical core count. Check what WSL sees:
 
 ```bash

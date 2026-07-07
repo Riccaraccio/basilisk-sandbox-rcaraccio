@@ -47,17 +47,31 @@ void fsolve_gsl (nls_fun fun,
 
   T = gsl_multiroot_fsolver_hybrids;
   s = gsl_multiroot_fsolver_alloc (T, n);
+
+  /**
+  `hybrids` forms its Jacobian by finite differences and does an internal
+  QR / dogleg step. On a multi-species interface cell whose Jacobian is
+  (near-)singular -- e.g. species sharing identical transport data give
+  linearly dependent columns, and FICK_CORRECTED adds cross-coupling on top --
+  that step divides by a zero pivot. GSL is meant to survive this via its
+  status codes, but Basilisk arms FE_DIVBYZERO|FE_INVALID globally (`set_fpe`),
+  so the internal `0/0` SIGFPEs first. Disable the traps around the solve
+  (mirroring the `view.h`/`draw.h` convention for non-trap-clean code) and rely
+  on GSL's status handling + the finiteness check below. */
+
+  disable_fpe (FE_DIVBYZERO|FE_INVALID);
+
   gsl_multiroot_fsolver_set (s, &f, x);
 
   status = gsl_multiroot_test_residual (s->f, FSOLVE_ABSTOL);
-  
+
   while (status == GSL_CONTINUE && iter < 1000) {
     iter++;
 
     status = gsl_multiroot_fsolver_iterate (s);
 
     if (status)   /* check if solver is stuck */ {
-      fprintf (stderr, "WARNING: Non linear systems solver is stuck for %s: %s\n", 
+      fprintf (stderr, "WARNING: Non linear systems solver is stuck for %s: %s\n",
                         name, gsl_strerror (status));
       break;
     }
@@ -70,8 +84,21 @@ void fsolve_gsl (nls_fun fun,
         gsl_multiroot_test_residual (s->f, FSOLVE_ABSTOL);
   }
 
+  enable_fpe (FE_DIVBYZERO|FE_INVALID);
+
+  /**
+  Only accept a finite solution. A singular/diverged solve can leave non-finite
+  entries in `s->x`; writing those back would silently poison the field (worse
+  than the crash we just prevented), so keep the incoming guess instead. */
+
+  bool valid = true;
   for (unsigned int i=0; i<n; i++)
-    gsl_vector_set(unk, i ,gsl_vector_get (s->x, i));
+    if (!isfinite (gsl_vector_get (s->x, i)))
+      valid = false;
+
+  if (valid)
+    for (unsigned int i=0; i<n; i++)
+      gsl_vector_set(unk, i ,gsl_vector_get (s->x, i));
 
   gsl_multiroot_fsolver_free (s);
   gsl_vector_free (x);

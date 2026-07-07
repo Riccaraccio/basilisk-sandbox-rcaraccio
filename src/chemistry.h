@@ -129,6 +129,10 @@ event reset_sources (i++) {
     omega[] = 0.;
 }
 
+#ifdef CHEMISTRY_LOG
+scalar t_solid[], t_gas[];
+#endif
+
 #ifdef BINNING
 /**
 Scale the gas tracers (species + temperature) of the current cell by a common
@@ -171,6 +175,17 @@ static void accumulate_gas_sources (Point point, double * y0ode) {
 
 event chemistry (i++) {
 
+#ifdef CHEMISTRY_LOG
+  reset ({t_solid, t_gas}, 0.);
+  double time_mpi[npe()];
+
+  for (int pe = 0; pe < npe(); pe++)
+    time_mpi[pe] = 0.;
+
+  struct timespec start, end;
+  clock_gettime (CLOCK_MONOTONIC, &start);
+#endif
+
 #ifdef SOLVE_TEMPERATURE
   odefunction batch = &solid_batch_nonisothermal_constantpressure;
   unsigned int NEQ = NGS + NSS + 1 + 1; //NGS + NSS + porosity + T
@@ -185,11 +200,12 @@ event chemistry (i++) {
   because the volume of the solid phase is variable due to porosity changes.
   */
   foreach ()
-    if (f[] > F_ERR && TS[] > 0.) {
-      // Skip cells whose reactor seed would be empty. The seed is
-      // gasmass = YG/f * rhoGvh * porosity (see below); when it is all zero the
-      // gas-species mole-fraction conversion inside the RHS divides by
-      // sum(y/MW) == 0 -> SIGFPE. Gate on the three factors before mutating state.
+    if (f[] > F_ERR) {
+      double temperature = TS[]/f[];
+      // Reject two FPE triggers before mutating state, both of which make the
+      // gas-species mole-fraction conversion in the RHS divide by sum(y/MW)==0:
+      //  - sliver-garbage temperature (TS/f outside a physical window);
+      //  - an empty reactor seed (gasmass = YG/f * rhoGvh * porosity, built below).
       double rhoGvh_seed;
       #ifdef VARPROP
       rhoGvh_seed = rhoGv_S[];
@@ -201,7 +217,8 @@ event chemistry (i++) {
         scalar YG = YGList_S[jj];
         ygsum_seed += YG[];
       }
-      if (!(ygsum_seed > 0.) || !(porosity[] > 0.) || !(rhoGvh_seed > 0.))
+      if (!(temperature > 273.) || !(temperature < 3500.) ||
+          !(ygsum_seed > 0.) || !(porosity[] > 0.) || !(rhoGvh_seed > 0.))
         continue;
 
       porosity[] /= f[];
@@ -320,9 +337,8 @@ event chemistry (i++) {
 
   /**
   ## Gas-phase reactions
-  We solve the gas-phase reaction system in each cell where there is
-  no solid present (i.e. f < F_ERR). The system is solved in terms of mass
-  fraction as the volume is occupied only by the gas phase.
+  We solve the gas-phase reaction system in every cell that contains gas
+  (i.e. f < 1 - F_ERR). The system is solved in terms of mass fraction.
   */
 
 #ifdef BINNING
@@ -359,6 +375,17 @@ event chemistry (i++) {
   scalar * fields = list_concat (YGList_G, {TG});
 
   BinTable * table = binning (fields, targets, eps, rhoGv_G, cpGv_G, gasmask);
+
+#ifdef CHEMISTRY_LOG
+  static FILE * fp = NULL;
+  if (!fp) {
+    char name[20];
+    sprintf (name, "bin-%d", pid());
+    fp = fopen (name, "w");
+  }
+  fprintf (fp, "%g %ld %ld\n", t, grid->n, binning_stats(table).nactive);
+  fflush (fp);
+#endif
 
   foreach_bin (table) {
     double y0ode[NGS + 1];
@@ -405,14 +432,17 @@ event chemistry (i++) {
 #else // !BINNING
 
   foreach() {
-    if (f[] < F_ERR && TG[] > 0.) {
+    if (f[] < 1. - F_ERR) {
+      double temperature = TG[]/(1. - f[]);
+      if (!(temperature > 273.) || !(temperature < 3500.))
+        continue;
 
       double y0ode[NGS + 1]; // NGS + T
       for (int jj = 0; jj < NGS; jj++) {
         scalar YG = YGList_G[jj];
         y0ode[jj] = YG[]/(1. - f[]);
       }
-      y0ode[NGS] = TG[]/(1. - f[]);
+      y0ode[NGS] = temperature;
 
       UserDataODE data;
       data.P = Pref + p[];
@@ -447,5 +477,27 @@ event chemistry (i++) {
     }
   }
 #endif // BINNING
+
+#ifdef CHEMISTRY_LOG
+  clock_gettime (CLOCK_MONOTONIC, &end);
+  time_mpi[pid()] = (end.tv_sec - start.tv_sec) +
+                    (end.tv_nsec - start.tv_nsec)*1e-9;
+@if _MPI
+  if (pid() == 0) {
+    MPI_Reduce(MPI_IN_PLACE, time_mpi, npe(), MPI_DOUBLE,
+        MPI_SUM, 0, MPI_COMM_WORLD);
+  } else {
+    MPI_Reduce(time_mpi, NULL, npe(), MPI_DOUBLE,
+        MPI_SUM, 0, MPI_COMM_WORLD);
+  }
+@endif
+
+  fprintf (stderr, "%g ", t);
+
+  for (int pe = 0; pe < npe(); pe++)
+    fprintf (stderr, "%g ", time_mpi[pe]);
+
+  fprintf (stderr, "\n");
+#endif
 }
 #endif // TURN_OFF_REACTIONS

@@ -40,7 +40,7 @@ void update_mole_fields() {
         scalar YG = YGList_S[jj];
         yG[jj] = YG[];
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmix, yG);
+      mole_from_mass (xG, &MWmix, yG, NGS);
       // MWmixG_S[] = MWmix; // Already done in update_properties()
       for (int jj = 0; jj < NGS; jj++) {
         scalar XG = XGList_S[jj];
@@ -53,7 +53,7 @@ void update_mole_fields() {
         scalar YG = YGList_G[jj];
         yG[jj] = YG[];
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmix, yG);
+      mole_from_mass (xG, &MWmix, yG, NGS);
       // MWmixG_G[] = MWmix; // Already done in update_properties()
       for (int jj = 0; jj < NGS; jj++) {
         scalar XG = XGList_G[jj];
@@ -148,7 +148,7 @@ event tracer_diffusion (i++) {
         scalar YGInt = YGList_Int[jj];
         yG[jj] = YGInt[];
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixInt, yG);
+      mole_from_mass (xG, &MWmixInt, yG, NGS);
       for (int jj=0; jj<NGS; jj++) {
         scalar XGInt = XGList_Int[jj];
         XGInt[] = xG[jj];

@@ -42,8 +42,9 @@ int EqSpecies(const gsl_vector * xdata, void * params, gsl_vector * fdata) {
 
 #ifdef MOLAR_DIFFUSION
   //convert mass to mole fractions
+  // wrapper keeps MWmixInt nonzero on an all-zero iterate (it is a divisor below).
   double XGInti[NGS], MWmixInt;
-  OpenSMOKE_MoleFractions_From_MassFractions(XGInti, &MWmixInt, YGInti);
+  mole_from_mass (XGInti, &MWmixInt, YGInti, NGS);
 #endif
 
   for (int jj = 0; jj < NGS; jj++) {

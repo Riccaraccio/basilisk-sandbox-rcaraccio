@@ -186,6 +186,24 @@ event chemistry (i++) {
   */
   foreach ()
     if (f[] > F_ERR && TS[] > 0.) {
+      // Skip cells whose reactor seed would be empty. The seed is
+      // gasmass = YG/f * rhoGvh * porosity (see below); when it is all zero the
+      // gas-species mole-fraction conversion inside the RHS divides by
+      // sum(y/MW) == 0 -> SIGFPE. Gate on the three factors before mutating state.
+      double rhoGvh_seed;
+      #ifdef VARPROP
+      rhoGvh_seed = rhoGv_S[];
+      #else
+      rhoGvh_seed = rhoG;
+      #endif
+      double ygsum_seed = 0.;
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_S[jj];
+        ygsum_seed += YG[];
+      }
+      if (!(ygsum_seed > 0.) || !(porosity[] > 0.) || !(rhoGvh_seed > 0.))
+        continue;
+
       porosity[] /= f[];
 
       double y0ode[NEQ];

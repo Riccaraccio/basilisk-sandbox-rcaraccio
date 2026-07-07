@@ -44,7 +44,10 @@ void update_properties (void) {
         scalar YG = YGList_S[jj];
         yG[jj] = YG[]/f[];
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+      // empty pore gas: skip the fill; the gas fields stay at their reset-0 value,
+      // which downstream consumers guard (MW>0 / denom>0) — do NOT fabricate a rho
+      // from zero mole fractions.
+      if (mole_from_mass (xG, &MWmixG, yG, NGS)) {
       MWmixG_S[] = MWmixG;
 
       tsGh.T = TS[]/f[];
@@ -73,7 +76,8 @@ void update_properties (void) {
         DmixGv[] = Diff_coeff[jj]*pow(eps_frac, 4./3.);
         #endif
       }
-      
+      } // internal gas filled
+
       // Update internal solid properties
       double xS[NSS], yS[NSS];
       double MWmixS;
@@ -81,21 +85,23 @@ void update_properties (void) {
         scalar YS = YSList[jj];
         yS[jj] = YS[]/f[];
       }
-      OpenSMOKE_SolidMoleFractions_From_SolidMassFractions (xS, &MWmixS, yS);
-
+      // fully-consumed solid: skip; rhoSv/cpSv/lambda1v stay at reset 0
+      // (guarded by downstream denom>0 checks).
+      if (solid_mole_from_mass (xS, &MWmixS, yS, NSS)) {
       tsSh.T = TS[]/f[];
       tsSh.P = Pref+p[];
       tsSh.x = xS;
 
       rhoSv[] = tpS.rhov (&tsSh);
       cpSv[] = tpS.cpv (&tsSh);
-    
+
       coord lambda_pf = pseudo_phase_thermal_conductivity(point, lambdaGv_S[],
                                                           eps_frac,
                                                           tsSh.T,
                                                           f);
       foreach_dimension()
         lambda1v.x[] = lambda_pf.x;
+      } // internal solid filled
     }
 
     if (f[] < 1. - F_ERR && TG[] > 0.) {
@@ -106,7 +112,8 @@ void update_properties (void) {
         scalar YG = YGList_G[jj];
         yG[jj] = YG[]/(1.-f[]);
       }
-      OpenSMOKE_MoleFractions_From_MassFractions (xG, &MWmixG, yG);
+      // empty external gas: skip the fill (fields stay at reset 0, guarded downstream).
+      if (mole_from_mass (xG, &MWmixG, yG, NGS)) {
       MWmixG_G[] = MWmixG;
 
       tsGh.T = TG[]/(1.-f[]);
@@ -139,6 +146,7 @@ void update_properties (void) {
 
       foreach_dimension()
         lambda2v.x[] = lambdaGv_G[];
+      } // external gas filled
     }
   }
 }

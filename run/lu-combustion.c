@@ -154,7 +154,7 @@ event output (t += 0.1) {
 
   char name[80];
   sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, "w");
+  static FILE * fp = fopen (name, restarted ? "a" : "w");
   fprintf(fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max, T_center, T_surface, TS_avg);
   fflush(fp);
 }

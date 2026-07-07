@@ -100,7 +100,11 @@ void ijc_CoupledTemperature() {
     YASH = YSList[ash_index];
   }
   foreach() {
-    if (f[]>F_ERR && f[] < 1.-F_ERR) {
+    // Need a temperature on both sides for the flux balance to be well posed:
+    // with no solid/gas temperature the conductivities vanish, the 1x1 Jacobian
+    // collapses and the GSL solver FPEs. Skip such degenerate interface cells
+    // (cf. the empty-cell skip in int-concentration.h).
+    if (f[]>F_ERR && f[] < 1.-F_ERR && TS[] > 0. && TG[] > 0.) {
       gsl_vector *unk = gsl_vector_alloc(1);
       gsl_vector_set(unk, 0, TInt[]);
 

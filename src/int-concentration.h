@@ -108,9 +108,19 @@ void intConcentration () {
     if (f[]>F_ERR && f[]<1.-F_ERR) {
 
       gsl_vector* unk = gsl_vector_alloc(NGS);
+      double unktot = 0.;
       for (int jj=0; jj<NGS; jj++) {
         scalar YGInt = YGList_Int[jj];
         gsl_vector_set(unk, jj, YGInt[]);
+        unktot += YGInt[];
+      }
+
+      // Empty interface cell (no gas composition on either side): the flux
+      // balance is degenerate and the GSL hybrids solver FPEs in its internal
+      // step. Nothing to solve — leave the (zero) interface state and skip.
+      if (!(unktot > 0.)) {
+        gsl_vector_free(unk);
+        continue;
       }
 
       UserDataNls data;

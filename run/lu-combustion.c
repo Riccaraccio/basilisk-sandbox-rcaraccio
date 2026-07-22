@@ -34,7 +34,7 @@ pf[right]     = neumann (0.);
 psi[right]    = neumann (0.);
 
 const double tend = 100; //simulation time 100 s
-int maxlevel = 9; int minlevel = 3;
+int maxlevel = 10; int minlevel = 3;
 
 double D0 = 9.5e-3;
 double solid_mass0 = 0.;
@@ -56,7 +56,7 @@ int main() {
 
   G.x = -9.81;
 
-  kinfolder = "biomass/Red-gas-2507";
+  kinfolder = "biomass/Solid-gas-88";
   shift_prod = true;
 
   L0 = 20*D0;
@@ -195,7 +195,7 @@ event movie (t += 1) {
   save ("movie.mp4");
 }
 
-event dump (t += 1) {
+event dump (t = 1; t += 1) {
   dump("last-snapshot");
 }
 

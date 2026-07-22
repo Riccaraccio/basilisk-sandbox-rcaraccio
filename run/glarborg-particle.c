@@ -60,7 +60,7 @@ int main() {
 
   G.x = -9.81;
 
-  kinfolder = "biomass/Red-gas-2507";
+  kinfolder = "biomass/Solid-gas-88";
   shift_prod = true;
   
   if (CASE_NUMBER < 0 || CASE_NUMBER >= 5) {
@@ -71,7 +71,7 @@ int main() {
     H0 = H0_arr[CASE_NUMBER];
   }
 
-  L0 = 20*D0;
+  L0 = 20*max (D0, H0);
   origin (-L0/2, 0);
   emissivity = emissivity_lu;
   init_grid(1 << maxlevel);
@@ -121,7 +121,7 @@ event init (i= 0) {
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
       YG[left] = dirichlet (0.235);
       YG[top] = dirichlet (0.235);
-    }     
+    }
     else {
       YG[left] = dirichlet (0.);
       YG[top] = dirichlet (0.);
@@ -179,11 +179,14 @@ event output (t += 0.01) {
 
 #if TREE
 event adapt (i++) {
-  scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
 
-  adapt_wavelet_leave_interface ({T, u.x, u.y, fuel, oxidiser, porosity}, {f},
-    (double[]){5.e0, 1.e-1, 1.e-1, 1e-1, 1e-2, 1e-1}, maxlevel, minlevel, 2);
+  scalar zdiff[];
+  foreach()
+    zdiff[] = zmix[] - zsto[];
+
+  adapt_wavelet_leave_interface ({T, oxidiser, zdiff}, {f},
+    (double[]){5e0, 1.e-2, 1.e-2}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);
@@ -205,7 +208,7 @@ event movie (t += 0.1) {
   save ("movie.mp4");
 }
 
-event dump (t += 1) {
+event dump (t = 1; t += 1) {
   dump("last-snapshot");
 }
 

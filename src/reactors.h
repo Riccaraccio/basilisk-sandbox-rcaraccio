@@ -11,6 +11,25 @@ The system of ODEs is solved using the *batch* method.
 
 #define R_GAS 8.31446261815324
 
+/**
+The temperature handed to the RHS is an *unconstrained* iterate of the ODE
+integrator: the Gear predictor and the finite-difference Jacobian of
+`FindCorrection` can evaluate the system at a negative (or NaN) temperature,
+even when the initial and final states are perfectly physical. OpenSMOKE's
+`Set{Gas,Sol}Prop_SetTemperature` takes `log(T)` (Arrhenius/PLOG), so such an
+iterate raises FE_INVALID and SIGFPEs on machines with traps armed. The
+kinetics are meaningful only inside a physical window anyway, so clamp before
+every property call. The comparisons are written so that a NaN falls back to
+`TMIN_ODE` rather than propagating. */
+
+#define TMIN_ODE 200.
+#define TMAX_ODE 5000.
+
+static inline double clamp_temperature (double T) {
+  T = (T > TMIN_ODE) ? T : TMIN_ODE;
+  return (T < TMAX_ODE) ? T : TMAX_ODE;
+}
+
 typedef struct {
   double rhos;
   double rhog;
@@ -40,7 +59,7 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
   double* sources = data.sources;
 
   double epsilon = y[NGS+NSS];
-  double Temperature = data.T;
+  double Temperature = clamp_temperature (data.T);
 
   epsilon = clamp(epsilon, 0., 1.);
 
@@ -120,7 +139,7 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
 
   UserDataODE data = *(UserDataODE *)args;
   double epsilon = y[NGS+NSS];
-  double Temperature = y[NGS+NSS+1];
+  double Temperature = clamp_temperature (y[NGS+NSS+1]);
 
   epsilon = clamp(epsilon, 0., 1.);
 
@@ -236,7 +255,7 @@ solve chemical species reactions in the gas phase
 void gas_batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
 
   UserDataODE data = *(UserDataODE *)args;
-  double Temperature = y[NGS];
+  double Temperature = clamp_temperature (y[NGS]);
 
   OpenSMOKE_GasProp_SetTemperature (Temperature);
   OpenSMOKE_GasProp_SetPressure (data.P);

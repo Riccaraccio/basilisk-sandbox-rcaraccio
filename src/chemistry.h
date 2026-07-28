@@ -285,6 +285,21 @@ event chemistry (i++) {
 #endif
 
       /**
+      A diverged solve returns a non-finite state; writing it back poisons the
+      fields (and the next step's source prediction) far worse than losing one
+      cell's reaction step, so keep the pre-integration state instead. */
+
+      bool valid = true;
+      for (int jj = 0; jj < NEQ; jj++)
+        if (!isfinite (y0ode[jj]))
+          valid = false;
+
+      if (!valid) {
+        porosity[] *= f[]; // undo the tracer-form conversion above
+        continue;
+      }
+
+      /**
       The source term is predicted once, at the converged end-of-step state
       (exact as dt -> 0), rather than being accumulated from the solver's
       internal RHS evaluations. */
@@ -460,6 +475,18 @@ event chemistry (i++) {
         recommended as they are usually stiff.
         */
       OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dt, y0ode, &data);
+
+      /**
+      Keep the pre-integration state if the solve diverged (see the solid
+      branch above). */
+
+      bool valid = true;
+      for (int jj = 0; jj < NGS + 1; jj++)
+        if (!isfinite (y0ode[jj]))
+          valid = false;
+
+      if (!valid)
+        continue;
 
       /**
         The source term is predicted once, at the converged end-of-step state

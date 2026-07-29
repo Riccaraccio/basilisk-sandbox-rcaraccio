@@ -126,7 +126,7 @@ double opensmoke_optically_thin (void * p) {
   double T = otp->T, P = otp->P, * x = otp->x;
 
   OpenSMOKE_GasProp_SetTemperature (T);
-  OpenSMOKE_GasProp_SetPressure (P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (P));
   double kPlanckMix = OpenSMOKE_GasProp_kPlanckMix (x);
 
   return -4.*STEFAN_BOLTZMANN*kPlanckMix*( pow (T, 4.) - pow (TG0, 4.) );

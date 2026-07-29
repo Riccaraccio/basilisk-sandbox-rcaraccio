@@ -64,7 +64,7 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
   epsilon = clamp(epsilon, 0., 1.);
 
   OpenSMOKE_SolProp_SetTemperature (Temperature);
-  OpenSMOKE_SolProp_SetPressure (Pressure);
+  OpenSMOKE_SolProp_SetPressure (clamp_pressure (Pressure));
 
   double gasmass[NGS]; double totgasmass = 0.;
   for (int jj=0; jj<NGS; jj++) {
@@ -144,9 +144,9 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
   epsilon = clamp(epsilon, 0., 1.);
 
   OpenSMOKE_SolProp_SetTemperature (Temperature);
-  OpenSMOKE_SolProp_SetPressure (data.P);
+  OpenSMOKE_SolProp_SetPressure (clamp_pressure (data.P));
   OpenSMOKE_GasProp_SetTemperature (Temperature);
-  OpenSMOKE_GasProp_SetPressure (data.P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (data.P));
 
   double totgasmass = 0.;
   double gasmassfracs[NGS], gasmolefracs[NGS];
@@ -258,7 +258,7 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   double Temperature = clamp_temperature (y[NGS]);
 
   OpenSMOKE_GasProp_SetTemperature (Temperature);
-  OpenSMOKE_GasProp_SetPressure (data.P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (data.P));
 
   // Unpack mass fractions
   double gasmassfracs[NGS], gasmolefracs[NGS];

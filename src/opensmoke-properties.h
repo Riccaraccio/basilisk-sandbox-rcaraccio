@@ -10,50 +10,50 @@ The properties are computed as a function of the local thermodynamic state, whic
 double opensmoke_gasprop_density (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
-  OpenSMOKE_GasProp_SetPressure (ts->P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (ts->P));
   double MWmix = OpenSMOKE_MolecularWeight_From_MoleFractions (ts->x);
-  return OpenSMOKE_GasProp_Density_IdealGas (ts->T, ts->P, MWmix);
+  return OpenSMOKE_GasProp_Density_IdealGas (ts->T, clamp_pressure (ts->P), MWmix);
 }
 
 double opensmoke_gasprop_viscosity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
-  OpenSMOKE_GasProp_SetPressure (ts->P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (ts->P));
   return OpenSMOKE_GasProp_DynamicViscosity (ts->x);
 }
 
 double opensmoke_gasprop_thermalconductivity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
-  OpenSMOKE_GasProp_SetPressure (ts->P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (ts->P));
   return OpenSMOKE_GasProp_ThermalConductivity (ts->x);
 }
 
 double opensmoke_gasprop_heatcapacity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
-  OpenSMOKE_GasProp_SetPressure (ts->P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (ts->P));
   return OpenSMOKE_GasProp_HeatCapacity (ts->x);
 }
 
 void opensmoke_gasprop_diff (void * p, double * Dmix) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
-  OpenSMOKE_GasProp_SetPressure (ts->P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (ts->P));
   OpenSMOKE_GasProp_Dmix (ts->x, Dmix);
 }
 
 void opensmoke_gasprop_species_heatcapacity (void * p, double * cpi) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_GasProp_SetTemperature (ts->T);
-  OpenSMOKE_GasProp_SetPressure (ts->P);
+  OpenSMOKE_GasProp_SetPressure (clamp_pressure (ts->P));
   OpenSMOKE_GasProp_HeatCapacity_PureSpecies (cpi);
 }
 
 double opensmoke_solprop_heatcapacity (void * p) {
   ThermoState * ts = (ThermoState *)p;
   OpenSMOKE_SolProp_SetTemperature (ts->T);
-  OpenSMOKE_SolProp_SetPressure (ts->P);
+  OpenSMOKE_SolProp_SetPressure (clamp_pressure (ts->P));
   return OpenSMOKE_SolProp_HeatCapacity (ts->x);
 }
 

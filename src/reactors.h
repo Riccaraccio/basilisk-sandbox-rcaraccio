@@ -54,7 +54,7 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
 
   UserDataODE data = *(UserDataODE *)args;
   double rhos = data.rhos;
-  double Pressure = data.P;
+  double Pressure = clamp_pressure (data.P);
   double z = data.zeta;
   double* sources = data.sources;
 
@@ -64,7 +64,7 @@ void solid_batch_isothermal_constantpressure (const double* y, const double dt, 
   epsilon = clamp(epsilon, 0., 1.);
 
   OpenSMOKE_SolProp_SetTemperature (Temperature);
-  OpenSMOKE_SolProp_SetPressure (clamp_pressure (Pressure));
+  OpenSMOKE_SolProp_SetPressure (Pressure);
 
   double gasmass[NGS]; double totgasmass = 0.;
   for (int jj=0; jj<NGS; jj++) {
@@ -140,13 +140,14 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
   UserDataODE data = *(UserDataODE *)args;
   double epsilon = y[NGS+NSS];
   double Temperature = clamp_temperature (y[NGS+NSS+1]);
+  double Pressure = clamp_pressure (data.P);
 
   epsilon = clamp(epsilon, 0., 1.);
 
   OpenSMOKE_SolProp_SetTemperature (Temperature);
-  OpenSMOKE_SolProp_SetPressure (clamp_pressure (data.P));
+  OpenSMOKE_SolProp_SetPressure (Pressure);
   OpenSMOKE_GasProp_SetTemperature (Temperature);
-  OpenSMOKE_GasProp_SetPressure (clamp_pressure (data.P));
+  OpenSMOKE_GasProp_SetPressure (Pressure);
 
   double totgasmass = 0.;
   double gasmassfracs[NGS], gasmolefracs[NGS];
@@ -163,7 +164,7 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
   double MWgasMix;
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWgasMix, gasmassfracs);
 
-  double ctot = data.P/(R_GAS*1000*Temperature); // kmol/m3
+  double ctot = Pressure/(R_GAS*1000*Temperature); // kmol/m3
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
@@ -256,9 +257,10 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
 
   UserDataODE data = *(UserDataODE *)args;
   double Temperature = clamp_temperature (y[NGS]);
+  double Pressure = clamp_pressure (data.P);
 
   OpenSMOKE_GasProp_SetTemperature (Temperature);
-  OpenSMOKE_GasProp_SetPressure (clamp_pressure (data.P));
+  OpenSMOKE_GasProp_SetPressure (Pressure);
 
   // Unpack mass fractions
   double gasmassfracs[NGS], gasmolefracs[NGS];
@@ -270,7 +272,7 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   OpenSMOKE_MoleFractions_From_MassFractions(gasmolefracs, &MWMix, gasmassfracs);
 
   // Calculate concentrations and reaction rates
-  double ctot = data.P/(R_GAS*1000*Temperature); // kmol/m3
+  double ctot = Pressure/(R_GAS*1000*Temperature); // kmol/m3
   double cgas[NGS], rgas[NGS];
   for (int jj=0; jj<NGS; jj++) {
     cgas[jj] = ctot*gasmolefracs[jj];
@@ -285,7 +287,7 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
 
   OpenSMOKE_OpticallyThinProperties otp;
   otp.T = Temperature;
-  otp.P = data.P;
+  otp.P = Pressure;
   otp.x = gasmolefracs;
 
   double QRgas = OpenSMOKE_GasProp_HeatRelease (rgas);

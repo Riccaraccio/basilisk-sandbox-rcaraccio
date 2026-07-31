@@ -318,6 +318,7 @@ The mask field is an Heaviside function which excludes cells with null values.
 This is useful in multiphase codes, when we want to integrate the systems just
 in specific cells. */
 
+trace
 BinTable * binning (scalar * fields, scalar * targets, double * eps,
     (const) scalar rho = unity, (const) scalar cp = unity,
     (const) scalar mask = unity)

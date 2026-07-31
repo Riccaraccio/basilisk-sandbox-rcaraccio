@@ -452,6 +452,17 @@ event chemistry (i++) {
       if (!(temperature > 273.) || !(temperature < 3500.))
         continue;
 
+      // Freshly-uncovered cells can carry an all-zero composition: the RHS
+      // clamps each species to >= 0, so an empty vector reaches the
+      // mole-fraction conversion as MW = 1/0 (mirrors the solid-branch gate).
+      double ygsum_seed = 0.;
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        ygsum_seed += YG[];
+      }
+      if (!(ygsum_seed > 0.))
+        continue;
+
       double y0ode[NGS + 1]; // NGS + T
       for (int jj = 0; jj < NGS; jj++) {
         scalar YG = YGList_G[jj];

@@ -12,7 +12,9 @@ $$
 $$
 Note that the permeability tensor **K** (Da in the code) can reach very small values.
 Therefore, an implicit treatment of the Darcy and Forchheimer
-terms must and is here implemented.
+terms must and is here implemented. 
+In case of isotropic permeability, the previous ODE can be integrated exactly.
+
 
 Extern variables defined elsewhere:
 
@@ -43,6 +45,7 @@ to account for anisotropic porous media. Units: m^2
 
 coord Da = {1e-10, 1e-10};
 
+
 /**
 ## Viscous term event
 After the viscous term is computed, this event modifies the velocity field
@@ -53,6 +56,9 @@ event viscous_term (i++) {
 /**
 We leave the option to apply a correction before and after the Darcy
 as this may be useful in some cases (e.g., high external flows).
+
+We also leave the option to integrate the ODE exactly instead of
+linearizing the Forchheimer term, by defining *DARCY_EXACT_ODE*.
 */
 #ifndef NO_DARCY_CORRECTION
   correction(dt);
@@ -72,11 +78,21 @@ as this may be useful in some cases (e.g., high external flows).
       rhoGh = rhoG;
       #endif
 
+      #ifndef DARCY_EXACT_ODE
       foreach_dimension() {
         double A = muGh*e/(Da.x*rhoGh);     // Darcy term
         double B = F*Umag*e/sqrt(Da.x);     // Forchheimer term
         u.x[] *= exp(-(A + B)*dt*f[]);
       }
+      #else
+
+      double A = muGh*e/(Da.x*rhoGh);       // Darcy coefficient, 1/s
+      double C = F*e/sqrt(Da.x);            // Forchheimer coefficient, 1/m
+      double Af = A*f[], Cf = C*f[];
+      double x = Af*dt;
+      foreach_dimension()
+        u.x[] *= exp(-x)/(1. + Cf*Umag/Af*(1. - exp(-x)));
+      #endif
     }
   }
 #ifndef NO_DARCY_CORRECTION

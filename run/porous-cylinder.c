@@ -2,8 +2,8 @@
 # Wake forming behind a porous cylinder
 This is a simulation of the flow past a porous cylinder testing the 
 implementation of the Darcy-Forchheimer model in Basilisk.
-We consider a 2D domain with a cylinder of radius R0 placed at the symmetry 
-axis. The flow is driven by a constant inflow velocity U0 at the left 
+We consider a 2D domain with a cylinder of radius R0 placed at the symmetry
+axis. The flow is driven by a constant inflow velocity U0 at the left
 boundary. We set the fluid viscosity muG to achieve a specified Reynolds
 number. This test case is inspired by the work of [Yu et al. (2011)](https://doi.org/10.1016/j.compfluid.2010.09.040).
 
@@ -11,17 +11,21 @@ We run several cases varying the permeability of the porous medium,
 represented by the Darcy number Da. The wake length is measured as the point at
 which *u.x* along the centerline (y=0) becomes zero again after the cylinder.
 
-![Streamlines behind a porous cylinder for Da=0.001](porous-cylinder/streamlines.png)(width="800" height="600")
+![Streamlines behind a porous cylinder for Da=0.001](porous-cylinder/streamlines.png)(width="800" height="250")
 
 ## Simulation parameters
+As in Yu et al., the domain is 60 diameters wide and the simulation is run
+until steady state.
 */
-int maxlevel = 9;         // Maximum refinement level
+#define DARCY_EXACT_ODE
+
+int maxlevel = 11;        // Maximum refinement level
 double Re = 20;           // Reynolds number
-double R0 = 0.5;          // Cylinder radius 
+double R0 = 0.5;          // Cylinder radius
 double U0 = 1.;           // Inflow velocity
 double epsi0 = 0.7;       // Porosity
-double side_length = 15.; // Domain length in terms of R0
-double tend = 10.;        // End time
+double side_length = 60.; // Domain length in terms of R0
+double tend = 150.;       // End time
 
 #include "navier-stokes/centered.h"
 #include "two-phase.h"
@@ -201,12 +205,13 @@ event movie (t = end) {
     poisson(strline, omega);
     boundary({strline});
 
+    // The translations are normalised by L0
     view(quat = {0.000, 0.000, 0.000, 1.000},
          fov = 30, near = 0.01, far = 1000,
-         tx = -0.03, ty = -0.05, tz = -0.3,
-         width = 1920, height = 1080);
+         tx = -0.45/L0, ty = -0.55/L0, tz = -2.05/L0,
+         width = 1920, height = 600);
     draw_vof(c = "f");
-    isoline(phi = "strline", n = 100, min = U0*L0*0.99, max = U0*L0*1.01);
+    isoline(phi = "strline", n = 100, min = U0*(L0 - 0.15), max = U0*(L0 + 0.15));
     save("streamlines.png");
   }
 } 
@@ -247,25 +252,24 @@ do for [i=1:7] {
   # Initialize variables for finding zero crossing
   x_prev = 0
   y_prev = 0
-  x_at_zero = 0
+  x_at_zero = X0 # Fallback if u.x never becomes positive again
 
-  # Read through the file to find sign change
+  # Read through the file, keeping the last negative-to-positive crossing:
+  # at high permeability the recirculation bubble detaches from the cylinder,
+  # so the first crossing marks its start and not the wake length
   do for [j=0:STATS_records-1] {
     stats filename using (column(1)):(column(2)) every ::j::j nooutput
     x_curr = STATS_min_x
     y_curr = STATS_min_y
 
-    # Check if y changes sign between previous and current point
-    if (j > 0) {
-      if ((y_prev * y_curr < 0) && (x_curr > 0.55)) {
-        # Linear interpolation to find x where y=0
+    if (j > 0 && x_curr > 0.55 && y_prev < 0) {
+      # Linear interpolation to find x where y=0
+      if (y_curr > 0) {
         x_at_zero = x_prev - y_prev * (x_curr - x_prev) / (y_curr - y_prev)
-        break
       }
       # Also check if y is exactly 0
       if (y_curr == 0) {
         x_at_zero = x_curr
-        break
       }
     }
 
@@ -293,7 +297,7 @@ set xrange [5e-6:1e-2]
 set yrange [0:1.]
 set grid
 
-Wake_Embed = 0.923063153 # Obtained from a separate simulation using the embed method
+Wake_Embed = 0.909783 # Obtained from a separate simulation using the embed method
 
 plot x_zero u  (Da[$1]):(x_zero[$1]) w lp notitle pt 4 lc "blue" lw 2,\
       "../../data/porouscylinder/yuData" u 1:2 w p pt 6 lc "red" t "Yu et al. (2011)", \

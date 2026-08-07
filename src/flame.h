@@ -93,7 +93,11 @@ event flame (t += FLAME_PRINT_TIME) {
   */
 
   foreach()
+#ifdef VARPROP
     chi[] = (rhoGv_G[]*cpGv_G[] > 0.) ? 2.*lambdaGv_G[]/rhoGv_G[]/cpGv_G[]*sq (gzmixmag[]) : 0.;
+#else
+    chi[] = (rhoG*cpG > 0.) ? 2.*lambdaG/rhoG/cpG*sq (gzmixmag[]) : 0.;
+#endif
 
   /**
   We compute the flame interface field. */

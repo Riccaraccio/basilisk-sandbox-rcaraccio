@@ -11,7 +11,7 @@
 #include "darcy.h"
 //#include "flame.h"
 
-const double Uin = 0.5; //inlet velocity
+const double Uin = 0.13; //inlet velocity
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
@@ -24,18 +24,18 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = neumann (0.);
 
-double tend = 15;
+double tend = 150;
 int maxlevel = 9, minlevel = 2;
 double solid_mass0 = 0.;
-double D0 = 3e-3;
+double D0 = 8e-3;
 
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
 int main() {
 
-  TS0 = 300.; TG0 = 1473.;
-  rhoS = 1000;
-  eps0 = 0.4;
+  TS0 = 300.; TG0 = 1123.;
+  rhoS = 1550;
+  eps0 = 0.2;
 
   rhoG    = 0.31;      // air ~1100 K, 1 atm
   muG     = 4.5e-5;
@@ -147,7 +147,7 @@ event output (t += 0.01) {
   }
 
   // Interpolate Water vapor mass fraction
-  double Tavg[3], sample_points[3] = {D0/2 + 1e-3, D0/2 + 2e-3, D0/2 + 4e-3};
+  double Tavg[3], sample_points[3] = {D0/2 + 2e-3, D0/2 + 4e-3, D0/2 + 11e-3};
 
   const double L_flame_exp = 20e-3/2;
 

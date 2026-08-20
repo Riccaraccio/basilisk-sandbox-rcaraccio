@@ -109,11 +109,13 @@ void set_zeta (enum zeta_types zeta_policy) {
   }
 
   case ZETA_REACTION: {
-    scalar o[];
-    foreach()
-      o[] = omega[]*f[];
 
-    double o_max = statsf(o).max;
+    double o_max = 1e-100;
+    foreach (reduction(max:o_max)) {
+      double o = omega[]*f[];
+      if (f[] > F_ERR && o > o_max)
+        o_max = o;
+    }
 
     foreach() {
       zeta[] = o_max > F_ERR ? omega[]/o_max : 0.;

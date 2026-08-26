@@ -204,11 +204,9 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
   for (int jj=0; jj<NGS; jj++)
     rgas_pure[jj] = 0.;
 
-#ifdef GAS_PHASE_REACTIONS
   OpenSMOKE_GasProp_ReactionRates (cgas);
   OpenSMOKE_GasProp_FormationRates (rgas_pure); //[kmol/m3_gas/s]
   QRgas = OpenSMOKE_GasProp_HeatRelease (rgas_pure);
-#endif
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]* (rgas[jj]*(1-epsilon) + rgas_pure[jj]*epsilon);

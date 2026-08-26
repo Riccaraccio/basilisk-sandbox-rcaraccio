@@ -165,8 +165,20 @@ event init (i= 0) {
   }
 }
 
+/**
+Line diagnostics along the line x = x_interp, from y = 0 to y = length.
+
+Caution: the three functions below sample a fixed lattice of spacing
+length/n_samples that does not follow the grid. Keep that spacing at or below
+the cell size, or the quadrature throws away what the grid resolves. The
+defaults below give length/n_samples = Delta/2, which is two samples per finest
+cell. That is enough, because interpolate_linear holds no information below
+Delta.
+*/
+
 // Prints profile of a scalar at a given x location for all y form 0 to L0/2
-void print_profile (scalar f, double x_interp, FILE* fp, double time, int n_samples = 100, const double length = L0/2) {
+void print_profile (scalar f, double x_interp, FILE* fp, double time,
+                    int n_samples = 1 << maxlevel, const double length = L0/2) {
   double step = length/n_samples;
   for (double yy = 0.; yy <= length; yy += step) {
     double val = interpolate (f, x_interp, yy);
@@ -175,7 +187,8 @@ void print_profile (scalar f, double x_interp, FILE* fp, double time, int n_samp
 }
 
 // Calculates the H2O-density path-averaged temperature
-double T_H2O_weigthed_average (double x_interp, int n_samples = 100, const double length = L0/2) {
+double T_H2O_weigthed_average (double x_interp, int n_samples = 1 << (maxlevel - 1),
+                               const double length = L0/4.) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
   double numerator = 0., denominator = 0.;
@@ -186,14 +199,15 @@ double T_H2O_weigthed_average (double x_interp, int n_samples = 100, const doubl
     denominator += xH2O_local / interpolate_linear (point, T, pos.x, pos.y, pos.z);
   }
 
-  if (denominator < SEPS) // avoid division by 0
+  if (denominator <= 0) // avoid division by 0
     return TG0;
 
   return numerator/denominator;
 }
 
 // Calculates the path-averaged xH2O mole fraction 
-double path_average_XH2O (double x_interp, const int n_samples = 100, const double length = L0/2) {
+double path_average_XH2O (double x_interp, const int n_samples = 1 << (maxlevel - 1),
+                          const double length = L0/4.) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
 
   double numerator = 0., count = 0.;
@@ -211,15 +225,15 @@ event print_profile (t += 0.1; t <= 100) {
   scalar XOH = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
 
   // Temperature profiles
-  print_profile (T, H0/2 + 2e-3, fTprofile_2mm, t, 200, L0/2);
-  print_profile (T, H0/2 + 11e-3, fTprofile_11mm, t, 200, L0/2);
+  print_profile (T, H0/2 + 2e-3, fTprofile_2mm, t);
+  print_profile (T, H0/2 + 11e-3, fTprofile_11mm, t);
 
   // Water vapor mole fraction profile
-  print_profile (XH2O, H0/2 + 2e-3, fxH2Oprofile_2mm, t, 200, L0/2);
-  print_profile (XH2O, H0/2 + 11e-3, fxH2Oprofile_11mm, t, 200, L0/2);
+  print_profile (XH2O, H0/2 + 2e-3, fxH2Oprofile_2mm, t);
+  print_profile (XH2O, H0/2 + 11e-3, fxH2Oprofile_11mm, t);
 
-  print_profile (XOH, H0/2 + 2e-3, fxOHprofile_2mm, t, 200, L0/2);
-  print_profile (XOH, H0/2 + 11e-3, fxOHprofile_11mm, t, 200, L0/2);
+  print_profile (XOH, H0/2 + 2e-3, fxOHprofile_2mm, t);
+  print_profile (XOH, H0/2 + 11e-3, fxOHprofile_11mm, t);
 
   fflush (fTprofile_2mm);
   fflush (fTprofile_11mm);
@@ -233,9 +247,8 @@ event output (t += 0.1) {
   // Interpolate Water vapor mass fraction
   double xH2O[5], sample_points[5] = {H0/2 + 2e-3, H0/2 + 4e-3, H0/2 + 8e-3, H0/2 + 11e-3, H0/2 + 15e-3};
 
-  const double L_flame_exp = 30e-3/2;
   for (int ii = 0; ii < 5; ii++)
-    xH2O[ii] = path_average_XH2O (sample_points[ii], 200, L_flame_exp);
+    xH2O[ii] = path_average_XH2O (sample_points[ii]);
 
   // Interpolate temperature
   double Tavg[5];
@@ -243,7 +256,7 @@ event output (t += 0.1) {
     if (xH2O[ii] < 1e-4)
       Tavg[ii] = TG0; //ambient temperature
     else
-      Tavg[ii] = T_H2O_weigthed_average (sample_points[ii], 200, L_flame_exp);
+      Tavg[ii] = T_H2O_weigthed_average (sample_points[ii]);
 
   //log mass profile
   double solid_mass = 0.;

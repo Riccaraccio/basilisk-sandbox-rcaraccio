@@ -150,26 +150,101 @@ static void scale_gas_tracers (Point point, double factor) {
 
 #ifdef VARPROP
 /**
-Predict the gas-phase reaction source at the (post-integration) state `y0ode`
-(species mass fractions in `[0..NGS-1]`, temperature in `[NGS]`) and accumulate
-it into the divergence/energy source fields of the current cell. Shared by the
-binning and per-cell paths. */
+## Gas-phase reaction source for the low-Mach divergence
 
-static void accumulate_gas_sources (Point point, double * y0ode) {
+`DYDtG_G` [kg/m3/s] and `DTDtG` [W/m3] carry the gas-phase reaction
+contribution into `drhodt`, and therefore into the right-hand side of the
+pressure Poisson equation. Two forms are available.
+
+`gas_source_averaged = false` re-evaluates the reactor right-hand side at the
+converged end-of-step state. That is the rate at one single state. Near a stiff
+flame a cell alternates between "reacting" and "burnt out" from one step to the
+next, so this rate flickers, and the flicker goes directly into the velocity
+field. The velocity field then moves the flame, which changes the rate again.
+
+`gas_source_averaged = true` (the default) uses the step-averaged rate,
+`(state_end - state_start)/dt`. The integrator already produced both states, so
+this costs one subtraction and no extra call to the reactor. It is the exact
+mean of the same quantity over the step, it is conservative, and it removes the
+end-state sensitivity.
+
+`rhoGv_G` and `cpGv_G` do not change during the chemistry event. The same
+values therefore weight the start state and the end state, and the source stays
+an exact `rhoGv_G*dY/dt` and `rhoGv_G*cpGv_G*dT/dt`. This is what `divu2` in
+`multicomponent-properties.h` needs: it divides by the same two fields, so the
+result is the mole-number change rate and the thermal expansion rate.
+
+Caution: with the averaged form, `TURN_OFF_HEAT_OF_REACTION` also removes the
+heat release from the expansion source. The instantaneous form keeps it, because
+it fills `sources[NGS]` before it zeroes `dy[NGS]`.
+
+Compile with `-DGAS_SOURCE_AVERAGED=0` to select the instantaneous form, or
+assign `gas_source_averaged` in `main()` to override the compiled default.
+*/
+
+#ifndef GAS_SOURCE_AVERAGED
+# define GAS_SOURCE_AVERAGED 1
+#endif
+
+bool gas_source_averaged = GAS_SOURCE_AVERAGED;
+
+/**
+Instantaneous form: one extra evaluation of the reactor at the state `ys`. */
+
+static void gas_sources_instantaneous (Point point, const double * ys) {
   UserDataODE data;
   data.P = Pref + p[];
-  data.T = y0ode[NGS];
+  data.T = ys[NGS];
   double sources[NGS + 1];
   data.sources = sources;
 
   double dy_tmp[NGS + 1];
-  gas_batch_nonisothermal_constantpressure (y0ode, dt, dy_tmp, &data);
+  gas_batch_nonisothermal_constantpressure (ys, dt, dy_tmp, &data);
 
   for (int jj = 0; jj < NGS; jj++) {
     scalar DYDtGjj = DYDtG_G[jj];
     DYDtGjj[] += sources[jj]*cm[];
   }
   DTDtG[] += sources[NGS]*cm[];
+}
+
+/**
+One half of the averaged form. Call it with `sgn = -1` on the pre-reaction
+state and with `sgn = +1` on the post-reaction state. The split lets the
+binning path avoid a per-cell copy of the whole composition vector.
+
+Caution: `rho` and `cp` are arguments, not reads of `rhoGv_G`/`cpGv_G`. The
+two calls must use the same values, otherwise the result is
+`rho_end*Y_end - rho_start*Y_start`, which folds the density change into the
+species source. In the binning path `binning_remap()` updates `rhoGv_G` and
+`cpGv_G` between the two calls, so the caller keeps the pre-reaction values. */
+
+static void gas_sources_accumulate_state (Point point, const double * ys,
+                                          double rho, double cp, double sgn) {
+  if (!(dt > 0.) || !(rho > 0.) || !(cp > 0.))
+    return;
+
+  double w = sgn*cm[]/dt;
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar DYDtGjj = DYDtG_G[jj];
+    DYDtGjj[] += rho*ys[jj]*w;
+  }
+  DTDtG[] += rho*cp*ys[NGS]*w;
+}
+
+/**
+Convenience wrapper for the per-cell path, which holds both states and where
+`rhoGv_G`/`cpGv_G` do not change over the chemistry event. */
+
+static void accumulate_gas_sources (Point point, const double * ystart,
+                                    const double * yend) {
+  if (gas_source_averaged) {
+    double rho = rhoGv_G[], cp = cpGv_G[];
+    gas_sources_accumulate_state (point, ystart, rho, cp, -1.);
+    gas_sources_accumulate_state (point, yend,   rho, cp, +1.);
+  }
+  else
+    gas_sources_instantaneous (point, yend);
 }
 #endif
 
@@ -374,11 +449,29 @@ event chemistry (i++) {
   and convert their gas fields from VOF-tracer form (`Y*(1-f)`) to the actual
   mass fractions the reactor expects. */
 
-  scalar gasmask[];
+  scalar gasmask[], rho0[], cp0[];
   foreach() {
     gasmask[] = (f[] < 1. - F_ERR && TG[] > 0.) ? 1. : 0.;
-    if (gasmask[])
+    rho0[] = rhoGv_G[], cp0[] = cpGv_G[];
+    if (gasmask[]) {
       scale_gas_tracers (point, 1./(1. - f[]));
+
+      /**
+      First half of the step-averaged source: subtract the pre-reaction state.
+      The loop below adds the post-reaction state over the same `gasmask`, so
+      every cell that gets the subtraction also gets the addition. `rho0` and
+      `cp0` keep the weights that `binning_remap()` is about to overwrite. */
+
+      if (gas_source_averaged) {
+        double ystart[NGS + 1];
+        for (int jj = 0; jj < NGS; jj++) {
+          scalar YG = YGList_G[jj];
+          ystart[jj] = YG[];
+        }
+        ystart[NGS] = TG[];
+        gas_sources_accumulate_state (point, ystart, rho0[], cp0[], -1.);
+      }
+    }
   }
 
   /**
@@ -428,8 +521,8 @@ event chemistry (i++) {
   free (fields), fields = NULL;
 
   /**
-  Predict the gas-phase source terms at the post-reaction state (one local
-  evaluation per cell), then restore the VOF-tracer form of the gas fields. */
+  Second half of the step-averaged source: add the post-reaction state. Then
+  restore the VOF-tracer form of the gas fields. */
 
   foreach() {
     if (gasmask[]) {
@@ -440,7 +533,11 @@ event chemistry (i++) {
       }
       y0ode[NGS] = TG[];
 
-      accumulate_gas_sources (point, y0ode);
+      if (gas_source_averaged)
+        gas_sources_accumulate_state (point, y0ode, rho0[], cp0[], +1.);
+      else
+        gas_sources_instantaneous (point, y0ode);
+
       scale_gas_tracers (point, 1. - f[]); // restore VOF-tracer form
     }
   }
@@ -469,6 +566,16 @@ event chemistry (i++) {
         y0ode[jj] = YG[]/(1. - f[]);
       }
       y0ode[NGS] = temperature;
+
+      /**
+      Keep the pre-reaction state: the step-averaged expansion source needs
+      both ends of the step. The copy is local and is discarded below. */
+
+#ifdef VARPROP
+      double ystart[NGS + 1];
+      for (int jj = 0; jj < NGS + 1; jj++)
+        ystart[jj] = y0ode[jj];
+#endif
 
       UserDataODE data;
       data.P = Pref + p[];
@@ -500,11 +607,13 @@ event chemistry (i++) {
         continue;
 
       /**
-        The source term is predicted once, at the converged end-of-step state
-        (exact as dt -> 0), rather than accumulated during integration. */
+        The expansion source is taken over the whole step, as
+        `(state_end - state_start)/dt`, which is conservative. Set
+        `gas_source_averaged = false` to recover the older instantaneous form,
+        evaluated at the converged end-of-step state. */
 
 # ifdef VARPROP
-      accumulate_gas_sources (point, y0ode);
+      accumulate_gas_sources (point, ystart, y0ode);
 # endif
 
       for (int jj = 0; jj < NGS; jj++) {

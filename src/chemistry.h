@@ -174,19 +174,80 @@ an exact `rhoGv_G*dY/dt` and `rhoGv_G*cpGv_G*dT/dt`. This is what `divu2` in
 `multicomponent-properties.h` needs: it divides by the same two fields, so the
 result is the mole-number change rate and the thermal expansion rate.
 
+## The weight of the increment
+
+The exact quantity is not `rho*(Y_end - Y_start)/dt`. It is
+
+    (1/dt) * integral of rho(tau)*dY/dtau dtau
+
+so the weight must represent `rho` over the whole step, not at one end of it.
+`gas_source_rho_mean = false` (the default) uses `rhoGv_G`, the value at the
+step start. In a burning cell the gas expands and `rho` falls by about 30% in
+one step, so the start value weights the increment too much.
+
+`gas_source_rho_mean = true` uses the mean of the start and the end values,
+`0.5*(rho_start + rho_end)`. `test/gas-source-cell.c` measures both against a
+sub-stepped reference over 13 states, with `T` from 1200 to 2100 K, the fuel
+mass fraction from 0.02 to 0.20, and `dt` from 2e-6 to 2e-4 s:
+
+    weight       mean ratio to the reference    worst
+    rho_start              1.174                1.234
+    mean                   1.012                1.025
+
+`cp` stays at the start value. The mean of `cp` changes the result by 0.2%,
+which does not pay for the extra call to the property library. The mean of
+`rho` needs no call at all: `1/MW = sum_j Y_j/MW_j` gives `rho` from the ideal
+gas law with pure arithmetic.
+
+Caution: do not read the end-state density from `data.rhog` after the solve.
+`reactors.h` starts the reactor with `UserDataODE data = *(UserDataODE *)args`,
+so the reactor writes `rhog` and `cpg` in a local copy and the caller keeps the
+old values. `data.sources` behaves differently because it is a pointer. Even
+with a pointer, the last evaluation of the right-hand side is a trial point of
+the stiff solver, not the converged end state.
+
 Caution: with the averaged form, `TURN_OFF_HEAT_OF_REACTION` also removes the
 heat release from the expansion source. The instantaneous form keeps it, because
 it fills `sources[NGS]` before it zeroes `dy[NGS]`.
 
-Compile with `-DGAS_SOURCE_AVERAGED=0` to select the instantaneous form, or
-assign `gas_source_averaged` in `main()` to override the compiled default.
+Compile with `-DGAS_SOURCE_AVERAGED=0` to select the instantaneous form and
+with `-DGAS_SOURCE_RHO_MEAN=1` to select the mean weight, or assign
+`gas_source_averaged` and `gas_source_rho_mean` in `main()` to override the
+compiled defaults. The mean weight applies to the averaged form only. The
+instantaneous form ignores it.
 */
 
 #ifndef GAS_SOURCE_AVERAGED
 # define GAS_SOURCE_AVERAGED 1
 #endif
 
+#ifndef GAS_SOURCE_RHO_MEAN
+# define GAS_SOURCE_RHO_MEAN 0
+#endif
+
+#if defined(BINNING) && GAS_SOURCE_RHO_MEAN
+# error "GAS_SOURCE_RHO_MEAN needs the end state at the time of the start-state\
+ subtraction. The binning path subtracts the start state before the solve and\
+ does not keep it, so the mean weight is not available there yet."
+#endif
+
 bool gas_source_averaged = GAS_SOURCE_AVERAGED;
+bool gas_source_rho_mean = GAS_SOURCE_RHO_MEAN;
+
+/**
+The gas density at the end state, from the ideal gas law. `1/MW` is the sum of
+`Y_j/MW_j`, so this needs no call to the property library. Returns 0 if the
+state is not usable, and the caller then keeps the start value. */
+
+static double gas_end_state_density (Point point, const double * yend) {
+  double invMW = 0.;
+  for (int jj = 0; jj < NGS; jj++)
+    invMW += (yend[jj] > 0. ? yend[jj] : 0.)/gas_MWs[jj];
+  double T = yend[NGS];
+  if (!(invMW > 0.) || !(T > 0.))
+    return 0.;
+  return (Pref + p[])/(R_GAS*1000.*T*invMW);
+}
 
 /**
 Instantaneous form: one extra evaluation of the reactor at the state `ys`. */
@@ -240,6 +301,18 @@ static void accumulate_gas_sources (Point point, const double * ystart,
                                     const double * yend) {
   if (gas_source_averaged) {
     double rho = rhoGv_G[], cp = cpGv_G[];
+
+    /**
+    The mean weight. Both calls below still use one common `rho`, which is
+    what keeps the result an increment of `Y` and not an increment of
+    `rho*Y`. */
+
+    if (gas_source_rho_mean) {
+      double rho_end = gas_end_state_density (point, yend);
+      if (rho_end > 0.)
+        rho = 0.5*(rho + rho_end);
+    }
+
     gas_sources_accumulate_state (point, ystart, rho, cp, -1.);
     gas_sources_accumulate_state (point, yend,   rho, cp, +1.);
   }

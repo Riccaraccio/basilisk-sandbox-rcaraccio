@@ -124,9 +124,41 @@ event cleanup (t = end) {
   OpenSMOKE_CleanODESolver ();
 }
 
+/**
+## Diagnostics of the solid source
+
+`SOLID_SOURCE_DIAG` adds two fields that explain a flicker of `gas_source`.
+
+`solid_diag[]` records what the solid branch did with the cell: 0 no solid,
+1 the reactor ran, 2 a guard skipped the cell, 3 the solve returned a
+non-finite state. `omega[]` starts every step at zero, and only the case 1
+writes it. The cases 2 and 3 therefore remove the source of that cell for one
+step, and the cell returns the next step. That is a switch, not a rate.
+
+`dTS_step[]` records `|TS_end - TS_start|` over the step, per unit of `f`. It
+decides whether the end-state sampling of `omega` matters. `omega` is read at
+the converged end state, and the Arrhenius factor is exponential in `TS`. With
+`Ea/R = 15000` K at `TS = 800` K, a rise of 10 K changes that factor by about
+26 percent, and a rise of 1 K by about 2 percent. Below 1 K the sampling of
+`omega` cannot explain a visible flicker, because the solid conversion is much
+slower than the step that the gas phase imposes. */
+
+#ifndef SOLID_SOURCE_DIAG
+# define SOLID_SOURCE_DIAG 0
+#endif
+
+#if SOLID_SOURCE_DIAG
+scalar solid_diag[], dTS_step[];
+#endif
+
 event reset_sources (i++) {
-  foreach()
+  foreach() {
     omega[] = 0.;
+#if SOLID_SOURCE_DIAG
+    solid_diag[] = 0.;
+    dTS_step[] = 0.;
+#endif
+  }
 }
 
 #ifdef CHEMISTRY_LOG
@@ -416,6 +448,9 @@ event chemistry (i++) {
   foreach ()
     if (f[] > F_ERR) {
       double temperature = TS[]/f[];
+#if SOLID_SOURCE_DIAG
+      solid_diag[] = 2.;   // a guard below can still skip this cell
+#endif
       // Reject two FPE triggers before mutating state, both of which make the
       // gas-species mole-fraction conversion in the RHS divide by sum(y/MW)==0:
       //  - sliver-garbage temperature (TS/f outside a physical window);
@@ -436,6 +471,9 @@ event chemistry (i++) {
         continue;
 
       porosity[] /= f[];
+#if SOLID_SOURCE_DIAG
+      solid_diag[] = 1.;
+#endif
 
       double y0ode[NEQ];
       UserDataODE data;
@@ -510,8 +548,15 @@ event chemistry (i++) {
 
       if (!valid) {
         porosity[] *= f[]; // undo the tracer-form conversion above
+#if SOLID_SOURCE_DIAG
+        solid_diag[] = 3.;
+#endif
         continue;
       }
+
+#if SOLID_SOURCE_DIAG && defined(SOLVE_TEMPERATURE)
+      dTS_step[] = fabs (y0ode[NGS+NSS+1] - temperature);
+#endif
 
       /**
       The source term is predicted once, at the converged end-of-step state

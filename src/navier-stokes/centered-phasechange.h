@@ -14,6 +14,15 @@ scalar gas_source[];
 scalar drhodt[];
 
 /**
+`div_source` holds the source that the last projection used, so
+`div(uf) = -div_source` after the projection. Without the filter it is the sum
+`gas_source + drhodt`. With the filter it is the filtered sum. A diagnostic
+that checks the divergence budget must read this field, not the two raw
+fields: the projection satisfies the filtered source, not the raw one. */
+
+scalar div_source[];
+
+/**
 ## Filter of the divergence source
 
 `GAS_SOURCE_EXACT` enables two changes to the expansion source. The first one
@@ -106,16 +115,15 @@ mgstats project_sf (face vector uf, scalar p,
   The gas source term and the expansion term enter the divergence together.
   With `GAS_SOURCE_EXACT` the filter above acts on their sum. */
 
-  scalar src[];
   foreach() {
-    src[] = gas_source[];
+    div_source[] = gas_source[];
 #ifndef NO_EXPANSION
-    src[] += drhodt[];
+    div_source[] += drhodt[];
 #endif
   }
 #if GAS_SOURCE_EXACT
   if (gas_source_filter_passes > 0)
-    filter_divergence_source (src);
+    filter_divergence_source (div_source);
 #endif
 
   scalar div[];
@@ -124,7 +132,7 @@ mgstats project_sf (face vector uf, scalar p,
     foreach_dimension()
       div[] += uf.x[1] - uf.x[];
     div[] /= dt*Delta;
-    div[] += src[]/dt;
+    div[] += div_source[]/dt;
   }
 
 #ifdef POROUS_ADVECTION
@@ -202,6 +210,7 @@ event defaults (i = 0) {
   foreach(){
     gas_source[] = 0.;
     drhodt[] = 0.;
+    div_source[] = 0.;
   }
 }
 

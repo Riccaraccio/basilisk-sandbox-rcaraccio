@@ -13,6 +13,17 @@ scalar rhoGv_G0[], rhoGv_S0[];
 extern scalar porosity;
 scalar DTDtS[], DTDtG[];
 scalar * DYDtG_G = NULL;
+
+/**
+With `GAS_SOURCE_EXACT`, `chemistry.h` writes the expansion rate of the
+gas-phase reactions here, as `cm[]*ln(rho_start/rho_end)/dt` per unit volume
+of gas. `update_divergence()` adds it to `divu2`. The reaction part then does
+not pass through `DYDtG_G` and `DTDtG`, and those two fields carry only the
+diffusion and the interface terms. */
+
+#if GAS_SOURCE_EXACT
+scalar drhodt_chem[];
+#endif
 scalar * DYDtG_S = NULL;
 
 trace
@@ -205,6 +216,9 @@ event reset_sources (i++) {
   foreach() {
     DTDtG[] = 0.;
     DTDtS[] = 0.;
+#if GAS_SOURCE_EXACT
+    drhodt_chem[] = 0.;
+#endif
   }
 
   reset (DYDtG_G, 0.);
@@ -429,7 +443,12 @@ void update_divergence (void) {
       divu2species += 1./gas_MWs[jj]*DYDtGjj[];
     }
     divu2 += (rhoGv_G[] > 0.) ? MWmixG_G[]/rhoGv_G[]*divu2species : 0.;
-    
+
+#if GAS_SOURCE_EXACT
+    // Exact step mean of the expansion from the gas-phase reactions
+    divu2 += drhodt_chem[];
+#endif
+
     // Volume averaged contributions
     drhodt[] = divu1*f[] + divu2*(1. - f[]);
 

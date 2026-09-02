@@ -14,6 +14,82 @@ scalar gas_source[];
 scalar drhodt[];
 
 /**
+## Filter of the divergence source
+
+`GAS_SOURCE_EXACT` enables two changes to the expansion source. The first one
+lives in `chemistry.h`: the chemistry part of `drhodt` becomes the exact step
+mean of the expansion, `ln(rho_start/rho_end)/dt`. The second one lives here: a
+short diffusion filter acts on the sum `gas_source + drhodt` before the
+projection. Compile with `-DGAS_SOURCE_EXACT=1` to select both.
+
+Why a filter: in a stiff flame the reaction sheet is one cell thick, so the
+source that reaches the Poisson solver is a delta on one cell. That cell hops
+from one step to the next, and the velocity field hops with it. The heat that a
+cell releases in one step diffuses over `sqrt(alpha*dt)` before the next step,
+which is one to two cells in `fatehi-combustion.c`. A filter of that width puts
+the expansion where the physics puts it anyway. A wider filter is not physical:
+the velocity divergence no longer matches the density change of the cell.
+
+The filter is explicit diffusion in `gas_source_filter_passes` passes. One
+pass applies `D*tau = Delta_min^2/(4*dimension)`, with `Delta_min` the size of
+the finest cell. At that level the centre keeps one half of its value and the
+neighbours share the other half. The width grows as
+`sigma^2 = passes*Delta_min^2/(2*dimension)`. In two dimensions 4 passes give
+`sigma = Delta_min`. Coarse cells receive the same `D*tau`, so the physical
+width is the same everywhere and the explicit step stays stable. Set
+`gas_source_filter_passes = 0` to keep the exact source and switch the filter
+off.
+
+The filter conserves the total source. `gas_source` and `drhodt` carry the
+metric `cm[]`, so the filter divides by `cm[]` first, diffuses the unweighted
+rate with the face metric `fm.x`, and multiplies by `cm[]` after. The flux is
+per unit face area, in the convention of `bcg.h`, so the face average that
+Basilisk applies at a level jump keeps the flux the same on both sides. At the
+axis of an axisymmetric case `fm.y` is zero, and at the domain boundary the
+default symmetry condition gives a zero flux. `test/gas-source-filter.c` checks
+the conservation on a tree with a level jump.
+
+The source of `psi` in `velocity-potential.h` is not filtered. The interface
+must move with the local consumption of the solid. */
+
+#if GAS_SOURCE_EXACT
+# ifndef GAS_SOURCE_FILTER_PASSES
+#  define GAS_SOURCE_FILTER_PASSES 4
+# endif
+int gas_source_filter_passes = GAS_SOURCE_FILTER_PASSES;
+
+static void filter_divergence_source (scalar s)
+{
+  scalar q[];
+  foreach()
+    q[] = (cm[] > 0.) ? s[]/cm[] : 0.;
+
+  int maxl = 0;
+  foreach (reduction(max:maxl))
+    if (level > maxl)
+      maxl = level;
+  double dmin = L0/(1 << maxl);
+  const double Dtau = sq(dmin)/(4.*dimension);
+
+  for (int pass = 0; pass < gas_source_filter_passes; pass++) {
+    face vector flux[];
+    foreach_face()
+      flux.x[] = fm.x[]*(q[] - q[-1])/Delta;
+    foreach()
+      if (cm[] > 0.) {
+        double d = 0.;
+        foreach_dimension()
+          d += flux.x[1] - flux.x[];
+        q[] += Dtau*d/(Delta*cm[]);
+      }
+  }
+
+  foreach()
+    s[] = q[]*cm[];
+}
+#endif
+
+/**
 ## Projection method with gas source term
 We modify the Projection method to account for the gas source term
 in the continuity equation.
@@ -26,21 +102,29 @@ mgstats project_sf (face vector uf, scalar p,
      int nrelax = 4)
 {
 
+  /**
+  The gas source term and the expansion term enter the divergence together.
+  With `GAS_SOURCE_EXACT` the filter above acts on their sum. */
+
+  scalar src[];
+  foreach() {
+    src[] = gas_source[];
+#ifndef NO_EXPANSION
+    src[] += drhodt[];
+#endif
+  }
+#if GAS_SOURCE_EXACT
+  if (gas_source_filter_passes > 0)
+    filter_divergence_source (src);
+#endif
+
   scalar div[];
   foreach() {
     div[] = 0.;
     foreach_dimension()
       div[] += uf.x[1] - uf.x[];
     div[] /= dt*Delta;
-
-    /**
-    We add the gas source term to the divergence field
-    */
-
-    div[] += gas_source[]/dt;
-#ifndef NO_EXPANSION
-    div[] += drhodt[]/dt;
-#endif
+    div[] += src[]/dt;
   }
 
 #ifdef POROUS_ADVECTION

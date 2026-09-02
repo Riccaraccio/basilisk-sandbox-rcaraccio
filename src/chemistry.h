@@ -215,7 +215,53 @@ with `-DGAS_SOURCE_RHO_MEAN=1` to select the mean weight, or assign
 `gas_source_averaged` and `gas_source_rho_mean` in `main()` to override the
 compiled defaults. The mean weight applies to the averaged form only. The
 instantaneous form ignores it.
+
+## The exact expansion
+
+Both forms above feed `divu2` in `update_divergence()`, which divides them by
+`T`, `rho`, `cp` and `MWmixG_G`. `T` is the end value, the other three are the
+values that the last `update_properties()` wrote, so the start values.
+`test/gas-source-cell.c` measures the effect of these frozen denominators: in
+a burning cell at `dt = 2e-4` s the result sits 8 to 27 percent under the
+exact expansion. `gas_source_rho_mean` does not repair that, because the error
+is in the denominators and not in the weight.
+
+The exact step mean of the expansion at constant pressure needs no
+denominators. The expansion rate is `-d(ln rho)/dt`, so its mean over the step
+is the closed form
+
+    ln(rho_start/rho_end)/dt
+
+and both densities follow from the ideal gas law with `1/MW = sum_j Y_j/MW_j`.
+The pressure cancels in the ratio. `GAS_SOURCE_EXACT` selects this form. The
+chemistry event then writes `cm[]*ln(rho_start/rho_end)/dt` to `drhodt_chem`,
+per unit volume of gas, and `update_divergence()` adds it to `divu2` with the
+same `(1-f)` weight as the other terms. The reaction part no longer passes
+through `DYDtG_G` and `DTDtG`. With this flag `gas_source_averaged` and
+`gas_source_rho_mean` have no effect.
+
+The same flag switches on the filter of the divergence source in
+`navier-stokes/centered-phasechange.h`. Set `gas_source_filter_passes = 0`
+there to keep the exact source and remove the filter.
+
+The exact form covers the gas-phase reactions of the external gas only. The
+pore gas inside the solid keeps the source vector of the reactor, because its
+temperature equation carries the heat capacity of the solid and of the gas
+together, and the closed form does not apply there.
+
+Caution: `TURN_OFF_HEAT_OF_REACTION` zeroes the temperature increment of the
+reactor, so with the exact form the heat release also leaves the expansion.
+This matches the averaged form.
 */
+
+#ifndef GAS_SOURCE_EXACT
+# define GAS_SOURCE_EXACT 0
+#endif
+
+#if defined(BINNING) && GAS_SOURCE_EXACT
+# error "GAS_SOURCE_EXACT is not available with BINNING. The binning path\
+ does not keep the start state of each cell."
+#endif
 
 #ifndef GAS_SOURCE_AVERAGED
 # define GAS_SOURCE_AVERAGED 1
@@ -249,6 +295,20 @@ static double gas_end_state_density (Point point, const double * yend) {
   return (Pref + p[])/(R_GAS*1000.*T*invMW);
 }
 
+#if GAS_SOURCE_EXACT
+/**
+The exact step mean of the expansion, `ln(rho_start/rho_end)`, from the two
+states of the reactor. Returns 0 if one of the states is not usable. */
+
+static double gas_log_expansion (Point point, const double * ystart,
+                                 const double * yend) {
+  double rho_start = gas_end_state_density (point, ystart);
+  double rho_end = gas_end_state_density (point, yend);
+  if (!(rho_start > 0.) || !(rho_end > 0.))
+    return 0.;
+  return log (rho_start/rho_end);
+}
+#else // !GAS_SOURCE_EXACT
 /**
 Instantaneous form: one extra evaluation of the reactor at the state `ys`. */
 
@@ -292,6 +352,7 @@ static void gas_sources_accumulate_state (Point point, const double * ys,
   }
   DTDtG[] += rho*cp*ys[NGS]*w;
 }
+#endif // GAS_SOURCE_EXACT
 
 /**
 Convenience wrapper for the per-cell path, which holds both states and where
@@ -299,6 +360,10 @@ Convenience wrapper for the per-cell path, which holds both states and where
 
 static void accumulate_gas_sources (Point point, const double * ystart,
                                     const double * yend) {
+#if GAS_SOURCE_EXACT
+  if (dt > 0.)
+    drhodt_chem[] += cm[]*gas_log_expansion (point, ystart, yend)/dt;
+#else
   if (gas_source_averaged) {
     double rho = rhoGv_G[], cp = cpGv_G[];
 
@@ -318,6 +383,7 @@ static void accumulate_gas_sources (Point point, const double * ystart,
   }
   else
     gas_sources_instantaneous (point, yend);
+#endif
 }
 #endif
 

@@ -50,8 +50,27 @@ replace it with a `#ifndef ... 0` default. */
 #endif
 
 /**
-The log needs a value, and the three flags above carry none once they are
+`TURN_OFF_HEAT_OF_REACTION` carries the same trap: `reactors.h` reads it with
+`#ifdef` at lines 237 and 303, so `-DTURN_OFF_HEAT_OF_REACTION=0` would turn
+it ON. Undefine it when the value is 0.
+
+The flag keeps the kinetics of the species and zeroes the temperature source.
+It therefore removes the endothermic arm of the loop and nothing else, which
+is what separates the endothermic closure from the blowing closure. */
+
+#if defined(TURN_OFF_HEAT_OF_REACTION) && !TURN_OFF_HEAT_OF_REACTION
+# undef TURN_OFF_HEAT_OF_REACTION
+#endif
+
+/**
+The log needs a value, and the four flags above carry none once they are
 undefined. */
+
+#ifdef TURN_OFF_HEAT_OF_REACTION
+# define NOHEAT_ON 1
+#else
+# define NOHEAT_ON 0
+#endif
 
 #ifdef MOLAR_DIFFUSION
 # define MOLAR_ON 1
@@ -108,6 +127,69 @@ does not reproduce `~/temp/expansion/avg`. */
 # define DT_VALUE 5e-4
 #endif
 
+/**
+## The timestep pair
+
+`Tmax` is a single-valued function of `dt`: 16 to 29 K for each halving, with
+R^2 = 0.89 in `test-shape`. `dt` itself is quantised, because `dtnext()` snaps
+the step so that the run lands on the four `t += 0.01` events, so `dt` can
+only take the values 0.01/n.
+
+`CFLNUM` makes a constant step possible. With `CFLNUM = 2` the CFL never
+binds, so `DT_VALUE` sets every step, and it still caps a runaway.
+
+Caution: `DT_VALUE` must divide 0.01 exactly, or `dtnext()` subdivides the
+step and `dt` is not constant. Use 2e-4 = 0.01/50, not 1.75e-4.
+
+Caution: `CFL` is assigned in the `defaults` event of
+`navier-stokes/centered.h`, which runs after `main()`. So this value is set in
+`event init` below, never in `main()`. `TOLERANCE` has no such event and stays
+in `main()`.
+
+Caution: at ignition the peak velocity reaches about 2 m/s and the CFL binds
+even at `CFLNUM = 2`. Branch the fixed-step runs from a plateau snapshot, and
+check that column 2 of `expansion.dat` is constant before you quote them. */
+
+#ifndef CFLNUM
+# define CFLNUM 0.8
+#endif
+
+/**
+## The blowing sweep
+
+In the pyrolysis case the Stefan flow is not a perturbation. The blowing
+ratio against the free stream is about 1.06, the Peclet number `v_w R/alpha`
+is 2.5 to 4.4, and the blockage of the conductive flux moves by a factor of 4
+over one cycle. `UIN_VALUE` changes the ratio, so it tests whether the loop
+closes through the blowing.
+
+`v_w` follows the rate of pyrolysis, not `Uin`, so `Uin` changes the ratio and
+not the Peclet number. A larger `Uin` thins the layer and weakens the
+blockage; a smaller `Uin` strengthens it.
+
+Caution: `Uin` also changes the supply of heat, so it changes the rate of
+burn. Compare at matched remaining mass, never at matched time. */
+
+#ifndef UIN_VALUE
+# define UIN_VALUE 0.13
+#endif
+
+/**
+## Pyrolysis only
+
+`PYROLYSIS_ONLY` removes the oxidiser and the reactions of the gas, and
+reproduces `~/temp/10-fatehi/test.c`. The release still oscillates, 7 to 18
+per cent peak-to-peak, so the flame does not close the loop. The case is much
+cheaper and gives 6 cycles in 20 s, against 1.2 to 4.3 cycles in the runs
+with a flame, so it is the correct case for the questions about the loop.
+
+Caution: `biomass/dummy-solid` holds only N2, TAR and H2O. There is no O2, so
+every lookup of it must stay inside the `#else` branch. */
+
+#ifndef PYROLYSIS_ONLY
+# define PYROLYSIS_ONLY 0
+#endif
+
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h" 
@@ -131,7 +213,7 @@ order of the full case. */
 //#include "flame.h"
 #include "view.h"
 
-const double Uin = 0.13; //inlet velocity
+const double Uin = UIN_VALUE; //inlet velocity
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
@@ -159,10 +241,12 @@ int main() {
 
   if (pid() == 0)
     fprintf (stderr, "# ladder: MOLAR=%d FICK=%d MDE=%d MOISTURE=%d GRAVITY=%d"
-                     " SHAPE=%d DIBLASI=%d Da=%g DT=%g maxlevel=%d nranks=%d\n",
+                     " SHAPE=%d DIBLASI=%d Da=%g DT=%g maxlevel=%d"
+                     " CFL=%g Uin=%g PYRO=%d NOHEAT=%d nranks=%d\n",
              MOLAR_ON, FICK_ON, MDE_ON, MOISTURE, GRAVITY, SHAPE,
              EMISSIVITY_DIBLASI, (double) DA_VALUE, (double) DT_VALUE,
-             MAXLEVEL_VALUE, npe());
+             MAXLEVEL_VALUE, (double) CFLNUM, (double) UIN_VALUE,
+             PYROLYSIS_ONLY, NOHEAT_ON, npe());
 
   lambdaSmodel = L_TENWOLDE;
   TS0 = 300.; TG0 = 1123.;
@@ -182,7 +266,11 @@ int main() {
 
   DT = DT_VALUE;
 
+#if PYROLYSIS_ONLY
+  kinfolder = "biomass/dummy-solid";
+#else
   kinfolder = "biomass/dummy-solid-gas";
+#endif
   shift_prod = true;
 
   L0 = 20*D0;
@@ -217,14 +305,24 @@ double r0;
 event init (i = 0) {
   scalar f0[];
 
+  /**
+  Caution: `navier-stokes/centered.h` assigns `CFL = 0.8` in its `defaults`
+  event, which runs after `main()`. So the value belongs here. */
+
+  CFL = CFLNUM;
+
 #if SHAPE
   fraction (f0, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
 #else
   fraction (f0, circle(x, y, 0.5 * D0));
 #endif
 
+#if PYROLYSIS_ONLY
+  gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 1.;
+#else
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.235;
+#endif
 
 #if MOISTURE
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.935; // 93.5% biomass
@@ -244,8 +342,18 @@ event init (i = 0) {
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
 
+  /**
+  Caution: `biomass/dummy-solid` carries no O2, so the lookup of it stays
+  inside the `#else` branch. */
+
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
+#if PYROLYSIS_ONLY
+    if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
+      YG[left] = dirichlet (1.);
+      YG[top] = dirichlet (1.);
+    }
+#else
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
       YG[left] = dirichlet (0.765);
       YG[top] = dirichlet (0.765);
@@ -253,6 +361,7 @@ event init (i = 0) {
       YG[left] = dirichlet (0.235);
       YG[top] = dirichlet (0.235);
     }
+#endif
     else {
       YG[left] = dirichlet (0.);
       YG[top] = dirichlet (0.);

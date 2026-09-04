@@ -183,8 +183,11 @@ per cent peak-to-peak, so the flame does not close the loop. The case is much
 cheaper and gives 6 cycles in 20 s, against 1.2 to 4.3 cycles in the runs
 with a flame, so it is the correct case for the questions about the loop.
 
-Caution: `biomass/dummy-solid` holds only N2, TAR and H2O. There is no O2, so
-every lookup of it must stay inside the `#else` branch. */
+Both branches use `biomass/dummy-solid-gas`; see the note at `kinfolder`
+below. The mechanism therefore holds O2 in either branch, but the
+`PYROLYSIS_ONLY` build sets its mass fraction to zero everywhere. Keep the
+lookups of O2 inside the `#else` branch anyway: they record which build wants
+an oxidiser. */
 
 #ifndef PYROLYSIS_ONLY
 # define PYROLYSIS_ONLY 0
@@ -266,11 +269,31 @@ int main() {
 
   DT = DT_VALUE;
 
-#if PYROLYSIS_ONLY
-  kinfolder = "biomass/dummy-solid";
-#else
+  /**
+  One mechanism for both branches.
+
+  `biomass/dummy-solid` declares only `BIOMASS CHAR` as solid species. It has
+  no `MOIST` and no `ASH`. `lambda_tenwolde` looks up both with the
+  hard-error form (`solid-thermal-conductivity.h:171,173`), so a
+  `PYROLYSIS_ONLY` build with that mechanism stopped at startup with "The
+  requested species MOIST is not available".
+
+  The oxidiser turns the gas phase off, not the mechanism. `PYROLYSIS_ONLY`
+  sets `gas_start` to pure N2 and gives the boundaries the same value, so no
+  reaction of the gas has an oxidiser. The case also defines no
+  `GAS_PHASE_REACTIONS`, so `chemistry.h` integrates no gas kinetics at all.
+
+  Two consequences. The mechanism carries 8 gas species against 3, so the
+  species transport costs about 2.7 times more and a `PYROLYSIS_ONLY` run is
+  slower than it was. And the solid mechanism adds the pair
+  `MOIST => H2O` / `H2O => MOIST`, which stays active whatever `MOISTURE` is,
+  so the pore water of pyrolysis can condense into `MOIST` even in a build
+  that starts dry. Every flame case of the ladder already ran that way, so
+  this makes the two branches consistent; but it means these runs are no
+  longer comparable with `~/temp/{9,10,11}-fatehi`, which used
+  `dummy-solid`. Compare new against new. */
+
   kinfolder = "biomass/dummy-solid-gas";
-#endif
   shift_prod = true;
 
   L0 = 20*D0;
@@ -343,8 +366,8 @@ event init (i = 0) {
   TG[top] = dirichlet (TG0);
 
   /**
-  Caution: `biomass/dummy-solid` carries no O2, so the lookup of it stays
-  inside the `#else` branch. */
+  The mechanism carries O2 in either branch. The `PYROLYSIS_ONLY` build gives
+  it a mass fraction of zero at the boundaries, so the particle sees none. */
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];

@@ -17,6 +17,14 @@
 #include "multicomponent-properties.h"
 #include "chemistry.h"
 
+/**
+The probe of the interface temperature balance. It changes no field. It is
+compiled out unless the case sets `INT_TEMP_PROBE`. */
+
+#if INT_TEMP_PROBE
+# include "int-temperature-probe.h"
+#endif
+
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
@@ -602,6 +610,15 @@ event tracer_diffusion (i++) {
 #  ifndef TEMPERATURE_PROFILE
     diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
 #  endif
+# endif
+
+/**
+Measure the interface balance again, now with the new fields. `TS` and `TG`
+still hold the value of one phase here; the block below puts them back into
+tracer form. */
+
+# if INT_TEMP_PROBE
+  int_temperature_probe();
 # endif
 #endif
 

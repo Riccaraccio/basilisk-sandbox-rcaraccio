@@ -25,11 +25,23 @@ compiled out unless the case sets `INT_TEMP_PROBE`. */
 # include "int-temperature-probe.h"
 #endif
 
+/**
+The record of the Picard loop on the interface temperature. It changes no
+field either. The loop itself is in the `tracer_diffusion` event below. */
+
+#if INT_TEMP_PICARD
+# include "int-temperature-picard.h"
+#endif
+
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
     sST[] = 0.;
     sGT[] = 0.;
+#if INT_TEMP_ROBIN
+    betaST[] = 0.;
+    betaGT[] = 0.;
+#endif
   }
 #endif
 
@@ -73,6 +85,136 @@ void update_mole_fields() {
   boundary (XGList_G); // Ensure boundary conditions are applied
   #endif
 }
+
+#ifdef SOLVE_TEMPERATURE
+/**
+## The interface heat source
+
+This assembles the two interface heat sources `sST` and `sGT`, and, under
+`INT_TEMP_ROBIN`, the two conductances `betaST` and `betaGT`. It was part of
+the species source loop. It is a function of its own so that the Picard loop
+of `INT_TEMP_PICARD` can call it again with an updated `TInt`.
+
+The function adds to the four fields. The caller must set them to a known
+value first. `event reset_sources` does that once per step; the Picard loop
+does it again on each pass.
+
+Caution: `TS` and `TG` must hold the value of one phase here, not the tracer
+form. The event divides them at its start and multiplies them back at its
+end. */
+
+static void interface_temperature_sources (void)
+{
+  bool success = false;
+
+  foreach() {
+    if (f[] > F_ERR && f[] < 1. - F_ERR) {
+      coord n = facet_normal (point, fS, fsS), p;
+      double alpha = plane_alpha (fS[], n);
+      double area = plane_area_center (n, alpha, &p);
+      normalize (&n);
+
+      double bc = TInt[];
+      double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
+      double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true , bc, &success);
+
+      n.x = fabs(n.x); n.y = fabs(n.y);
+
+      double lambda1vh = n.x/(n.x+n.y)*lambda1v.x[] + n.y/(n.x+n.y)*lambda1v.y[];
+      double lambda2vh = n.x/(n.x+n.y)*lambda2v.x[] + n.y/(n.x+n.y)*lambda2v.y[];
+
+      double Sheatflux = lambda1vh*Strgrad;
+      double Gheatflux = lambda2vh*Gtrgrad;
+
+# ifdef AXI
+      double aov = area*(y + p.y*Delta)/(Delta*y)*cm[];
+# else
+      double aov = area/Delta*cm[];
+# endif
+
+      sST[] += Sheatflux*aov;
+      sGT[] += Gheatflux*aov;
+
+/**
+## The interface conductance on the diagonal
+
+`ebmgrad` builds the gradient from the NEIGHBOURS of this cell along the
+normal. The cell value `TG[]` is not in it. So the source that heats a cut
+cell does not answer to the temperature of that cell: the only restoring
+term is the internal diffusion, and the face fractions of a sliver make it
+weak. The heat that one step delivers is then large against the heat
+capacity `theta2 = cm*fG*rhoG*cpG`, which goes to zero with the gas
+fraction. The probe of `int-temperature-probe.h` measures the ratio
+
+    S = dt*lambda*h*aov/theta
+
+and a measured run stopped at S of order 100: the gas temperature of one cut
+cell went through zero and grew by a factor 2.8 per step for five steps.
+
+Add a conductance `K` to the diagonal and give the same `K*T^n` back to the
+source. The step then reads
+
+    (theta/dt + K)(T^{n+1} - T^n) = div(D grad T^{n+1}) + src
+
+so the change per step falls by `1/(1 + K*dt/theta)`, and the effective
+exchange number becomes `dt*A/(theta + K*dt)`. The two added terms cancel
+when the field stops changing, so the fixed point does not move. This is the
+deferred correction of a Dirichlet cut-cell condition: it keeps the accurate
+gradient stencil and only damps the path to it.
+
+Choose `K` to bring the effective exchange number down to
+`INT_TEMP_ROBIN_SMAX` and no further:
+
+    K = max (0, A/SMAX - theta/dt)
+
+A cell already under the limit gets `K = 0` and is untouched, bit for bit.
+Only the cells that the probe reports as unstable change.
+
+`ebmgrad` is affine in the interface value, so `A` is exact. Do not
+finite-difference it. */
+
+# if INT_TEMP_ROBIN
+#  ifndef INT_TEMP_ROBIN_SMAX
+#   define INT_TEMP_ROBIN_SMAX 1.
+#  endif
+      double hS = ebmgrad (point, TS, fS, fG, fsS, fsG, false, 1., &success)
+                - ebmgrad (point, TS, fS, fG, fsS, fsG, false, 0., &success);
+      double hG = ebmgrad (point, TG, fS, fG, fsS, fsG, true,  1., &success)
+                - ebmgrad (point, TG, fS, fG, fsS, fsG, true,  0., &success);
+
+      /**
+      The heat capacity of each phase, exactly as the `diffusion()` call
+      builds `theta1` and `theta2`. Keep the two sites identical. The
+      `VARCOEFF` block later divides `betaST` and `sST` by the same heat
+      capacity that it divides `theta1` by, so `A/theta` is unchanged. */
+
+      double theta1vh, theta2vh;
+#  ifdef VARPROP
+      theta1vh = fS[] > F_ERR ?
+        porosity[]/fS[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.;
+      theta2vh = rhoGv_G[]*cpGv_G[];
+#  else
+      theta1vh = fS[] > F_ERR ?
+        porosity[]/fS[]*rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.;
+      theta2vh = rhoG*cpG;
+#  endif
+      double th1 = cm[]*max(fS[]*theta1vh, F_ERR);
+      double th2 = cm[]*max(fG[]*theta2vh, F_ERR);
+
+      double smax = INT_TEMP_ROBIN_SMAX;
+      double KS = max (0., fabs(lambda1vh*hS)*aov/smax - th1/dt);
+      double KG = max (0., fabs(lambda2vh*hG)*aov/smax - th2/dt);
+
+      betaST[] -= KS;
+      betaGT[] -= KG;
+      sST[] += KS*TS[];
+      sGT[] += KG*TG[];
+# endif
+    }
+  }
+}
+
+#endif
 
 event tracer_diffusion (i++) {
 
@@ -258,27 +400,6 @@ event tracer_diffusion (i++) {
 #endif
       }
 
-#ifdef SOLVE_TEMPERATURE
-      double bc = TInt[];
-      double Strgrad = ebmgrad (point, TS, fS, fG, fsS, fsG, false, bc, &success);
-      double Gtrgrad = ebmgrad (point, TG, fS, fG, fsS, fsG, true , bc, &success);
-
-      n.x = fabs(n.x); n.y = fabs(n.y);
-
-      double lambda1vh = n.x/(n.x+n.y)*lambda1v.x[] + n.y/(n.x+n.y)*lambda1v.y[];
-      double lambda2vh = n.x/(n.x+n.y)*lambda2v.x[] + n.y/(n.x+n.y)*lambda2v.y[];
-
-      double Sheatflux = lambda1vh*Strgrad;
-      double Gheatflux = lambda2vh*Gtrgrad;
-
-# ifdef AXI
-      sST[] += Sheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
-      sGT[] += Gheatflux*area*(y + p.y*Delta)/(Delta*y)*cm[];
-# else
-      sST[] += Sheatflux*area/Delta*cm[];
-      sGT[] += Gheatflux*area/Delta*cm[];
-# endif
-#endif
     }
   }
 
@@ -363,6 +484,28 @@ event tracer_diffusion (i++) {
     }
   }
 #endif //MASS_DIFFUSION_ENTHALPY
+
+#ifdef SOLVE_TEMPERATURE
+
+  /**
+  Assemble the interface heat source. This used to sit inside the species
+  loop above. The move is exact: `sST` and `sGT` are accumulators, the
+  enthalpy block writes only bulk cells, and this writes only interface
+  cells.
+
+  `INT_TEMP_PICARD` keeps a copy of everything that does not depend on
+  `TInt` — the spark of `spark.h` and the enthalpy of mass diffusion — so
+  that each pass of the loop can rebuild the interface part alone. */
+
+# if INT_TEMP_PICARD
+  foreach() {
+    sST_base[] = sST[];
+    sGT_base[] = sGT[];
+  }
+# endif
+
+  interface_temperature_sources();
+#endif
 
 #if defined VARPROP && !defined NO_EXPANSION
   update_divergence();
@@ -559,6 +702,79 @@ event tracer_diffusion (i++) {
   }
 
 #ifdef SOLVE_TEMPERATURE
+
+/**
+## The Picard loop on the interface temperature
+
+The scheme above is partitioned and does no iteration: it builds `TInt` from
+the fields of step `n`, freezes the two interface fluxes into `sST` and `sGT`,
+then solves each phase alone. The interface condition is therefore explicit
+while the interior is implicit, and the lag of `TInt` is first order in `dt`.
+
+`INT_TEMP_PICARD` repeats the pair of solves. Each pass restarts from the
+fields of step `n`, rebuilds the interface source with the newest `TInt`, and
+solves again. At the fixed point the flux balance holds with the new fields on
+both sides, which is the fully implicit interface condition.
+
+Each pass must rebuild the source, the conductance and the heat capacity,
+because `diffusion()` destroys all three of its `r`, `beta` and `theta`
+arguments (`$BASILISK/diffusion.h`). That is why the whole block is inside the
+loop and not only the two solves.
+
+`INT_TEMP_PICARD_MAXITER = 0` gives the present code exactly. Use it as the
+inertness control.
+
+Caution: `ijc_CoupledTemperature()` skips a cell whose `TS` or `TG` is not
+positive, and a skipped cell keeps its old `TInt`. Such a cell adds nothing to
+`dTInt_max` and so it looks converged when it is not. `picard.dat` reports the
+count. Do not trust `dTInt_max` on a step whose count is not zero. */
+
+# if INT_TEMP_PICARD
+#  ifndef INT_TEMP_PICARD_MAXITER
+#   define INT_TEMP_PICARD_MAXITER 5
+#  endif
+#  ifndef INT_TEMP_PICARD_TOL
+#   define INT_TEMP_PICARD_TOL 1e-2
+#  endif
+#  ifndef INT_TEMP_PICARD_OMEGA
+#   define INT_TEMP_PICARD_OMEGA 1.
+#  endif
+#  if defined FIXED_INT_TEMP || defined TEMPERATURE_PROFILE
+#   error "INT_TEMP_PICARD needs a solved TInt. FIXED_INT_TEMP and TEMPERATURE_PROFILE force it."
+#  endif
+
+  foreach() {
+    TS_n[] = TS[];
+    TG_n[] = TG[];
+  }
+
+  ITP_niter = 0.;
+  ITP_dTInt = 0.;
+  ITP_dTInt0 = 0.;
+  ITP_nskip = 0.;
+
+  for (int picard_m = 0; picard_m <= INT_TEMP_PICARD_MAXITER; picard_m++) {
+
+  /**
+  Undo the previous pass. `diffusion()` consumed `sST`, `sGT`, `betaST` and
+  `betaGT`, so restore the part that does not depend on `TInt` and add the
+  interface part again with the new `TInt`. */
+
+    if (picard_m > 0) {
+      foreach() {
+        TS[] = TS_n[];
+        TG[] = TG_n[];
+        sST[] = sST_base[];
+        sGT[] = sGT_base[];
+#  if INT_TEMP_ROBIN
+        betaST[] = 0.;
+        betaGT[] = 0.;
+#  endif
+      }
+      interface_temperature_sources();
+    }
+# endif // INT_TEMP_PICARD
+
   foreach_face() {
     lambda1f.x[] = face_value(lambda1v.x, 0)*fsS.x[]*fm.x[];
     lambda2f.x[] = face_value(lambda2v.x, 0)*fsG.x[]*fm.x[];
@@ -596,21 +812,135 @@ event tracer_diffusion (i++) {
   foreach() {
     sST[] = (f[] > F_ERR) ? sST[] / (rhoG*cpG*porosity[] + rhoS*cpS*(1. - porosity[])) : 0.;
     sGT[] = sGT[] / (rhoG*cpG);
+#if INT_TEMP_ROBIN
+    betaST[] = (f[] > F_ERR) ? betaST[] / (rhoG*cpG*porosity[] + rhoS*cpS*(1. - porosity[])) : 0.;
+    betaGT[] = betaGT[] / (rhoG*cpG);
+#endif
   }
 
   foreach()
     porosity[] *= f[];
 #endif
 
+/**
+## The tolerance of the solid temperature solve
+
+`TOLERANCE` is one number for every solver of the run, but each solver
+compares it against a residual in its own units. The residual of
+`diffusion()` is that of
+
+    theta*(T^{n+1} - T^n)/dt = div(D grad T^{n+1}) + ...
+
+so it carries `rho*cp*K/s`, that is W/m3. The case sets `TOLERANCE = 1e-5`
+for the pressure solve, where the residual is a velocity divergence. Applied
+to the solid temperature that value asks for about ten digits, because
+`rhoS*cpS` is 2.79e6 here.
+
+Scale it to the physics instead. Ask for a residual no larger than the one
+that a temperature error of `INT_TEMP_TOL_K` over one step would make:
+
+    TOLERANCE = rhoS*cpS*INT_TEMP_TOL_K/dt
+
+Restore the old value straight after, because the next solver needs it.
+
+The gas solve keeps the plain `TOLERANCE`. Do NOT copy this line to it with
+`rhoG*cpG`: `run/test.c` never sets `cpG`, so it holds the default of 1
+(`memoryallocation-varprop.h:39`) and the product is meaningless. Under
+`VARPROP` the true gas heat capacity is the field `cpGv_G`, not the scalar.
+A gas version needs a scale of its own, and it is not written yet.
+
+Caution: this changes how hard the solver works, so it changes the answer at
+the level of the old tolerance. Re-measure `rel_max` after you change
+`INT_TEMP_TOL_K`. With `INT_TEMP_PICARD` the outer loop cannot converge below
+what the linear solve delivers, so keep `INT_TEMP_TOL_K` well under
+`INT_TEMP_PICARD_TOL`. */
+
+# ifndef INT_TEMP_TOL_K
+#  define INT_TEMP_TOL_K 1e-6
+# endif
+
 # ifdef EXPLICIT_DIFFUSION
     diffusion_explicit (TS, dt, D=lambda1f, r=sST, theta=theta1);
     diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);
 # else
+    double tol_save = TOLERANCE;
+    TOLERANCE = rhoS*cpS*INT_TEMP_TOL_K/dt;
+#  if INT_TEMP_ROBIN
+    diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
+    TOLERANCE = tol_save;
+#   ifndef TEMPERATURE_PROFILE
+    diffusion (TG, dt, D=lambda2f, r=sGT, beta=betaGT, theta=theta2);
+#   endif
+#  else
     diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
-#  ifndef TEMPERATURE_PROFILE
+    TOLERANCE = tol_save;
+#   ifndef TEMPERATURE_PROFILE
     diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
+#   endif
 #  endif
 # endif
+
+# if INT_TEMP_PICARD
+
+  /**
+  The last pass is the answer. Do not rebuild `TInt` after it: nothing would
+  use the new value, and `update_divergence()` already ran with the first one. */
+
+    if (picard_m == INT_TEMP_PICARD_MAXITER)
+      break;
+
+    foreach()
+      TInt_prev[] = TInt[];
+
+    ijc_CoupledTemperature();
+
+  /**
+  Under-relaxation. The default weight is 1, which is no relaxation at all,
+  so the branch costs one comparison per step. Lower the weight if
+  `picard.dat` shows that `dTInt` does not fall from pass to pass. */
+
+    if (INT_TEMP_PICARD_OMEGA != 1.) {
+      double w = INT_TEMP_PICARD_OMEGA;
+      foreach()
+        if (f[] > F_ERR && f[] < 1. - F_ERR)
+          TInt[] = w*TInt[] + (1. - w)*TInt_prev[];
+    }
+
+  /**
+  The change of this pass, and the cells that `ijc_CoupledTemperature()` did
+  not solve. Its guard is `f[] > F_ERR && f[] < 1.-F_ERR && TS[] > 0. &&
+  TG[] > 0.`, so a cell that fails the last two keeps its old `TInt` and does
+  not appear in `dTInt_max`. Count it, or the loop reports convergence in a
+  cell it never touched. */
+
+    double dTInt_max = 0.;
+    double nint = 0., nskip = 0.;
+    foreach (reduction(max:dTInt_max) reduction(+:nint) reduction(+:nskip))
+      if (f[] > F_ERR && f[] < 1. - F_ERR) {
+        nint += 1.;
+        if (TS[] > 0. && TG[] > 0.)
+          dTInt_max = max (dTInt_max, fabs (TInt[] - TInt_prev[]));
+        else
+          nskip += 1.;
+      }
+
+  /**
+  Keep the change of the first pass as well. The contraction rate of the map
+  is the ratio of the last change to the first, over the passes between them.
+  A ratio taken between two steps measures nothing. */
+
+    if (picard_m == 0)
+      ITP_dTInt0 = dTInt_max;
+
+    ITP_niter = picard_m + 1.;
+    ITP_dTInt = dTInt_max;
+    ITP_nint  = nint;
+    ITP_nskip = nskip;
+
+    if (dTInt_max < INT_TEMP_PICARD_TOL)
+      break;
+  }
+# endif // INT_TEMP_PICARD
 
 /**
 Measure the interface balance again, now with the new fields. `TS` and `TG`

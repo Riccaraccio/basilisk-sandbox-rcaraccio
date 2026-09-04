@@ -18,3 +18,12 @@
 
 # Track post-processing tools kept under misc/
 !misc/**
+
+# The amplitude ladder and its flag sets live here, so a branch must carry it.
+!run/Makefile
+# The gas-source experiment keeps one source. The Makefile creates one
+# symbolic link per case, so the links are not tracked.
+run/gas-source-*.c
+
+# The amplitude ladder does the same. See the test-* block of run/Makefile.
+run/test-*.c

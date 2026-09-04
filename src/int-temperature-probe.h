@@ -86,6 +86,7 @@ and `event intres_output` writes them. */
 double ITP_res_max, ITP_res_l2, ITP_rel_max, ITP_rel_l2;
 double ITP_SG_max, ITP_SS_max, ITP_epsg_at_Smax, ITP_epsg_at_resmax;
 double ITP_epsg_min, ITP_nint, ITP_nS1, ITP_nrel10, ITP_TG_min;
+double ITP_dt;
 double ITP_QS, ITP_QG, ITP_Qrad;
 
 void int_temperature_probe (void)
@@ -233,6 +234,12 @@ void int_temperature_probe (void)
     if (fG[] > F_ERR)
       TG_min = min (TG_min, TG[]);
 
+  /**
+  The step of this solve. The output event runs later, at `i++, last`, where
+  `dt` can already hold the next step. Column 2 must agree with `SG_max`. */
+
+  ITP_dt = dt;
+
   ITP_res_max = res_max;
   ITP_rel_max = rel_max;
   ITP_res_l2  = (nint > 0.) ? sqrt (res_l2/nint) : 0.;
@@ -276,7 +283,7 @@ event intres_output (i++, last) {
                    " TG_min(15) QS(16) QG(17) Qrad(18)\n");
 
     fprintf (fr, "%g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g\n",
-             t, dt, ITP_nint, ITP_res_max, ITP_res_l2, ITP_rel_max,
+             t, ITP_dt, ITP_nint, ITP_res_max, ITP_res_l2, ITP_rel_max,
              ITP_rel_l2, ITP_SG_max, ITP_SS_max, ITP_epsg_at_Smax,
              ITP_epsg_at_resmax, ITP_epsg_min, ITP_nS1, ITP_nrel10,
              ITP_TG_min, ITP_QS, ITP_QG, ITP_Qrad);

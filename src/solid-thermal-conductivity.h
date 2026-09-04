@@ -180,7 +180,28 @@ coord lambda_tenwolde (Point point, double lambdaG, double porosity, double Temp
     double ls = xwood*ls_wood + xch*0.071 + xash*1.2;
 
     double dp  = 4.0e-5 + xch*(2.0e-4 - 4.0e-5);      // wood->char pore growth
-    double rad = 4.*dp*porosity/(1. - porosity)
+
+    /**
+    The factor `porosity/(1. - porosity)` counts the pores against the solid
+    that holds them. It has a pole at `porosity` of 1.
+
+    The caller gives `eps_frac = clamp (porosity[]/f[], 0., 1.)`, and that
+    clamp includes 1. A cell whose solid is fully converted therefore reaches
+    exactly 1, and the line below divides by 0. Basilisk arms
+    `FE_DIVBYZERO`, thus the run stops. This happened on 2026-09-03: `x/i
+    $pc` gave `divsd 0x10(%rsp),%xmm0` in this function, and MXCSR held bit 2
+    (divide by zero) with bit 0 (invalid) and bit 3 (overflow) both clear.
+
+    `EPS_MAX_TENWOLDE` caps the ratio. At the default of 0.99 the ratio stops
+    at 99, which gives about 4 W/m/K for a char pore at 1000 K. The cap
+    changes nothing below that porosity. Set it in the case if the pseudo
+    phase must carry more radiation. */
+
+#ifndef EPS_MAX_TENWOLDE
+# define EPS_MAX_TENWOLDE 0.99
+#endif
+    double eps = min (porosity, EPS_MAX_TENWOLDE);
+    double rad = 4.*dp*eps/(1. - eps)
                  *5.67e-8*pow(Temperature,3)*emissivity(xch, xash);
 
     double lambda = (1. - porosity)*ls + porosity*lambdaG + rad;

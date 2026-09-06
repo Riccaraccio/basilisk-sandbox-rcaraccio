@@ -349,11 +349,23 @@ test-fullrobinls.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBINLOSSY)
 #
 # Read the amplitude the same way for all of them, over a window of at least
 # 19 s. Shorter windows hold about 10 bins in the band and scatter by 4x.
-test-atol2.s:    CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_PROBE)
-test-atol2.tst:  CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_PROBE)
+#
+# They carry the full ladder. Two reasons. The band is 7.43 per cent there
+# against 2.85 in the bare build, so the signal is 2.6 times larger against
+# the same run-to-run scatter. And test-fullprobe is already the matched
+# reference: it is the same flags with the thresholds at their defaults, and
+# it measures 7.43 per cent, the same as test-full, so the probe is inert.
+#
+# Caution: compare them against test-fullprobe, NOT against test-base. The
+# full ladder changes Da, moisture, gravity, shape, emissivity and transport
+# all at once.
+TLAD_ATOL = $(TLAD_FULL) $(TLAD_PROBE)
 
-test-atol4.s:    CFLAGS += -DADAPT_T_TOL=1.25 -DADAPT_O_TOL=2.5e-3 $(TLAD_PROBE)
-test-atol4.tst:  CFLAGS += -DADAPT_T_TOL=1.25 -DADAPT_O_TOL=2.5e-3 $(TLAD_PROBE)
+test-atol2.s:    CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_ATOL)
+test-atol2.tst:  CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_ATOL)
+
+test-atol4.s:    CFLAGS += -DADAPT_T_TOL=1.25 -DADAPT_O_TOL=2.5e-3 $(TLAD_ATOL)
+test-atol4.tst:  CFLAGS += -DADAPT_T_TOL=1.25 -DADAPT_O_TOL=2.5e-3 $(TLAD_ATOL)
 
 # The SMAX ladder. The residual error of the conductance is a LAG of about
 # S/SMAX steps in the cut cells, so it falls as SMAX rises. s20 caps the

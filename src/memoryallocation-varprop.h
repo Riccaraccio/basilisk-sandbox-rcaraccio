@@ -50,6 +50,22 @@ operator. `INT_TEMP_ROBIN` turns it on. See `multicomponent-varprop.h`. */
 
 #if INT_TEMP_ROBIN
 scalar betaST[], betaGT[];
+
+/**
+The work fields that make the conductance conserve energy.
+
+- `KSf`, `KGf` keep the conductance that the step used, so that the debt
+  update can measure the heat it withheld.
+- `TS_rn`, `TG_rn` keep the temperature before the solve.
+- `debtST`, `debtGT` hold that withheld heat, as a rate. The next step adds
+  it back to the source.
+
+The debt is a ONE-STEP carry, not a running sum, so the loss of it costs one
+step. See `int-temperature-robin.h`. */
+
+scalar KSf[], KGf[];
+scalar TS_rn[], TG_rn[];
+scalar debtST[], debtGT[];
 #endif
 
 /**
@@ -337,6 +353,15 @@ for (int jj=0; jj<NGS; jj++) {
 
   sST.nodump = true;
   sGT.nodump = true;
+
+#if INT_TEMP_ROBIN
+  KSf.nodump = true;
+  KGf.nodump = true;
+  TS_rn.nodump = true;
+  TG_rn.nodump = true;
+  debtST.nodump = true;
+  debtGT.nodump = true;
+#endif
 
 #if INT_TEMP_PICARD
   sST_base.nodump = true;

@@ -33,6 +33,14 @@ field either. The loop itself is in the `tracer_diffusion` event below. */
 # include "int-temperature-picard.h"
 #endif
 
+/**
+The record of the interface conductance, and the reason it must give back the
+heat that it holds. It changes no field either. */
+
+#if INT_TEMP_ROBIN
+# include "int-temperature-robin.h"
+#endif
+
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
@@ -157,10 +165,18 @@ source. The step then reads
     (theta/dt + K)(T^{n+1} - T^n) = div(D grad T^{n+1}) + src
 
 so the change per step falls by `1/(1 + K*dt/theta)`, and the effective
-exchange number becomes `dt*A/(theta + K*dt)`. The two added terms cancel
-when the field stops changing, so the fixed point does not move. This is the
-deferred correction of a Dirichlet cut-cell condition: it keeps the accurate
-gradient stencil and only damps the path to it.
+exchange number becomes `dt*A/(theta + K*dt)`. This is the deferred
+correction of a Dirichlet cut-cell condition: it keeps the accurate gradient
+stencil and damps the path to it.
+
+Caution: the two added terms cancel only when the field stops changing. On
+its own this scheme therefore DESTROYS heat while the field moves. When `K`
+fires the diagonal is exactly `A/SMAX`, so the cell keeps `SMAX/S` of the
+heat that the interface gave it — one per cent at `SMAX = 1` and `S = 100`.
+A measured run lost 20 to 25 K of surface temperature and 25 per cent of the
+mass loss rate. `INT_TEMP_ROBIN_DEBT`, which is on by default, carries the
+withheld heat to the next step and removes that loss. Read
+`int-temperature-robin.h` before you change any of this.
 
 Choose `K` to bring the effective exchange number down to
 `INT_TEMP_ROBIN_SMAX` and no further:
@@ -170,12 +186,24 @@ Choose `K` to bring the effective exchange number down to
 A cell already under the limit gets `K = 0` and is untouched, bit for bit.
 Only the cells that the probe reports as unstable change.
 
+**The value of `SMAX` decides whether that last sentence is true.** The first
+version used `SMAX = 1`, which fired on 63 interface cells of about 90 and
+rewrote the answer: `Tsurf` fell 2.1 K by t = 0.3 s and 25 K by t = 8 s, the
+radial velocity at 1.5 mm changed sign, and the `full` ladder died at
+t = 8.48. The default is now 20. It fires on 2 cells, it clamps only the
+outliers that the probe reports, and it reproduces the run without the flag
+to every printed digit over the first 0.3 s.
+
+Caution: 20 is five times below the `S` of 100 that crashed a measured run,
+but the crash case must be repeated at this value. Run `test-robinm` from the
+t = 5 s dump and check that it passes t = 5.94 s before you trust the number.
+
 `ebmgrad` is affine in the interface value, so `A` is exact. Do not
 finite-difference it. */
 
 # if INT_TEMP_ROBIN
 #  ifndef INT_TEMP_ROBIN_SMAX
-#   define INT_TEMP_ROBIN_SMAX 1.
+#   define INT_TEMP_ROBIN_SMAX 20.
 #  endif
       double hS = ebmgrad (point, TS, fS, fG, fsS, fsG, false, 1., &success)
                 - ebmgrad (point, TS, fS, fG, fsS, fsG, false, 0., &success);
@@ -205,10 +233,36 @@ finite-difference it. */
       double KS = max (0., fabs(lambda1vh*hS)*aov/smax - th1/dt);
       double KG = max (0., fabs(lambda2vh*hG)*aov/smax - th2/dt);
 
+      /**
+      Keep the conductance. The debt update after the solve needs it to
+      measure the heat that this step withheld. */
+
+      KSf[] = KS;
+      KGf[] = KG;
+
       betaST[] -= KS;
       betaGT[] -= KG;
+
+      /**
+      Give back the heat that the last step withheld. Without this term the
+      conductance is a heat sink: the cell keeps only `SMAX/S` of what the
+      interface gave it, and the rest is destroyed. With it, the steady
+      heating rate is exact, because `(theta/dt + K) dT = q + K dT` reduces
+      to `(theta/dt) dT = q`. See `int-temperature-robin.h`.
+
+      `debtST` and `debtGT` are constant over a step, so a `INT_TEMP_PICARD`
+      pass that rebuilds the source adds them again, which is correct. */
+
+# ifndef INT_TEMP_ROBIN_DEBT
+#  define INT_TEMP_ROBIN_DEBT 1
+# endif
+# if INT_TEMP_ROBIN_DEBT
+      sST[] += KS*TS[] + debtST[];
+      sGT[] += KG*TG[] + debtGT[];
+# else
       sST[] += KS*TS[];
       sGT[] += KG*TG[];
+# endif
 # endif
     }
   }
@@ -729,6 +783,19 @@ positive, and a skipped cell keeps its old `TInt`. Such a cell adds nothing to
 `dTInt_max` and so it looks converged when it is not. `picard.dat` reports the
 count. Do not trust `dTInt_max` on a step whose count is not zero. */
 
+/**
+Keep the temperature before the solve. The debt update below needs it to
+measure `T^{n+1} - T^n`. Nothing writes `TS` or `TG` between the call to
+`interface_temperature_sources()` above and this point, so the snapshot
+matches the fields that built the source. */
+
+# if INT_TEMP_ROBIN
+  foreach() {
+    TS_rn[] = TS[];
+    TG_rn[] = TG[];
+  }
+# endif
+
 # if INT_TEMP_PICARD
 #  ifndef INT_TEMP_PICARD_MAXITER
 #   define INT_TEMP_PICARD_MAXITER 5
@@ -849,31 +916,58 @@ The gas solve keeps the plain `TOLERANCE`. Do NOT copy this line to it with
 `VARPROP` the true gas heat capacity is the field `cpGv_G`, not the scalar.
 A gas version needs a scale of its own, and it is not written yet.
 
-Caution: this changes how hard the solver works, so it changes the answer at
-the level of the old tolerance. Re-measure `rel_max` after you change
-`INT_TEMP_TOL_K`. With `INT_TEMP_PICARD` the outer loop cannot converge below
-what the linear solve delivers, so keep `INT_TEMP_TOL_K` well under
-`INT_TEMP_PICARD_TOL`. */
+This is OFF unless the case defines `INT_TEMP_TOL_K`. It is off because the
+measurement below shows it does nothing here, not because it is wrong.
 
-# ifndef INT_TEMP_TOL_K
-#  define INT_TEMP_TOL_K 1e-6
-# endif
+Measured 2026-09-04, level 10, the conductance build with the probe: eleven
+runs of 200 s, one at a time, in alternating order, normalised by CPU time.
+
+| `INT_TEMP_TOL_K` | steps per CPU second | answer |
+|---|---|---|
+| off (plain `TOLERANCE = 1e-5`) | 2.200 (sd 0.063) | reference |
+| 1e-6 | 2.214 (sd 0.102) | **byte-identical** |
+
+The two builds give **byte-identical** output over 390 steps: `max|dTsurf|`
+and `max|d res_max|` are exactly zero, not merely small. The speed difference
+of 0.6 % is far inside the run-to-run scatter, which reaches 14 % on repeats
+of the same binary.
+
+So the tolerance is not what stops that solve. `run/test.c` sets
+`NITERMIN = 2`, `mgp_i` is exactly 2 in every run, and two multigrid cycles
+already converge this operator. Nine orders of magnitude of tolerance change
+nothing because the iteration floor binds first, not the tolerance.
+
+Keep the flag: a case whose solid solve really does stall can use it, and it
+costs nothing when it is off. Do not expect it to buy speed.
+
+Caution: measure this kind of change with several alternating runs. A single
+pair on a loaded machine gave 43 % here, which was pure scatter.
+
+Caution: with `INT_TEMP_PICARD` the outer loop cannot converge below what the
+linear solve delivers. Keep `INT_TEMP_TOL_K` well under
+`INT_TEMP_PICARD_TOL`, and re-measure `rel_max` after any change. */
 
 # ifdef EXPLICIT_DIFFUSION
     diffusion_explicit (TS, dt, D=lambda1f, r=sST, theta=theta1);
     diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);
 # else
+# ifdef INT_TEMP_TOL_K
     double tol_save = TOLERANCE;
     TOLERANCE = rhoS*cpS*INT_TEMP_TOL_K/dt;
+# endif
 #  if INT_TEMP_ROBIN
     diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
+# ifdef INT_TEMP_TOL_K
     TOLERANCE = tol_save;
+# endif
 #   ifndef TEMPERATURE_PROFILE
     diffusion (TG, dt, D=lambda2f, r=sGT, beta=betaGT, theta=theta2);
 #   endif
 #  else
     diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
+# ifdef INT_TEMP_TOL_K
     TOLERANCE = tol_save;
+# endif
 #   ifndef TEMPERATURE_PROFILE
     diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
 #   endif
@@ -941,6 +1035,41 @@ what the linear solve delivers, so keep `INT_TEMP_TOL_K` well under
       break;
   }
 # endif // INT_TEMP_PICARD
+
+/**
+The debt of this step: the heat that the conductance withheld, as a rate. The
+next step adds it to the source. `KSf` and `KGf` hold the conductance of the
+LAST pass, which is the pass that produced these temperatures.
+
+The guard is the same one that `interface_temperature_sources()` uses, so a
+cell that is no longer an interface cell gets a debt of zero. That costs one
+step of heat, which is the same bound the carry itself has. */
+
+# if INT_TEMP_ROBIN
+  ITR_debt_max = 0.;
+  ITR_debt_l1 = 0.;
+  ITR_dTcap_max = 0.;
+  ITR_ncap = 0.;
+
+  foreach (reduction(max:ITR_debt_max) reduction(+:ITR_debt_l1)
+           reduction(max:ITR_dTcap_max) reduction(+:ITR_ncap)) {
+    debtST[] = 0.;
+    debtGT[] = 0.;
+    if (f[] > F_ERR && f[] < 1. - F_ERR) {
+      double dTS = TS[] - TS_rn[], dTG = TG[] - TG_rn[];
+      debtST[] = KSf[]*dTS;
+      debtGT[] = KGf[]*dTG;
+
+      if (KSf[] > 0. || KGf[] > 0.) {
+        ITR_ncap += 1.;
+        ITR_debt_max = max (ITR_debt_max,
+                            max (fabs (debtST[]), fabs (debtGT[])));
+        ITR_debt_l1 += (fabs (debtST[]) + fabs (debtGT[]))*dv();
+        ITR_dTcap_max = max (ITR_dTcap_max, max (fabs (dTS), fabs (dTG)));
+      }
+    }
+  }
+# endif
 
 /**
 Measure the interface balance again, now with the new fields. `TS` and `TG`

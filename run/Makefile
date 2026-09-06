@@ -121,7 +121,10 @@ TLAD_CASES = base da moist grav transport emis shape full l11 \
              probe probefl probem \
              robin robinfl robinm \
              picard picardfl picardm picardnr \
-             rdt1 rdt2 pdt1 pdt2
+             rdt1 rdt2 pdt1 pdt2 \
+             fullprobe fullrobin fullpicard \
+             robindb robinls fullrobinls fullrobin20 fullrobininf \
+             atol2 atol4
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -319,11 +322,48 @@ test-probem.tst:    CFLAGS += -DMOISTURE=1 $(TLAD_PROBE)
 # line by line. The pair to run first is probem against robinm: probem stops
 # at t = 5.94 s, so robinm must pass that time.
 #
-# Caution: this changes the transient of the cut cells, not only the
-# stability. The fixed point is the same, because the added terms cancel
-# when the field stops changing. Compare Tsurf and mdot of expansion.dat
-# before you quote a result of a robin build.
+# Caution: on its own the conductance DESTROYS heat while the field moves.
+# The cell keeps only SMAX/S of the interface heat, which was one per cent in
+# a measured run: Tsurf fell 20 to 25 K and mdot 25 per cent, on every ladder.
+# INT_TEMP_ROBIN_DEBT carries the withheld heat to the next step and removes
+# that loss. It is 1 by default. Read src/int-temperature-robin.h.
 TLAD_ROBIN = -DINT_TEMP_ROBIN=1 $(TLAD_PROBE)
+
+# The lossy scheme, for the A/B comparison only. Do not run physics with it.
+TLAD_ROBINLOSSY = -DINT_TEMP_ROBIN_DEBT=0 $(TLAD_ROBIN)
+
+test-robindb.s:     CFLAGS += $(TLAD_ROBIN)
+test-robindb.tst:   CFLAGS += $(TLAD_ROBIN)
+
+test-robinls.s:     CFLAGS += $(TLAD_ROBINLOSSY)
+test-robinls.tst:   CFLAGS += $(TLAD_ROBINLOSSY)
+
+test-fullrobinls.s:   CFLAGS += $(TLAD_FULL) $(TLAD_ROBINLOSSY)
+test-fullrobinls.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBINLOSSY)
+
+# The adapt-threshold ladder, at a FIXED maxlevel of 10. The level ladder
+# (l9/base/l11) changes the finest cell AND the share of the domain that
+# reaches it. These targets change only the second. If the 0.15 to 1.5 Hz band
+# of mdot falls here too, the adapt criterion carries the error and the fix is
+# cheap. If it stays flat, only maxlevel helps.
+#
+# Read the amplitude the same way for all of them, over a window of at least
+# 19 s. Shorter windows hold about 10 bins in the band and scatter by 4x.
+test-atol2.s:    CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_PROBE)
+test-atol2.tst:  CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_PROBE)
+
+test-atol4.s:    CFLAGS += -DADAPT_T_TOL=1.25 -DADAPT_O_TOL=2.5e-3 $(TLAD_PROBE)
+test-atol4.tst:  CFLAGS += -DADAPT_T_TOL=1.25 -DADAPT_O_TOL=2.5e-3 $(TLAD_PROBE)
+
+# The SMAX ladder. The residual error of the conductance is a LAG of about
+# S/SMAX steps in the cut cells, so it falls as SMAX rises. s20 caps the
+# exchange number at 20, well under the 100 that crashed; sinf never fires
+# and must reproduce the no-robin run exactly.
+test-fullrobin20.s:   CFLAGS += $(TLAD_FULL) -DINT_TEMP_ROBIN_SMAX=20. $(TLAD_ROBIN)
+test-fullrobin20.tst: CFLAGS += $(TLAD_FULL) -DINT_TEMP_ROBIN_SMAX=20. $(TLAD_ROBIN)
+
+test-fullrobininf.s:   CFLAGS += $(TLAD_FULL) -DINT_TEMP_ROBIN_SMAX=1e30 $(TLAD_ROBIN)
+test-fullrobininf.tst: CFLAGS += $(TLAD_FULL) -DINT_TEMP_ROBIN_SMAX=1e30 $(TLAD_ROBIN)
 
 test-robin.s:       CFLAGS += $(TLAD_PYRO) $(TLAD_ROBIN)
 test-robin.tst:     CFLAGS += $(TLAD_PYRO) $(TLAD_ROBIN)
@@ -404,3 +444,76 @@ test-pdt1.tst:      CFLAGS += $(TLAD_PICARD) -DDT_VALUE=$(TLAD_DT1) -DCFLNUM=2
 
 test-pdt2.s:        CFLAGS += $(TLAD_PICARD) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
 test-pdt2.tst:      CFLAGS += $(TLAD_PICARD) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
+
+# ---------------------------------------------------------------------------
+# The full case with the modifications, added 2026-09-04.
+#
+# WHY THE FULL CASE. Measured at matched remaining mass (Ms/Ms0 0.87 to 0.55,
+# band 0.10 to 0.45 Hz, restart seams removed), the full case is about twice
+# the reduced case on every instrument that the campaign quotes:
+#
+#   case            mdot pp   Tsurf pp   T2mm..T15mm pp
+#   test-base         5.0 %     4.66 K   8.9 to 10.6 K
+#   test-full         7.6 %    11.32 K   12.4 to 19.5 K
+#   test-transport   10.6 %    12.29 K   27.1 to 40.2 K
+#
+# So the transport rung carries most of the gap, and the full case is where a
+# fix has to prove itself. Caution: the H2O weight of the probes follows
+# MOLAR_DIFFUSION, so only transport and full weight them as the full case
+# does. Compare the probe columns of these five cases with test-full and
+# test-transport only, never with test-base.
+#
+# THE REFERENCE. test-fullprobe is test-full plus the probe. The probe changes
+# no field: test-probefl and test-base give 65.0 against 65.6 per cent on
+# mdot over t = 2.0 to 6.4 s. So test-fullprobe reproduces test-full and adds
+# intres.dat. Run it FIRST. Nothing below can be read without it, because no
+# full-case run has ever written SG_max, and the cut-cell over-drive that
+# test-fullrobin removes has only been measured in the reduced case
+# (test-probe: SG_max mean 133, 57 of 95 interface cells above 1).
+#
+# THE TWO MODIFICATIONS, and what each one tests.
+#
+#   fullrobin   The conductance on the diagonal. It caps the effective
+#               exchange number of a cut cell at INT_TEMP_ROBIN_SMAX = 1.
+#               A cell already under the limit gets K = 0 and is untouched bit
+#               for bit, and the two added terms cancel at steady state, so
+#               the fixed point does not move. A change in the slow band is
+#               therefore attributable to the cut-cell over-drive alone.
+#               This is the run to make after fullprobe.
+#
+#   fullpicard  The conductance plus the Picard loop on TInt. Expect this to
+#               be WORSE than fullrobin, not better. Measured on the moisture
+#               pair over t = 5.05 to 10.85 s: test-robinm 10.4 per cent
+#               against test-picardm 23.5 per cent. The loop drives rel_max to
+#               7e-16 and still raises the slow band. Run it to confirm that
+#               the lag of TInt is not the source, and do not expect a fix.
+#
+# REFUTED, do not add a zeta rung. The gas-source campaign already tested
+# ZETA_CONST against ZETA_REACTION on the full configuration, branched from
+# one ignition snapshot, both to t = 20. Window t = 13 to 20, band 0.10 to
+# 0.45 Hz, from ~/temp/gas-source/gas-source-{inst,zeta}/probe.dat:
+#
+#   case   zeta        mdot pp   Tp2 pp   Tmax pp   r_flame pp   omega_max pp
+#   inst   6 REACTION   18.7 %   35.4 K    17.5 K       219 um         18.5 %
+#   zeta   2 CONST      14.3 %   50.8 K    19.9 K       242 um         34.7 %
+#
+# ZETA_CONST does not remove the slow band, and it makes the probe
+# temperature and the peak reaction rate worse. The global maximum of
+# set_zeta is not the source. gas-source.c keeps a ZETA_POLICY flag if the
+# question ever needs re-opening; test.c does not need one.
+#
+# ORDER: fullprobe, then fullrobin, then fullpicard.
+#
+# Caution: the full case is the slowest of the ladder. test-full reached
+# t = 26.1 s where test-base reached 36.5 s. The matched-mass window needs
+# Ms/Ms0 down to 0.55, which test-full reaches at t = 24.9 s. Give these runs
+# the wall clock to pass t = 25, or the window holds under two cycles and the
+# band amplitude is not measurable.
+test-fullprobe.s:   CFLAGS += $(TLAD_FULL) $(TLAD_PROBE)
+test-fullprobe.tst: CFLAGS += $(TLAD_FULL) $(TLAD_PROBE)
+
+test-fullrobin.s:   CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN)
+test-fullrobin.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN)
+
+test-fullpicard.s:  CFLAGS += $(TLAD_FULL) $(TLAD_PICARD)
+test-fullpicard.tst:CFLAGS += $(TLAD_FULL) $(TLAD_PICARD)

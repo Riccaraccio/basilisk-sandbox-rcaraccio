@@ -120,6 +120,29 @@ permeable. */
 #endif
 
 /**
+The two wavelet thresholds of the `adapt` event. They are separate from
+`MAXLEVEL_VALUE` on purpose.
+
+`maxlevel` sets how fine the mesh may become. These set how much of the
+domain reaches it. A sweep of the thresholds at a FIXED `maxlevel` therefore
+separates two errors that the level ladder confuses: the error of the
+discretisation at the finest cell, and the error of the criterion that
+decides which cells get one.
+
+The 0.15 to 1.5 Hz band of `mdot` falls by about 4 per level, and it does not
+answer to the timestep at all. If it also falls with these thresholds at
+fixed `maxlevel`, the criterion carries it. If it does not, the finest cell
+does, and only `maxlevel` will help. */
+
+#ifndef ADAPT_T_TOL
+# define ADAPT_T_TOL 5e0
+#endif
+
+#ifndef ADAPT_O_TOL
+# define ADAPT_O_TOL 1.e-2
+#endif
+
+/**
 The reduced reference uses 5e-4. Keep this value, or the unflagged build
 does not reproduce `~/temp/expansion/avg`. */
 
@@ -776,7 +799,7 @@ event adapt (i++) {
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
 
   adapt_wavelet_leave_interface ({T, oxidiser}, {f},
-    (double[]){5e0, 1.e-2}, maxlevel, minlevel, 2);
+    (double[]){ADAPT_T_TOL, ADAPT_O_TOL}, maxlevel, minlevel, 2);
   
 
   // Unrefine for outflow condition

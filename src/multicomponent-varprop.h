@@ -160,11 +160,43 @@ event stability (i++) {
 }
 #endif
 
+/**
+## The probe of the gas temperature
+
+`TG_PROBE` reports every gas cell whose temperature falls below
+`TG_PROBE_TMIN`. It writes `tgprobe-<pid>.dat`.
+
+The first question the file answers is WHERE the fall happens. `TGadv` is the
+value that enters the diffusion solve, thus it carries the advection of the
+step. `TGpost` is the value that leaves it. If `Tpre_phys` is already bad, the
+advection makes it. If only `Tpost_phys` is bad, the source terms make it.
+
+The next columns separate the sources. `qint` is the interface heat flux,
+`qmde` is the mass diffusion enthalpy and `qrob` is the Robin correction.
+`theta2` is the heat capacity of the cell, and it carries the factor `fG`,
+which the interface flux does NOT carry. A small `fG` with a large `qint` is
+the runaway. */
+
+#ifdef TG_PROBE
+scalar qint_dbg[], qmde_dbg[], qrob_dbg[], TGadv_dbg[];
+# ifndef TG_PROBE_TMIN
+#  define TG_PROBE_TMIN 100.
+# endif
+# ifndef TG_PROBE_MAX
+#  define TG_PROBE_MAX 400
+# endif
+#endif
+
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
     sST[] = 0.;
     sGT[] = 0.;
+#ifdef TG_PROBE
+    qint_dbg[] = 0.;
+    qmde_dbg[] = 0.;
+    qrob_dbg[] = 0.;
+#endif
 #if INT_TEMP_ROBIN
     betaST[] = 0.;
     betaGT[] = 0.;
@@ -261,6 +293,9 @@ static void interface_temperature_sources (void)
 
       sST[] += Sheatflux*aov;
       sGT[] += Gheatflux*aov;
+#ifdef TG_PROBE
+      qint_dbg[] = Gheatflux*aov;
+#endif
 
 /**
 ## The interface conductance on the diagonal
@@ -378,9 +413,15 @@ finite-difference it. */
 # if INT_TEMP_ROBIN_DEBT
       sST[] += KS*TS[] + debtST[];
       sGT[] += KG*TG[] + debtGT[];
+#  ifdef TG_PROBE
+      qrob_dbg[] = KG*TG[] + debtGT[];
+#  endif
 # else
       sST[] += KS*TS[];
       sGT[] += KG*TG[];
+#  ifdef TG_PROBE
+      qrob_dbg[] = KG*TG[];
+#  endif
 # endif
 # endif
     }
@@ -791,6 +832,9 @@ event tracer_diffusion (i++) {
       }
       }
       sGT[] -= mdeGG*cm[]*wG;
+#ifdef TG_PROBE
+      qmde_dbg[] = -mdeGG*cm[]*wG;
+#endif
     }
   }
 #endif //MASS_DIFFUSION_ENTHALPY
@@ -1223,6 +1267,9 @@ matches the fields that built the source. */
 
     theta1[] = cm[]*max(fS[]*theta1vh, F_ERR);
     theta2[] = cm[]*max(fG[]*theta2vh, F_ERR);
+#ifdef TG_PROBE
+    TGadv_dbg[] = TG[];   // the value that the advection of this step left
+#endif
   }
 
 #ifdef VARCOEFF
@@ -1338,6 +1385,40 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     ITT_iS = mgS.i; ITT_nrelaxS = mgS.nrelax; ITT_resaS = mgS.resa;
     ITT_iG = mgG.i; ITT_nrelaxG = mgG.nrelax; ITT_resaG = mgG.resa;
 #  endif
+
+#ifdef TG_PROBE
+  {
+    static FILE * fpt = NULL;
+    static int nt = 0;
+    foreach (serial) {
+      double gfr = 1. - f[];
+      if (gfr > F_ERR && nt < TG_PROBE_MAX) {
+        double Tpre  = TGadv_dbg[]/gfr;
+        double Tpost = TG[]/gfr;
+        if (Tpre < TG_PROBE_TMIN || Tpost < TG_PROBE_TMIN) {
+          if (!fpt) {
+            char nm[80];
+            snprintf (nm, sizeof(nm), "tgprobe-%d.dat", pid());
+            fpt = fopen (nm, "w");
+            fprintf (fpt, "#t i x y level dt f fG theta2 rhoGv_G cpGv_G"
+                          " TGadv TGpost Tpre_phys Tpost_phys sGT betaGT"
+                          " qint qmde qrob lam2L lam2R\n");
+          }
+          fprintf (fpt, "%g %d %g %g %d %g %.17g %.17g %.17g %.17g %.17g"
+                        " %.17g %.17g %.17g %.17g %.17g %.17g"
+                        " %.17g %.17g %.17g %.17g %.17g\n",
+                   t, i, x, y, level, dt, f[], fG[], theta2[],
+                   rhoGv_G[], cpGv_G[],
+                   TGadv_dbg[], TG[], Tpre, Tpost, sGT[], betaGT[],
+                   qint_dbg[], qmde_dbg[], qrob_dbg[],
+                   lambda2f.x[], lambda2f.x[1]);
+          fflush (fpt);
+          nt++;
+        }
+      }
+    }
+  }
+#endif
 # endif
 
 # if INT_TEMP_PICARD

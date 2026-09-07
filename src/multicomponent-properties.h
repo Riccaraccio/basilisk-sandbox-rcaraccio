@@ -26,6 +26,29 @@ scalar drhodt_chem[];
 #endif
 scalar * DYDtG_S = NULL;
 
+/**
+## The state of a newly uncovered gas cell
+
+`GAS_STATE_FALLBACK` at 1 gives a cell that changes from solid to gas a
+usable gas state, so that `update_properties()` can fill its properties. See
+the block in the external gas branch below for the mechanism and for the
+reason why the repair touches no conserved field.
+
+`GAS_STATE_FALLBACK_FMIN` is the least gas fraction of a donor cell. A donor
+below it is too close to the interface to carry a clean gas state.
+
+Set `GAS_STATE_FALLBACK` to 0 to get the previous behaviour, bit for bit.
+Define `GAS_STATE_FALLBACK_DEBUG` to write `gasfallback-<pid>.dat`, which
+gives every cell that the repair examined and whether the repair succeeded. */
+
+#ifndef GAS_STATE_FALLBACK
+# define GAS_STATE_FALLBACK 1
+#endif
+
+#ifndef GAS_STATE_FALLBACK_FMIN
+# define GAS_STATE_FALLBACK_FMIN 0.5
+#endif
+
 trace
 void update_properties (void) {
 
@@ -133,19 +156,114 @@ void update_properties (void) {
     }
 #endif
 
-    if (f[] < 1. - F_ERR && TG[] > 0.) {
+    if (f[] < 1. - F_ERR) {
       // Update external gas properties
       double xG[NGS], yG[NGS];
       double MWmixG;
+      double gf = 1. - f[];
+      double ytot = 0.;
       for (int jj=0; jj<NGS; jj++) {
         scalar YG = YGList_G[jj];
-        yG[jj] = YG[]/(1.-f[]);
+        yG[jj] = YG[]/gf;
+        ytot += yG[jj];
       }
+      double TGh = TG[]/gf;
+
+#if GAS_STATE_FALLBACK
+      /**
+      ## The state of a cell that changes from solid to gas
+
+      `TG` and `YGList_G` are in tracer form, thus `TG[]` is `(1-f)*TG` and
+      `YG[]` is `(1-f)*Y`. Both stay near 0 while the cell is solid, which is
+      correct. The body shrinks, `f` reaches 0, and the cell becomes gas. The
+      recovered state is then `0/1`, which is 0.
+
+      Without a repair the two gates below refuse the fill, every external gas
+      property keeps the reset value 0, and `rhomix` in
+      `variable-properties.h` becomes 0. The run stops on `1./rhomix`. At
+      level 12 the cells are 4 times thinner than at level 10, thus many more
+      of them change phase in each second, and the first stop comes at
+      t = 0.02 instead of t = 5.94.
+
+      Repair the LOCAL STATE only. Do not write `TG` or `YGList_G`. Those two
+      are conserved fields. A write here adds enthalpy and species mass and
+      breaks the balance. The properties are derived quantities, thus a
+      fallback state changes no balance.
+
+      The order of the fallback is: the solid side of the same cell for the
+      temperature, then the neighbour that holds the most gas for whatever is
+      still missing.
+
+      Set `GAS_STATE_FALLBACK` to 0 to get the previous behaviour. With the
+      flag at 0 this block is empty and the test below is the same test as
+      before, because `gf` is larger than 0 here. */
+
+      if (!(TGh > 0.) || !(ytot > 0.)) {
+        double wbest = 0., Tdon = 0., ydon[NGS];
+        for (int jj=0; jj<NGS; jj++)
+          ydon[jj] = 0.;
+
+        foreach_neighbor(1) {
+          double gfn = 1. - f[];
+          if (gfn > GAS_STATE_FALLBACK_FMIN && gfn > wbest && TG[] > 0.) {
+            double ytn = 0.;
+            for (int jj=0; jj<NGS; jj++) {
+              scalar YG = YGList_G[jj];
+              ytn += YG[];
+            }
+            if (ytn > 0.) {
+              wbest = gfn;
+              Tdon = TG[]/gfn;
+              for (int jj=0; jj<NGS; jj++) {
+                scalar YG = YGList_G[jj];
+                ydon[jj] = YG[]/gfn;
+              }
+            }
+          }
+        }
+
+        if (!(TGh > 0.)) {
+          if (f[] > F_ERR && TS[] > 0.)
+            TGh = TS[]/f[];
+          else if (wbest > 0.)
+            TGh = Tdon;
+        }
+
+        if (!(ytot > 0.) && wbest > 0.) {
+          ytot = 0.;
+          for (int jj=0; jj<NGS; jj++) {
+            yG[jj] = ydon[jj];
+            ytot += yG[jj];
+          }
+        }
+
+#ifdef GAS_STATE_FALLBACK_DEBUG
+        {
+          static FILE * fpf = NULL;
+          static int nf = 0;
+          if (nf < 200) {
+            if (!fpf) {
+              char nm[80];
+              snprintf (nm, sizeof(nm), "gasfallback-%d.dat", pid());
+              fpf = fopen (nm, "w");
+              fprintf (fpf, "#t x y level f TG TS ytot TGh wbest repaired\n");
+            }
+            fprintf (fpf, "%g %g %g %d %.17g %.17g %.17g %.17g %.17g %.17g %d\n",
+                     t, x, y, level, f[], TG[], TS[], ytot, TGh, wbest,
+                     (TGh > 0. && ytot > 0.) ? 1 : 0);
+            fflush (fpf);
+            nf++;
+          }
+        }
+#endif
+      }
+#endif // GAS_STATE_FALLBACK
+
       // empty external gas: skip the fill (fields stay at reset 0, guarded downstream).
-      if (mole_from_mass (xG, &MWmixG, yG, NGS)) {
+      if (TGh > 0. && mole_from_mass (xG, &MWmixG, yG, NGS)) {
       MWmixG_G[] = MWmixG;
 
-      tsGh.T = TG[]/(1.-f[]);
+      tsGh.T = TGh;
       tsGh.P = Pref+p[];
       tsGh.x = xG;
 

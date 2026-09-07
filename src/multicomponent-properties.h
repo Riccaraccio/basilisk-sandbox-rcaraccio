@@ -115,6 +115,24 @@ void update_properties (void) {
       } // internal solid filled
     }
 
+#ifdef GASGATE_DEBUG
+    if (f[] < 1. - F_ERR && !(TG[] > 0.)) {
+      static FILE * fpg = NULL;
+      static int ng = 0;
+      if (ng < 200) {
+        if (!fpg) {
+          fpg = fopen ("gasgate-dbg.dat", "w");
+          fprintf (fpg, "#t x y level f TG TS porosity rhoGv_G rhoGv_S\n");
+        }
+        fprintf (fpg, "%g %g %g %d %.17g %.17g %.17g %.17g %.17g %.17g\n",
+                 t, x, y, level, f[], TG[], TS[], porosity[],
+                 rhoGv_G[], rhoGv_S[]);
+        fflush (fpg);
+        ng++;
+      }
+    }
+#endif
+
     if (f[] < 1. - F_ERR && TG[] > 0.) {
       // Update external gas properties
       double xG[NGS], yG[NGS];

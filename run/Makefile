@@ -124,7 +124,9 @@ TLAD_CASES = base da moist grav transport emis shape full l11 \
              rdt1 rdt2 pdt1 pdt2 \
              fullprobe fullrobin fullpicard \
              robindb robinls fullrobinls fullrobin20 fullrobininf \
-             atol2 atol4
+             atol2 atol4 toloff \
+             molar fick mde \
+             transportold transportcfl transportlim transportmde fullold
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -359,6 +361,14 @@ test-fullrobinls.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBINLOSSY)
 # Caution: compare them against test-fullprobe, NOT against test-base. The
 # full ladder changes Da, moisture, gravity, shape, emissivity and transport
 # all at once.
+# The A/B for the temperature-solve tolerance. One binary difference: a tiny
+# INT_TEMP_TOL_K makes max(TOLERANCE, theta/dt*K) collapse back to the
+# inherited TOLERANCE, so test-toloff reproduces the old behaviour AND still
+# writes tsolve.dat. Compare the iteration columns, which are deterministic;
+# do not compare wall clock without several alternating runs.
+test-toloff.s:    CFLAGS += -DINT_TEMP_TOL_K=1e-30 $(TLAD_FULL) $(TLAD_PROBE)
+test-toloff.tst:  CFLAGS += -DINT_TEMP_TOL_K=1e-30 $(TLAD_FULL) $(TLAD_PROBE)
+
 TLAD_ATOL = $(TLAD_FULL) $(TLAD_PROBE)
 
 test-atol2.s:    CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_ATOL)
@@ -529,3 +539,121 @@ test-fullrobin.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN)
 
 test-fullpicard.s:  CFLAGS += $(TLAD_FULL) $(TLAD_PICARD)
 test-fullpicard.tst:CFLAGS += $(TLAD_FULL) $(TLAD_PICARD)
+
+
+# ---------------------------------------------------------------------------
+# Transport fix block, added 2026-09-07. See src/multicomponent-varprop.h.
+#
+# WHAT THE LADDER MEASURED. The transport rung doubles both bands. On mdot the
+# slow band goes up 2.1 times and the fast band 2.5 times, so no new mode
+# appears and the whole front spectrum gets louder. The front geometry does
+# not move: the reaction zone is 0.260 mm against 0.258 mm, and the Arrhenius
+# gain is 4.49 against 4.59 per cent per K. But the mean step falls from
+# 4.24e-4 to 3.68e-4 s, and its coefficient of variation doubles from 8.5 to
+# 15.8 per cent. A doubled scatter of the step is the signature of an explicit
+# term that fights a stability limit that the solver does not know about.
+#
+# WHAT THE CODE DOES. Three properties of the three flags produce it. Each one
+# now has an off switch in src/multicomponent-varprop.h, and each switch is
+# independent of the other two.
+#
+#   CORRECTIVE_CFL      MOLAR_DIFFUSION and FICK_CORRECTED move each species
+#                       with an extra velocity u_c = phic/rho. MW_mix changes
+#                       by a factor near 2 across the front, so
+#                       D d(ln MW_mix)/dx reaches 0.2 m/s against an inflow of
+#                       0.13 m/s. That transport is explicit, and no event
+#                       limited the step by it, so the scheme ran above a
+#                       Courant number of 1 at the front. 0 removes the limit.
+#                       Default 0.5.
+#
+#   CORRECTIVE_LIMITER  tracer_fluxes() reads its second argument as a
+#                       velocity. It builds un = dt*uf/(fm*Delta) and it
+#                       removes the slope with the factor (1 - s*un). The code
+#                       gave it a mass flux in kg/m2/s, so un was too small by
+#                       the density and the slope kept its full size at any
+#                       Courant number. The same call set YG.gradient = NULL,
+#                       and gradients() reads NULL as the unlimited centred
+#                       slope, not as no slope. 0 gives both back. Default 1.
+#
+#   MDE_INTERFACE       MASS_DIFFUSION_ENTHALPY was applied in full cells
+#                       only (f > 1 - F_ERR and f < F_ERR). An interface cell
+#                       got nothing, and the term is largest in the cells next
+#                       to the front. So each cell switched a large explicit
+#                       source on, then off, then on again as the front passed
+#                       it. 0 gives that gate back. Default 1.
+#
+#                       Caution: an interface cell does NOT use the centred
+#                       stencil. It holds a phase average, and that average
+#                       belongs to the centroid of the phase, not to the
+#                       centre of the cell, so a centred difference there is
+#                       first order at best. The interface cells use
+#                       ebmgrad() and the interface value, in the direction of
+#                       the normal, as int-temperature.h does for TS and TG.
+#                       The full cells keep the centred stencil.
+#
+# Caution: none of the three switches changes the mass balance. The corrective
+# flux keeps the same expression, because the code divides by the face density
+# before tracer_fluxes() and multiplies the flux back after it. The heat
+# source keeps the volume weight that theta1 and theta2 carry, so a full cell
+# holds the previous value. Only the reconstruction, the Courant number and
+# the interface cells change.
+#
+# THE CONTROL. test-transportold is the previous code: all three switches off.
+# Read every case of this block against it, never against test-base, because
+# test-base carries no transport flag at all.
+#
+# ORDER: transportold, then transport, then the three that remove one fix
+# each, then fullold. Give fullold the wall clock of a full case: test-full
+# reached t = 26.1 s where test-base reached 36.5 s, and the matched-mass
+# window needs t = 24.9 s.
+#
+#   make test-transportold.tst test-transport.tst
+#   python3 ~/oscillation-report/analysis/slow_flicker.py test-transportold
+#
+# Caution: read the header line of each log before you quote a case. It prints
+# what the build enabled, not what the case name promises.
+
+TLAD_LEGACY = -DCORRECTIVE_CFL=0 -DCORRECTIVE_LIMITER=0 -DMDE_INTERFACE=0
+
+# --- which of the three flags amplifies ------------------------------------
+# TLAD_TRANSPORT carries all three flags together, so the ladder has never
+# said which one carries the factor 2. These three cases say it. Each one adds
+# ONE flag to test-base. Compare them with test-base and with test-transport.
+#
+# Caution: the H2O weight of the probe columns follows MOLAR_DIFFUSION. Only
+# test-molar and test-transport weight them as test-transport does, so compare
+# the probe columns of test-fick and test-mde with test-base alone.
+
+test-molar.s:         CFLAGS += -DMOLAR_DIFFUSION
+test-molar.tst:       CFLAGS += -DMOLAR_DIFFUSION
+
+test-fick.s:          CFLAGS += -DFICK_CORRECTED
+test-fick.tst:        CFLAGS += -DFICK_CORRECTED
+
+test-mde.s:           CFLAGS += -DMASS_DIFFUSION_ENTHALPY
+test-mde.tst:         CFLAGS += -DMASS_DIFFUSION_ENTHALPY
+
+# --- what each fix is worth ------------------------------------------------
+# All four carry the three transport flags. test-transport has every fix on.
+# Each case below removes ONE fix, so the difference against test-transport is
+# the value of that fix alone.
+
+test-transportold.s:  CFLAGS += $(TLAD_TRANSPORT) $(TLAD_LEGACY)
+test-transportold.tst:CFLAGS += $(TLAD_TRANSPORT) $(TLAD_LEGACY)
+
+test-transportcfl.s:  CFLAGS += $(TLAD_TRANSPORT) -DCORRECTIVE_CFL=0
+test-transportcfl.tst:CFLAGS += $(TLAD_TRANSPORT) -DCORRECTIVE_CFL=0
+
+test-transportlim.s:  CFLAGS += $(TLAD_TRANSPORT) -DCORRECTIVE_LIMITER=0
+test-transportlim.tst:CFLAGS += $(TLAD_TRANSPORT) -DCORRECTIVE_LIMITER=0
+
+test-transportmde.s:  CFLAGS += $(TLAD_TRANSPORT) -DMDE_INTERFACE=0
+test-transportmde.tst:CFLAGS += $(TLAD_TRANSPORT) -DMDE_INTERFACE=0
+
+# --- the full case ---------------------------------------------------------
+# The control for test-full and test-fullprobe. The full case is where a fix
+# has to prove itself: it holds 7.6 per cent on mdot against 5.0 per cent for
+# test-base, and the transport rung carries most of that gap.
+
+test-fullold.s:       CFLAGS += $(TLAD_FULL) $(TLAD_LEGACY)
+test-fullold.tst:     CFLAGS += $(TLAD_FULL) $(TLAD_LEGACY)

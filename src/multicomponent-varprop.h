@@ -41,6 +41,125 @@ heat that it holds. It changes no field either. */
 # include "int-temperature-robin.h"
 #endif
 
+/**
+The tolerance of the two temperature solves, scaled to their own residual.
+The inherited `TOLERANCE = 1e-5` asks the gas temperature for 7e-12 K, which
+no solve can deliver, and the wasted iterations killed two runs. On by
+default; set `INT_TEMP_TOL` to 0 to restore the inherited value. */
+
+#ifndef INT_TEMP_TOL
+# define INT_TEMP_TOL 1
+#endif
+
+#if INT_TEMP_TOL
+# include "int-temperature-tol.h"
+#endif
+
+/**
+## The gradient of the mass diffusion enthalpy term
+
+`TS`, `TG`, `YGList_S`, `YGList_G` and the two mole fraction lists hold the
+value of one phase each. Outside that phase they are 0. A centred stencil that
+reaches into a cell without the phase therefore reads 0, not a temperature or
+a mass fraction, and it gives a false gradient.
+
+This function uses a neighbour only where the phase exists. With both
+neighbours it gives the centred difference, which is what the previous version
+gave in a full cell. With one neighbour it gives the one sided difference.
+With no neighbour it gives 0.
+
+Give `fS` for the solid side and `fG` for the gas side. */
+
+/**
+## The off switches of the three transport fixes
+
+Each fix has a switch, so that a case can measure the fix against the previous
+code. All three are on by default, and each one is independent of the others.
+
+  `CORRECTIVE_CFL`      The Courant limit of the corrective flux. 0 removes
+                        the limit and gives back the previous timestep.
+                        Default 0.5.
+  `CORRECTIVE_LIMITER`  The limited slope and the true Courant number of the
+                        corrective flux. 0 gives back the unlimited centred
+                        slope, and the mass flux in place of a velocity.
+                        Default 1.
+  `MDE_INTERFACE`       The mass diffusion enthalpy term in the interface
+                        cells, with the phase weight and the phase aware
+                        gradient. 0 gives back the term in the full cells
+                        only, with the plain centred stencil. Default 1.
+
+Set all three off to get the previous code exactly. */
+
+#ifndef CORRECTIVE_LIMITER
+# define CORRECTIVE_LIMITER 1
+#endif
+
+#ifndef MDE_INTERFACE
+# define MDE_INTERFACE 1
+#endif
+
+/**
+The term feeds the two temperature solves, and the cut cell branch reads
+`TInt`. Without `SOLVE_TEMPERATURE` neither of them exists, so keep the
+previous gate in that build. */
+
+#if MDE_INTERFACE && !defined SOLVE_TEMPERATURE
+# undef MDE_INTERFACE
+# define MDE_INTERFACE 0
+#endif
+
+#ifdef MASS_DIFFUSION_ENTHALPY
+foreach_dimension()
+static double mde_gradient_x (Point point, scalar a, scalar ff)
+{
+#if MDE_INTERFACE
+  bool vp = (ff[1] > F_ERR), vm = (ff[-1] > F_ERR);
+  if (vp && vm) return (a[1] - a[-1])/(2.*Delta);
+  if (vp)       return (a[1] - a[])/Delta;
+  if (vm)       return (a[] - a[-1])/Delta;
+  return 0.;
+#else
+  (void) ff;                          // the previous plain centred stencil
+  return (a[1] - a[-1])/(2.*Delta);
+#endif
+}
+#endif
+
+/**
+## The timestep limit of the corrective flux
+
+`FICK_CORRECTED` moves each species with an extra velocity `u_c = phic/rho`,
+and `MOLAR_DIFFUSION` adds `-D grad(MW_mix)/MW_mix` to it. That velocity is
+not always small. With a heavy product in a light carrier, `MW_mix` changes by
+a factor near 2 across the reaction front. Then `D d(ln MW_mix)/dx` reaches
+0.2 m/s, which is more than the inflow velocity of the cases in `run/`.
+
+The transport of that flux is explicit, and no event limited the timestep by
+it. The scheme therefore ran at a Courant number above 1 at the front.
+
+The `tracer_diffusion` event records `max(|u_c|/Delta)` in `corrective_uodx`.
+This event turns that record into a limit on `dtmax`. The record is one step
+old. That is safe, because the corrective velocity changes slowly.
+
+Set `CORRECTIVE_CFL` to 0 to remove the limit and get the previous timestep. */
+
+#ifdef FICK_CORRECTED
+# ifndef CORRECTIVE_CFL
+#  define CORRECTIVE_CFL 0.5
+# endif
+
+double corrective_uodx = 0.;    // max |u_c|/Delta of the last step
+double corrective_dtmax = HUGE; // the limit that it gives
+
+event stability (i++) {
+  if (CORRECTIVE_CFL > 0. && corrective_uodx > 0.) {
+    corrective_dtmax = CORRECTIVE_CFL/corrective_uodx;
+    if (corrective_dtmax < dtmax)
+      dtmax = corrective_dtmax;
+  }
+}
+#endif
+
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
@@ -458,26 +577,121 @@ event tracer_diffusion (i++) {
   }
 
 #ifdef MASS_DIFFUSION_ENTHALPY
+
+  /**
+  ## The mass diffusion enthalpy source
+
+  The term is `- sum_j cp_j (J_j - Y_j sum_k J_k) . grad T`. It is an explicit
+  source of the two temperature solves. It is 0 when every `cp_j` is equal.
+
+  Two properties of the previous version made it noisy at the front.
+
+  1. The code applied it in full cells only (`f > 1 - F_ERR` on the solid side
+     and `f < F_ERR` on the gas side). An interface cell got nothing. The term
+     is largest in the cells next to the front, so each cell switched a large
+     explicit source on, then off, then on again as the front passed it. The
+     source now carries `fS[]` on the solid side and `fG[]` on the gas side.
+     That is the same weight that `theta1` and `theta2` carry, so it is the
+     consistent volume weight. A full cell keeps the previous value. An
+     interface cell gets a fraction of the term instead of a step to 0.
+
+  2. The code used the plain centred stencil `(a[1] - a[-1])/(2*Delta)`. But
+     `TS`, `TG` and the two species lists hold the value of one phase only,
+     and they are 0 outside that phase. A stencil that reaches into a cell
+     without the phase reads 0 and gives a false gradient.
+     `mde_gradient_x()` uses a neighbour only where the phase exists.
+
+  A centred stencil is not correct in an interface cell either, and the phase
+  test alone does not repair it. In an interface cell the code holds a phase
+  AVERAGE, and that average belongs to the centroid of the phase, not to the
+  centre of the cell. A difference between an interface cell and a full cell
+  is therefore a difference of two values at two unknown positions. The error
+  is of the order of the offset, which is of the order of `Delta`, so the
+  gradient loses its order in the cells that this fix adds.
+
+  An interface cell therefore uses `ebmgrad()` and the interface value, in the
+  direction of the normal. That is the same method that the species source of
+  this event uses, and that `int-temperature.h` uses for `TS` and `TG`. It
+  keeps the geometry of the cut cell, and it needs no value from a cell that
+  holds another phase. The term becomes the normal part of the product, which
+  is the part that survives at a front. `ebmgrad()` gives both gradients along
+  the same normal, so the sign of the product does not depend on the
+  orientation. */
+
   foreach() {
-    if (f[] > 1. - F_ERR) { //Internal gas phase
+
+    /**
+    The weight of the two sides. `MDE_INTERFACE` on gives the phase fraction,
+    which is the weight that `theta1` and `theta2` carry. `MDE_INTERFACE` off
+    gives the previous gate: 1 in a full cell, and 0 in every other cell. */
+
+#if MDE_INTERFACE
+    double wS = fS[], wG = fG[];
+    bool interfacial = (f[] > F_ERR && f[] < 1. - F_ERR);
+#else
+    double wS = (fS[] > 1. - F_ERR) ? 1. : 0.;
+    double wG = (fG[] > 1. - F_ERR) ? 1. : 0.;
+#endif
+
+    if (wS > F_ERR) { //Internal gas phase
       double mdeGS = 0.;
+
+#if MDE_INTERFACE
+      if (interfacial) {
+
+        /**
+        The cut cell. `ebmgrad()` reads the gradient of the phase toward the
+        interface, from the interface value. It never reads a cell of the
+        other phase, and it does not assume that the stored value belongs to
+        the centre of the cell. */
+
+        bool ok = false;
+        double gTn = ebmgrad (point, TS, fS, fG, fsS, fsG, false, TInt[], &ok);
+        double jn[NGS], jntot = 0.;
+
+        for (int jj=0; jj<NGS; jj++) {
+          scalar Dmixv = DmixGList_S[jj];
+# ifdef MOLAR_DIFFUSION
+          scalar XG = XGList_S[jj];
+          scalar XGInt = XGList_Int[jj];
+          jn[jj] = (MWmixG_S[] > 0.) ?
+            -rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*
+             ebmgrad (point, XG, fS, fG, fsS, fsG, false, XGInt[], &ok) : 0.;
+# else
+          scalar YG = YGList_S[jj];
+          scalar YGInt = YGList_Int[jj];
+          jn[jj] = -rhoGv_S[]*Dmixv[]*
+             ebmgrad (point, YG, fS, fG, fsS, fsG, false, YGInt[], &ok);
+# endif
+          jntot += jn[jj];
+        }
+
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG = YGList_S[jj];
+          scalar cpGv = cpGList_S[jj];
+          mdeGS += cpGv[]*(jn[jj] - YG[]*jntot)*gTn;
+        }
+      }
+      else
+#endif
+      {
       coord gTS = {0., 0., 0.};
       coord gYGj_S = {0., 0., 0.};
       coord gYGsum_S = {0., 0., 0.};
 
       foreach_dimension()
-        gTS.x = (TS[1] - TS[-1])/(2.*Delta);
-      
+        gTS.x = mde_gradient_x (point, TS, fS);
+
       foreach_dimension() {
         for (int jj=0; jj<NGS; jj++) {
           scalar Dmixv = DmixGList_S[jj];
   # ifdef MOLAR_DIFFUSION
           scalar XG = XGList_S[jj];
           gYGsum_S.x -= (MWmixG_S[] > 0.) ?
-            rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
+            rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*mde_gradient_x (point, XG, fS) : 0.;
   # else
           scalar YG = YGList_S[jj];
-          gYGsum_S.x -= rhoGv_S[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
+          gYGsum_S.x -= rhoGv_S[]*Dmixv[]*mde_gradient_x (point, YG, fS);
   # endif
         }
 
@@ -488,35 +702,76 @@ event tracer_diffusion (i++) {
   # ifdef MOLAR_DIFFUSION
           scalar XG = XGList_S[jj];
           gYGj_S.x = (MWmixG_S[] > 0.) ?
-            -rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
+            -rhoGv_S[]*Dmixv[]*gas_MWs[jj]/MWmixG_S[]*mde_gradient_x (point, XG, fS) : 0.;
   # else
-          gYGj_S.x = -rhoGv_S[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
+          gYGj_S.x = -rhoGv_S[]*Dmixv[]*mde_gradient_x (point, YG, fS);
   # endif
           mdeGS += cpGv[]*(gYGj_S.x - YG[]*gYGsum_S.x)*gTS.x;
         }
       }
-    sST[] -= mdeGS*cm[];
+      }
+      sST[] -= mdeGS*cm[]*wS;
     }
-   
-    if (f[] < F_ERR) { //Internal gas phase
+
+    if (wG > F_ERR) { //External gas phase
       double mdeGG = 0.;
+
+#if MDE_INTERFACE
+      if (interfacial) {
+
+        /**
+        The cut cell. `ebmgrad()` reads the gradient of the phase toward the
+        interface, from the interface value. It never reads a cell of the
+        other phase, and it does not assume that the stored value belongs to
+        the centre of the cell. */
+
+        bool ok = false;
+        double gTn = ebmgrad (point, TG, fS, fG, fsS, fsG, true, TInt[], &ok);
+        double jn[NGS], jntot = 0.;
+
+        for (int jj=0; jj<NGS; jj++) {
+          scalar Dmixv = DmixGList_G[jj];
+# ifdef MOLAR_DIFFUSION
+          scalar XG = XGList_G[jj];
+          scalar XGInt = XGList_Int[jj];
+          jn[jj] = (MWmixG_G[] > 0.) ?
+            -rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*
+             ebmgrad (point, XG, fS, fG, fsS, fsG, true, XGInt[], &ok) : 0.;
+# else
+          scalar YG = YGList_G[jj];
+          scalar YGInt = YGList_Int[jj];
+          jn[jj] = -rhoGv_G[]*Dmixv[]*
+             ebmgrad (point, YG, fS, fG, fsS, fsG, true, YGInt[], &ok);
+# endif
+          jntot += jn[jj];
+        }
+
+        for (int jj=0; jj<NGS; jj++) {
+          scalar YG = YGList_G[jj];
+          scalar cpGv = cpGList_G[jj];
+          mdeGG += cpGv[]*(jn[jj] - YG[]*jntot)*gTn;
+        }
+      }
+      else
+#endif
+      {
       coord gTG = {0., 0., 0.};
       coord gYGj_G = {0., 0., 0.};
       coord gYGsum_G = {0., 0., 0.};
 
       foreach_dimension()
-        gTG.x = (TG[1] - TG[-1])/(2.*Delta);
-      
+        gTG.x = mde_gradient_x (point, TG, fG);
+
       foreach_dimension() {
         for (int jj=0; jj<NGS; jj++) {
           scalar Dmixv = DmixGList_G[jj];
   # ifdef MOLAR_DIFFUSION
           scalar XG = XGList_G[jj];
           gYGsum_G.x -= (MWmixG_G[] > 0.) ?
-            rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
+            rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*mde_gradient_x (point, XG, fG) : 0.;
   # else
           scalar YG = YGList_G[jj];
-          gYGsum_G.x -= rhoGv_G[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
+          gYGsum_G.x -= rhoGv_G[]*Dmixv[]*mde_gradient_x (point, YG, fG);
   # endif
         }
 
@@ -527,14 +782,15 @@ event tracer_diffusion (i++) {
   # ifdef MOLAR_DIFFUSION
           scalar XG = XGList_G[jj];
           gYGj_G.x = (MWmixG_G[] > 0.) ?
-            -rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*(XG[1] - XG[-1])/(2.*Delta) : 0.;
+            -rhoGv_G[]*Dmixv[]*gas_MWs[jj]/MWmixG_G[]*mde_gradient_x (point, XG, fG) : 0.;
   # else
-          gYGj_G.x = -rhoGv_G[]*Dmixv[]*(YG[1] - YG[-1])/(2.*Delta);
+          gYGj_G.x = -rhoGv_G[]*Dmixv[]*mde_gradient_x (point, YG, fG);
   # endif
           mdeGG += cpGv[]*(gYGj_G.x - YG[]*gYGsum_G.x)*gTG.x;
         }
       }
-    sGT[] -= mdeGG*cm[];
+      }
+      sGT[] -= mdeGG*cm[]*wG;
     }
   }
 #endif //MASS_DIFFUSION_ENTHALPY
@@ -567,6 +823,12 @@ event tracer_diffusion (i++) {
 #endif
 
 #ifdef FICK_CORRECTED
+
+  /**
+  The largest `|u_c|/Delta` of this step, where `u_c = phic/rho` is the
+  corrective velocity. The `stability` event of the next step reads it. */
+
+  double uodx = 0.;
   face vector phicGtot[];
   foreach_face() {
     phicGtot.x[] = 0.;
@@ -637,17 +899,67 @@ event tracer_diffusion (i++) {
 #endif
     }
 
+    /**
+    Convert the corrective mass flux into a velocity before the transport.
+
+    `tracer_fluxes()` reads its second argument as a velocity. It builds the
+    Courant number `un = dt*uf/(fm*Delta)` from it, and it removes the slope
+    with the factor `(1 - s*un)`. But `phicjj` is a mass flux in kg/m2/s, so
+    `un` was too small by the density and the slope kept its full size at any
+    Courant number.
+
+    Divide by the face density here, and multiply the flux back after the
+    call. The flux, and so the mass balance, is the same expression as
+    before. Only `un` and the slope change.
+
+    Caution: `gradients()` reads a `NULL` gradient as the unlimited centred
+    slope, not as no slope. The previous `YG.gradient = NULL` therefore
+    selected the least stable reconstruction, which is the opposite of what
+    its comment says. `minmod2` is the limited one. */
+
     scalar YG = YGList_G[jj];
+
+#if CORRECTIVE_LIMITER
+    face vector rhocjj[];
+#endif
+    foreach_face (reduction(max:uodx)) {
+      double rhoGf;
+#ifdef VARPROP
+      rhoGf = face_value (rhoGv_G, 0);
+#else
+      rhoGf = rhoG;
+#endif
+#if CORRECTIVE_LIMITER
+      rhocjj.x[] = rhoGf;
+      phicjj.x[] = (rhoGf > 0.) ? phicjj.x[]/rhoGf : 0.;
+      if (fm.x[] > 0.)
+        uodx = max (uodx, fabs (phicjj.x[])/(fm.x[]*Delta));
+#else
+      if (fm.x[] > 0. && rhoGf > 0.)   // record it, but do not change the flux
+        uodx = max (uodx, fabs (phicjj.x[])/(rhoGf*fm.x[]*Delta));
+#endif
+    }
+
     double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
-    YG.gradient = NULL; //reset the gradient
+#if CORRECTIVE_LIMITER
+    YG.gradient = minmod2; // NULL means the unlimited centred slope, not no slope
+#else
+    YG.gradient = NULL;    // the previous choice: the unlimited centred slope
+#endif
     face vector flux[];
     tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
     YG.gradient = gradient_backup; // restore the gradient function
-    
+
+#if CORRECTIVE_LIMITER
+    // back to a mass flux, so that the balance is untouched
+    foreach_face()
+      flux.x[] *= rhocjj.x[];
+#endif
+
     // apply the corrective fluxes
     foreach()
       foreach_dimension()
-        YG[] += (rhoGv_G[] > 0.) ? dt/(rhoGv_G[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.; 
+        YG[] += (rhoGv_G[] > 0.) ? dt/(rhoGv_G[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.;
   }
 
   for (int jj=0; jj<NGS; jj++) {
@@ -669,18 +981,70 @@ event tracer_diffusion (i++) {
 #endif
   }
 
+    /**
+    Convert the corrective mass flux into a velocity before the transport.
+
+    `tracer_fluxes()` reads its second argument as a velocity. It builds the
+    Courant number `un = dt*uf/(fm*Delta)` from it, and it removes the slope
+    with the factor `(1 - s*un)`. But `phicjj` is a mass flux in kg/m2/s, so
+    `un` was too small by the density and the slope kept its full size at any
+    Courant number.
+
+    Divide by the face density here, and multiply the flux back after the
+    call. The flux, and so the mass balance, is the same expression as
+    before. Only `un` and the slope change.
+
+    Caution: `gradients()` reads a `NULL` gradient as the unlimited centred
+    slope, not as no slope. The previous `YG.gradient = NULL` therefore
+    selected the least stable reconstruction, which is the opposite of what
+    its comment says. `minmod2` is the limited one. */
+
     scalar YG = YGList_S[jj];
+
+#if CORRECTIVE_LIMITER
+    face vector rhocjj[];
+#endif
+    foreach_face (reduction(max:uodx)) {
+      double rhoGf;
+#ifdef VARPROP
+      rhoGf = face_value (rhoGv_S, 0);
+#else
+      rhoGf = rhoG;
+#endif
+#if CORRECTIVE_LIMITER
+      rhocjj.x[] = rhoGf;
+      phicjj.x[] = (rhoGf > 0.) ? phicjj.x[]/rhoGf : 0.;
+      if (fm.x[] > 0.)
+        uodx = max (uodx, fabs (phicjj.x[])/(fm.x[]*Delta));
+#else
+      if (fm.x[] > 0. && rhoGf > 0.)   // record it, but do not change the flux
+        uodx = max (uodx, fabs (phicjj.x[])/(rhoGf*fm.x[]*Delta));
+#endif
+    }
+
     double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
-    YG.gradient = NULL; //reset the gradient
+#if CORRECTIVE_LIMITER
+    YG.gradient = minmod2; // NULL means the unlimited centred slope, not no slope
+#else
+    YG.gradient = NULL;    // the previous choice: the unlimited centred slope
+#endif
     face vector flux[];
     tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
     YG.gradient = gradient_backup; // restore the gradient function
-    
+
+#if CORRECTIVE_LIMITER
+    // back to a mass flux, so that the balance is untouched
+    foreach_face()
+      flux.x[] *= rhocjj.x[];
+#endif
+
     // apply the corrective fluxes
     foreach()
       foreach_dimension()
-        YG[] += (rhoGv_S[] > 0.) ? dt/(rhoGv_S[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.; 
+        YG[] += (rhoGv_S[] > 0.) ? dt/(rhoGv_S[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.;
   }
+
+  corrective_uodx = uodx;
   #endif //FICK_CORRECTED
 
   scalar theta1[], theta2[];
@@ -890,58 +1254,23 @@ matches the fields that built the source. */
 #endif
 
 /**
-## The tolerance of the solid temperature solve
+## The tolerance of the two temperature solves
 
-`TOLERANCE` is one number for every solver of the run, but each solver
-compares it against a residual in its own units. The residual of
-`diffusion()` is that of
+`INT_TEMP_TOL`, on by default, scales `TOLERANCE` to the residual of each
+solve. The full derivation, the measured numbers and the columns of
+`tsolve.dat` are in `int-temperature-tol.h`. The short version: the inherited
+`TOLERANCE = 1e-5` asks the gas temperature for 7e-12 K, `poisson.h` then
+raises `nrelax` for a target it can never meet, and two runs died of the
+wasted iterations.
 
-    theta*(T^{n+1} - T^n)/dt = div(D grad T^{n+1}) + ...
+An earlier version of this used `rhoS*cpS` and covered the solid solve alone.
+That was measured as a no-op at level 10 before the flame, because
+`NITERMIN = 2` binds before the tolerance does. It was still the wrong scale,
+and it left the gas solve, which is the one that fails, untouched.
 
-so it carries `rho*cp*K/s`, that is W/m3. The case sets `TOLERANCE = 1e-5`
-for the pressure solve, where the residual is a velocity divergence. Applied
-to the solid temperature that value asks for about ten digits, because
-`rhoS*cpS` is 2.79e6 here.
-
-Scale it to the physics instead. Ask for a residual no larger than the one
-that a temperature error of `INT_TEMP_TOL_K` over one step would make:
-
-    TOLERANCE = rhoS*cpS*INT_TEMP_TOL_K/dt
-
-Restore the old value straight after, because the next solver needs it.
-
-The gas solve keeps the plain `TOLERANCE`. Do NOT copy this line to it with
-`rhoG*cpG`: `run/test.c` never sets `cpG`, so it holds the default of 1
-(`memoryallocation-varprop.h:39`) and the product is meaningless. Under
-`VARPROP` the true gas heat capacity is the field `cpGv_G`, not the scalar.
-A gas version needs a scale of its own, and it is not written yet.
-
-This is OFF unless the case defines `INT_TEMP_TOL_K`. It is off because the
-measurement below shows it does nothing here, not because it is wrong.
-
-Measured 2026-09-04, level 10, the conductance build with the probe: eleven
-runs of 200 s, one at a time, in alternating order, normalised by CPU time.
-
-| `INT_TEMP_TOL_K` | steps per CPU second | answer |
-|---|---|---|
-| off (plain `TOLERANCE = 1e-5`) | 2.200 (sd 0.063) | reference |
-| 1e-6 | 2.214 (sd 0.102) | **byte-identical** |
-
-The two builds give **byte-identical** output over 390 steps: `max|dTsurf|`
-and `max|d res_max|` are exactly zero, not merely small. The speed difference
-of 0.6 % is far inside the run-to-run scatter, which reaches 14 % on repeats
-of the same binary.
-
-So the tolerance is not what stops that solve. `run/test.c` sets
-`NITERMIN = 2`, `mgp_i` is exactly 2 in every run, and two multigrid cycles
-already converge this operator. Nine orders of magnitude of tolerance change
-nothing because the iteration floor binds first, not the tolerance.
-
-Keep the flag: a case whose solid solve really does stall can use it, and it
-costs nothing when it is off. Do not expect it to buy speed.
-
-Caution: measure this kind of change with several alternating runs. A single
-pair on a loaded machine gave 43 % here, which was pure scatter.
+Caution: measure any change here with several alternating runs, normalised by
+CPU time. A single pair on a loaded machine once gave 43 per cent, which was
+pure scatter; eleven proper runs gave 0.6 per cent.
 
 Caution: with `INT_TEMP_PICARD` the outer loop cannot converge below what the
 linear solve delivers. Keep `INT_TEMP_TOL_K` well under
@@ -951,26 +1280,63 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     diffusion_explicit (TS, dt, D=lambda1f, r=sST, theta=theta1);
     diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);
 # else
-# ifdef INT_TEMP_TOL_K
+
+  /**
+  Read the two heat capacities BEFORE either solve. `diffusion()` overwrites
+  `theta` in place. See `int-temperature-tol.h` for why the inherited
+  `TOLERANCE` is the wrong number here. */
+
+#  if INT_TEMP_TOL
+    double th1max = 0., th2max = 0.;
+    foreach (reduction(max:th1max) reduction(max:th2max)) {
+      th1max = max (th1max, theta1[]);
+      th2max = max (th2max, theta2[]);
+    }
     double tol_save = TOLERANCE;
-    TOLERANCE = rhoS*cpS*INT_TEMP_TOL_K/dt;
-# endif
+    double tolS = max (tol_save, th1max/dt*INT_TEMP_TOL_K);
+    double tolG = max (tol_save, th2max/dt*INT_TEMP_TOL_K);
+    ITT_tolS = tolS;
+    ITT_tolG = tolG;
+    mgstats mgS, mgG;
+    mgG.i = 0; mgG.nrelax = 0; mgG.resa = 0.;
+#  endif
+
 #  if INT_TEMP_ROBIN
+#   if INT_TEMP_TOL
+    TOLERANCE = tolS;
+    mgS = diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
+#   else
     diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
-# ifdef INT_TEMP_TOL_K
-    TOLERANCE = tol_save;
-# endif
+#   endif
 #   ifndef TEMPERATURE_PROFILE
+#    if INT_TEMP_TOL
+    TOLERANCE = tolG;
+    mgG = diffusion (TG, dt, D=lambda2f, r=sGT, beta=betaGT, theta=theta2);
+#    else
     diffusion (TG, dt, D=lambda2f, r=sGT, beta=betaGT, theta=theta2);
+#    endif
 #   endif
 #  else
+#   if INT_TEMP_TOL
+    TOLERANCE = tolS;
+    mgS = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
+#   else
     diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
-# ifdef INT_TEMP_TOL_K
-    TOLERANCE = tol_save;
-# endif
-#   ifndef TEMPERATURE_PROFILE
-    diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
 #   endif
+#   ifndef TEMPERATURE_PROFILE
+#    if INT_TEMP_TOL
+    TOLERANCE = tolG;
+    mgG = diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
+#    else
+    diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
+#    endif
+#   endif
+#  endif
+
+#  if INT_TEMP_TOL
+    TOLERANCE = tol_save;
+    ITT_iS = mgS.i; ITT_nrelaxS = mgS.nrelax; ITT_resaS = mgS.resa;
+    ITT_iG = mgG.i; ITT_nrelaxG = mgG.nrelax; ITT_resaG = mgG.resa;
 #  endif
 # endif
 

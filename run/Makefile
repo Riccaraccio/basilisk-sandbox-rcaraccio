@@ -124,9 +124,11 @@ TLAD_CASES = base da moist grav transport emis shape full l11 \
              rdt1 rdt2 pdt1 pdt2 \
              fullprobe fullrobin fullpicard \
              robindb robinls fullrobinls fullrobin20 fullrobininf \
+             vofbc vofbcfl vofbcm vofbcnp fullvofbc \
              atol2 atol4 toloff \
              molar fick mde \
-             transportold transportcfl transportlim transportmde fullold
+             transportold transportcfl transportlim transportmde fullold \
+             transrdt2 transoldrdt2
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -220,15 +222,43 @@ test-l11.tst:       CFLAGS += -DMAXLEVEL_VALUE=11
 #
 # Caution: a run from scratch is NOT constant. Measured on 2026-09-04, the
 # first steps come out at 1.93e-4 and 1.96e-4, which are 0.01/52 and 0.01/51,
-# so the CFL binds through the impulsive start even at CFLNUM=2. Ignition does
-# the same: the peak velocity reaches about 2 m/s there, and a constant step of
-# 2e-4 would put the true CFL near 2.8, which is unstable.
+# so the CFL binds through the impulsive start even at CFLNUM=2.
 #
-# So BRANCH BOTH RUNS FROM A PLATEAU SNAPSHOT. On the plateau the peak velocity
-# is about 0.28 m/s, the CFL-limited step is about 1.1e-3 at CFLNUM=2, and
-# DT_VALUE binds with room to spare. `event dump (t = 1; t += 1)` already
+# So BRANCH BOTH RUNS FROM A PLATEAU SNAPSHOT. `event dump (t = 1; t += 1)`
 # writes `last-snapshot`, and `event init` restores it, so copy the file of a
 # finished run into the case directory before you start.
+#
+# CORRECTED 2026-09-07. An earlier version of this comment said that both runs
+# die because the impulsive start of a run from scratch puts the true CFL near
+# 2.8. That is wrong, and it cost a repeat of the same failed pair.
+#
+# The evidence: both logs say `Restart file found!`, so both DID branch from a
+# snapshot, and both die at t = 6.47 and t = 6.49, not at the start. The state
+# before the crash is healthy - dt nominal, resmax 1 to 2.5, Tcore 302.8 K,
+# Tsurf 729 K rising smoothly - and the one thing that moves is omega_max,
+# which climbs from 3690 to 5693 in 0.11 s. Both die ON THE IGNITION RAMP.
+#
+# It is not a timestep instability either. test-dtvar runs at CFLNUM=0.35,
+# which is MORE conservative than the 0.8 of test-base, with a smaller step
+# (3.30e-4 against 4.09e-4) and a lower residual (2.45 against 2.73) at the
+# same instant, and it dies while test-base lives.
+#
+# THE FIX IS INT_TEMP_ROBIN, and the proof already exists. test-rdt1 carries
+# the SAME DT=2e-4 CFL=2 as test-dtfix plus TLAD_ROBIN, and it crosses t=6.45,
+# 6.60, 7.0 and 8.0 and runs to t=20.4. So test-dtfix + Robin IS test-rdt1:
+# do not re-run it. The rung that is missing is the varying-step partner at a
+# matched mean step. Robin is near enough to neutral to allow the comparison:
+# over the matched-mass window test-rdt1 and test-base agree to 0.25 per cent
+# on mdot and 4.3 K on Tsurf.
+#
+# Caution: test-rdt1, test-rdt2, test-pdt1 and test-pdt2 were all BUILT
+# 2026-09-04 18:23, which is BEFORE the heat-loss fix of d2d5f2c
+# (2026-09-06 16:59). They ran with INT_TEMP_ROBIN_SMAX=1 and no
+# INT_TEMP_ROBIN_DEBT. Re-run the block before you quote it against test-base.
+# To check any run: `stat -c %y <case>/warn` is the BUILD time, because the
+# .tst harness writes that file from the compiler. The mtime of the data files
+# only says when the run last wrote, and a running binary never picks up a
+# source change.
 TLAD_DTFIX     = 2e-4
 TLAD_DTVAR_CFL = 0.35
 
@@ -412,6 +442,51 @@ test-robinm.tst:    CFLAGS += -DMOISTURE=1 $(TLAD_ROBIN)
 #
 # INT_TEMP_PICARD_MAXITER=0 must reproduce the robin build bit for bit. That
 # is the inertness control; run it before you quote any picard result.
+# ---------------------------------------------------------------------------
+# The interface value as a Dirichlet condition of the solve, added 2026-09-08.
+# See src/plicbc.h and src/int-temperature-vofbc.h.
+#
+# This needs the two patches in src/basilisk-patches/ applied to $BASILISK.
+# Check first, or the build fails on a missing `flux` argument:
+#
+#   grep -c 'flux = flux' $(BASILISK)/diffusion.h     # must print 1
+#
+# Run them in this order. Each answers one question and the later ones are
+# pointless if an earlier one fails.
+#
+#   1. test-vofbcm   the crash. test-probem dies at t = 5.94 s. This build
+#                    must pass it with no INT_TEMP_ROBIN and no SMAX. It needs
+#                    about 7 s of the 40, so it is the cheapest decisive run.
+#   2. test-vofbc    against test-probe, on the pyrolysis-only case. Does the
+#                    answer move where there was no pathology? Read rel_max of
+#                    intres.dat and Tsurf of expansion.dat.
+#   3. test-vofbcnp  the same build with the Picard loop OFF. The hook fixes
+#                    the lag of the NEIGHBOUR values; Picard fixes the lag of
+#                    TInt itself. This rung measures whether the second still
+#                    matters once the first is gone.
+#   4. test-fullvofbc  only after 1 to 3. Compare at matched remaining mass,
+#                    never at matched time.
+#
+# Caution: INT_TEMP_ROBIN is an #error alongside INT_TEMP_VOFBC. They both
+# claim the interface term and only one can have it.
+TLAD_VOFBC = -DINT_TEMP_VOFBC=1 -DINT_TEMP_PICARD=1 $(TLAD_PROBE)
+
+test-vofbc.s:       CFLAGS += $(TLAD_PYRO) $(TLAD_VOFBC)
+test-vofbc.tst:     CFLAGS += $(TLAD_PYRO) $(TLAD_VOFBC)
+
+test-vofbcfl.s:     CFLAGS += $(TLAD_VOFBC)
+test-vofbcfl.tst:   CFLAGS += $(TLAD_VOFBC)
+
+test-vofbcm.s:      CFLAGS += -DMOISTURE=1 $(TLAD_VOFBC)
+test-vofbcm.tst:    CFLAGS += -DMOISTURE=1 $(TLAD_VOFBC)
+
+# The Picard loop off, everything else the same as test-vofbc.
+test-vofbcnp.s:     CFLAGS += $(TLAD_PYRO) -DINT_TEMP_VOFBC=1 $(TLAD_PROBE)
+test-vofbcnp.tst:   CFLAGS += $(TLAD_PYRO) -DINT_TEMP_VOFBC=1 $(TLAD_PROBE)
+
+test-fullvofbc.s:   CFLAGS += $(TLAD_FULL) $(TLAD_VOFBC)
+test-fullvofbc.tst: CFLAGS += $(TLAD_FULL) $(TLAD_VOFBC)
+
 TLAD_PICARD = -DINT_TEMP_PICARD=1 $(TLAD_ROBIN)
 
 test-picard.s:      CFLAGS += $(TLAD_PYRO) $(TLAD_PICARD)
@@ -657,3 +732,32 @@ test-transportmde.tst:CFLAGS += $(TLAD_TRANSPORT) -DMDE_INTERFACE=0
 
 test-fullold.s:       CFLAGS += $(TLAD_FULL) $(TLAD_LEGACY)
 test-fullold.tst:     CFLAGS += $(TLAD_FULL) $(TLAD_LEGACY)
+
+# The forced-step transport run, and its control.
+#
+# At DT=1e-4 the corrective Courant limit never fires: the measured corrective
+# velocity is 0.333 m/s, which gives a limit of 2.35e-4 at CORRECTIVE_CFL=0.5,
+# and DT is far below it. So CORRECTIVE_CFL is INERT in both rungs below, and
+# the only fixes that act are CORRECTIVE_LIMITER and MDE_INTERFACE.
+#
+# Caution: do NOT read test-transrdt2 against the archived test-transport.
+# That run was built 2026-09-04 00:53, before the transport fixes of 44ddaf6,
+# so the difference would mix the fixes with the step. test-transoldrdt2 is
+# the control: the same step, the same source, every fix off. The pair gives
+# the step alone in the old code, which is the question the campaign asks.
+
+test-transrdt2.s:     CFLAGS += $(TLAD_TRANSPORT) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
+test-transrdt2.tst:   CFLAGS += $(TLAD_TRANSPORT) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
+
+test-transoldrdt2.s:  CFLAGS += $(TLAD_TRANSPORT) $(TLAD_LEGACY) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
+test-transoldrdt2.tst:CFLAGS += $(TLAD_TRANSPORT) $(TLAD_LEGACY) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
+
+test-l11full.s:   CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=11
+test-l11full.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=11
+
+TLAD_TGDBG = -DTG_PROBE -DTG_PROBE_TMIN=250. -DTG_PROBE_MAX=2000 \
+             -DPROPERTIES_TRAP=0 -DPHASE_AWARE_PROPERTIES=1 \
+             -DGAS_STATE_FALLBACK_DEBUG
+
+test-l12full.s:   CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=12 $(TLAD_TGDBG)
+test-l12full.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=12 $(TLAD_TGDBG)

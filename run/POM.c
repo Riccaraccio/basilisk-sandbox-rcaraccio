@@ -1,6 +1,5 @@
 #define NO_ADVECTION_DIV    1
 #define SOLVE_TEMPERATURE   1
-#define VARCOEFF            1
 
 #ifndef GAS_VELOCITY
 # define GAS_VELOCITY 0.5

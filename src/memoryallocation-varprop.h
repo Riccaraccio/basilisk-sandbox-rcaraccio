@@ -48,8 +48,11 @@ scalar sST[], sGT[]; // source terms for solid and gas temperatures
 The interface conductance of each phase, for the diagonal of the diffusion
 operator. `INT_TEMP_ROBIN` turns it on. See `multicomponent-varprop.h`. */
 
-#if INT_TEMP_ROBIN
+#if INT_TEMP_ROBIN || INT_TEMP_VOFBC
 scalar betaST[], betaGT[];
+#endif
+
+#if INT_TEMP_ROBIN
 
 /**
 The work fields that make the conductance conserve energy.
@@ -78,8 +81,18 @@ The work fields of the Picard loop on the interface temperature.
   restarts from them, or the loop becomes a sequence of timesteps.
 - `TInt_prev` holds the previous iterate, for the convergence test. */
 
-#if INT_TEMP_PICARD
+#if INT_TEMP_PICARD || INT_TEMP_VOFBC
+
+/**
+`sST_base` and `sGT_base` hold the source WITHOUT the interface flux.
+`INT_TEMP_PICARD` restores from them on each pass. `INT_TEMP_VOFBC` restores
+from them once, before the solve, because there the interface flux belongs to
+the operator and must not also be in the source. */
+
 scalar sST_base[], sGT_base[];
+#endif
+
+#if INT_TEMP_PICARD
 scalar TS_n[], TG_n[];
 scalar TInt_prev[];
 #endif
@@ -354,6 +367,11 @@ for (int jj=0; jj<NGS; jj++) {
   sST.nodump = true;
   sGT.nodump = true;
 
+#if INT_TEMP_ROBIN || INT_TEMP_VOFBC
+  betaST.nodump = true;
+  betaGT.nodump = true;
+#endif
+
 #if INT_TEMP_ROBIN
   KSf.nodump = true;
   KGf.nodump = true;
@@ -363,9 +381,12 @@ for (int jj=0; jj<NGS; jj++) {
   debtGT.nodump = true;
 #endif
 
-#if INT_TEMP_PICARD
+#if INT_TEMP_PICARD || INT_TEMP_VOFBC
   sST_base.nodump = true;
   sGT_base.nodump = true;
+#endif
+
+#if INT_TEMP_PICARD
   TS_n.nodump = true;
   TG_n.nodump = true;
   TInt_prev.nodump = true;

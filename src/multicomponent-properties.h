@@ -386,6 +386,18 @@ void update_divergence (void) {
     lambdagradTG.x[] = face_value(lambda2v.x, 0)*face_gradient_x (TG, 0)*fm.x[]*fsG.x[];
   }
 
+  /**
+  The interface heat source. Under `INT_TEMP_VOFBC` the source is split
+  between `sST` and the diagonal `betaST`, so the whole term is
+  `sST + betaST*TS`. Read only `sST` and the expansion loses the diagonal
+  half, which for a sliver is the whole of it, and then the velocity and the
+  mass loss rate are wrong with no message.
+
+  `INT_TEMP_ROBIN` escapes this by accident: it adds `+KS*TS[]` to `sST` and
+  `-KS` to `betaST`, and the two cancel at `TS = TS^n`. The exact split of
+  `INT_TEMP_VOFBC` has no such cancellation, so the term must be written out
+  here. */
+
   foreach() {
     foreach_dimension()
       DTDtS[] += (lambdagradTS.x[1] - lambdagradTS.x[])/Delta;
@@ -394,6 +406,11 @@ void update_divergence (void) {
     foreach_dimension()
       DTDtG[] += (lambdagradTG.x[1] - lambdagradTG.x[])/Delta;
     DTDtG[] += sGT[];
+
+#if INT_TEMP_VOFBC
+    DTDtS[] += betaST[]*TS[];
+    DTDtG[] += betaGT[]*TG[];
+#endif
   }
 
   // EXTERNAL GAS PHASE

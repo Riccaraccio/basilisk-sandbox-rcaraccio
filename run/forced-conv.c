@@ -7,7 +7,6 @@
 //#define NO_1D_COMPRESSION   1
 //#define CONST_DIFF          1         //constant diffusion coefficient
 //#define EXPLICIT_REACTIONS  1         //explicit reactions
-//#define EXPLICIT_DIFFUSION  1         //explicit diffusion
 //#define FIXED_INT_TEMP    1           //fixed interface temperature
 
 //#include "axi.h" 

@@ -163,10 +163,20 @@ static void compute_balances(void) {
     mb.sol_mass[jj] = 0.;
 #endif
 
-  foreach()
+  /**
+  Keep the two phases together. This event rebuilds `fS` and `fsS` from the
+  freshly advected `f`, so `fG` and `fsG` must follow. If only one pair is
+  rebuilt, `ebmgrad` reads one side of the interface at this step and the
+  other side at the last one. That is wrong today for the diffusive fluxes,
+  and under `INT_TEMP_VOFBC` it also sets a matrix coefficient. */
+
+  foreach() {
     fS[] = f[];
+    fG[] = 1. - f[];
+  }
 
   face_fraction (fS, fsS);
+  face_fraction (fG, fsG);
 
   #ifdef MULTICOMPONENT
   // We need to lose tracer form for YGList_G as it is used for the diffusive fluxes

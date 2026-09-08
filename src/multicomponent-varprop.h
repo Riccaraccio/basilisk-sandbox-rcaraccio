@@ -4,10 +4,22 @@
 
 #include "intgrad.h"
 
+#include "diffusion.h"
+
+/**
+`EXPLICIT_DIFFUSION` and `VARCOEFF` were removed on the `interface-vofbc`
+branch. The interface heat flux now writes a term on the diagonal through the
+`beta` argument of `diffusion()`. `diffusion_explicit()` applied `beta`
+explicitly, which needs `dt < theta/|beta|` — the very constraint that this
+work removes — and `VARCOEFF` rescaled each row by a heat capacity built from
+constants while `theta` used the variable properties. Neither path had a live
+user. */
+
 #ifdef EXPLICIT_DIFFUSION
-  #include "diffusion-explicit.h"
-#else
-  #include "diffusion.h"
+# error "EXPLICIT_DIFFUSION was removed. It cannot carry the interface diagonal."
+#endif
+#ifdef VARCOEFF
+# error "VARCOEFF was removed. See the comment in multicomponent-varprop.h."
 #endif
 
 #include "common-phasechange.h"
@@ -39,6 +51,32 @@ heat that it holds. It changes no field either. */
 
 #if INT_TEMP_ROBIN
 # include "int-temperature-robin.h"
+#endif
+
+/**
+`INT_TEMP_VOFBC` makes `TInt` a Dirichlet condition of each temperature solve.
+The condition lives INSIDE the Poisson operator: `poisson.h` calls
+`plic_flux()` in every relaxation and every residual sweep, so the interface
+gradient is built from the current iterate and not from step `n`. Read
+`plicbc.h` and `int-temperature-vofbc.h` before you change any of it.
+
+It needs the two patches in `basilisk-patches/`, which are applied to the
+install. Without them `diffusion()` has no `flux` argument and this does not
+compile.
+
+A frozen source cannot do the same job. `r` and `beta` are both constant
+during the solve, so the interpolated neighbour value stays at step `n`, the
+source never shuts off as the cell heats, and the cut cell settles wherever it
+must to pass the OLD flux onward. Measured in `test/intbc-sliver.c`: a
+fourfold overshoot of the interface value with the frozen source, against nine
+per cent with the operator, at every gas fraction from 0.4 down to 1e-6. */
+
+#if INT_TEMP_VOFBC
+# include "plicbc.h"
+# include "int-temperature-vofbc.h"
+# if INT_TEMP_ROBIN
+#  error "INT_TEMP_ROBIN is superseded by INT_TEMP_VOFBC. Use one."
+# endif
 #endif
 
 /**
@@ -325,7 +363,7 @@ event reset_sources (i++) {
     qmde_dbg[] = 0.;
     qrob_dbg[] = 0.;
 #endif
-#if INT_TEMP_ROBIN
+#if INT_TEMP_ROBIN || INT_TEMP_VOFBC
     betaST[] = 0.;
     betaGT[] = 0.;
 #endif
@@ -393,8 +431,13 @@ end. */
 static void interface_temperature_sources (void)
 {
   bool success = false;
+#if INT_TEMP_VOFBC
+  double vnint = 0.;
 
+  foreach (reduction(+:vnint)) {
+#else
   foreach() {
+#endif
     if (f[] > F_ERR && f[] < 1. - F_ERR) {
       coord n = facet_normal (point, fS, fsS), p;
       double alpha = plane_alpha (fS[], n);
@@ -427,11 +470,24 @@ static void interface_temperature_sources (void)
       bool gasfrozen = (TG_FGMIN > 0. && fG[] < TG_FGMIN);
       bool gasdrop   = (gasfrozen && TG_FGMIN_MODE == 1);
 
+      /**
+      The interface heat flux. Under `INT_TEMP_VOFBC` this is NOT the source
+      of the solve: `plic_flux()` rebuilds it inside the operator. It is still
+      needed here, because `update_divergence()` reads `sST` and `sGT` as the
+      interface heat of the thermal expansion, and it runs before the solve.
+
+      The Picard snapshot `sST_base` is taken just before this function, so
+      the solve restores from it and sees the volumetric terms only. Miss that
+      restore and the flux is counted twice. */
+
       sST[] += Sheatflux*aov;
       if (!gasdrop)
         sGT[] += Gheatflux*aov;
 #ifdef TG_PROBE
       qint_dbg[] = gasdrop ? 0. : Gheatflux*aov;
+#endif
+#if INT_TEMP_VOFBC
+      vnint += 1.;
 #endif
 
 /**
@@ -503,9 +559,7 @@ finite-difference it. */
 
       /**
       The heat capacity of each phase, exactly as the `diffusion()` call
-      builds `theta1` and `theta2`. Keep the two sites identical. The
-      `VARCOEFF` block later divides `betaST` and `sST` by the same heat
-      capacity that it divides `theta1` by, so `A/theta` is unchanged. */
+      builds `theta1` and `theta2`. Keep the two sites identical. */
 
       double theta1vh, theta2vh;
 #  ifdef VARPROP
@@ -571,8 +625,25 @@ finite-difference it. */
 # endif
     }
   }
+
+#if INT_TEMP_VOFBC
+  ITV_nint = vnint;
+#endif
 }
 
+#endif
+
+#if INT_TEMP_VOFBC
+
+/**
+Attach the condition to the two temperatures. `TS` and `TG` are created in the
+`defaults` event of `memoryallocation-varprop.h`, so this cannot sit at file
+scope. `TInt[]` is read at the cell, so a per-cell interface value works. */
+
+event defaults (i = 0) {
+  TS[interface] = dirichlet (TInt[]);
+  TG[interface] = dirichlet (TInt[]);
+}
 #endif
 
 event tracer_diffusion (i++) {
@@ -1000,7 +1071,7 @@ event tracer_diffusion (i++) {
   `TInt` — the spark of `spark.h` and the enthalpy of mass diffusion — so
   that each pass of the loop can rebuild the interface part alone. */
 
-# if INT_TEMP_PICARD
+# if INT_TEMP_PICARD || INT_TEMP_VOFBC
   foreach() {
     sST_base[] = sST[];
     sGT_base[] = sGT[];
@@ -1305,11 +1376,7 @@ here. `TGadv` is the value before the solve. */
     scalar YG = YGList_S[jj];
     scalar sSexp = sSexpList[jj];
 
-#ifdef EXPLICIT_DIFFUSION
-    diffusion_explicit (YG, dt, D=DmixGf, theta=theta1);
-#else
     diffusion (YG, dt, D=DmixGf, r=sSexp, theta=theta1);
-#endif
   }
 
   //external diffusion
@@ -1336,11 +1403,7 @@ here. `TGadv` is the value before the solve. */
     scalar YG = YGList_G[jj];
     scalar sGexp = sGexpList[jj];
 
-#ifdef EXPLICIT_DIFFUSION
-    diffusion_explicit (YG, dt, D=DmixGf, theta=theta2);
-#else
     diffusion (YG, dt, D=DmixGf, r=sGexp, theta=theta2);
-#endif
   }
 
 #ifdef SOLVE_TEMPERATURE
@@ -1421,7 +1484,7 @@ matches the fields that built the source. */
         TG[] = TG_n[];
         sST[] = sST_base[];
         sGT[] = sGT_base[];
-#  if INT_TEMP_ROBIN
+#  if INT_TEMP_ROBIN || INT_TEMP_VOFBC
         betaST[] = 0.;
         betaGT[] = 0.;
 #  endif
@@ -1429,6 +1492,24 @@ matches the fields that built the source. */
       interface_temperature_sources();
     }
 # endif // INT_TEMP_PICARD
+
+#if INT_TEMP_VOFBC
+
+  /**
+  Take the interface flux OUT of the source. `plic_flux()` rebuilds it inside
+  the operator, so leaving it here would count it twice.
+
+  `sST_base` and `sGT_base` hold everything that is not the interface flux:
+  the reaction heat, the spark, and the enthalpy of mass diffusion. The
+  snapshot is taken immediately before `interface_temperature_sources()`, and
+  `update_divergence()` has already run with the full source, which is what it
+  needs. */
+
+  foreach() {
+    sST[] = sST_base[];
+    sGT[] = sGT_base[];
+  }
+#endif
 
   foreach_face() {
     lambda1f.x[] = face_value(lambda1v.x, 0)*fsS.x[]*fm.x[];
@@ -1452,33 +1533,6 @@ matches the fields that built the source. */
 #endif
   }
 
-#ifdef VARCOEFF
-  foreach()
-    porosity[] = (f[] > F_ERR) ? porosity[]/f[] : 0;
-
-  foreach_face() {
-    double ef = face_value(porosity, 0);
-    lambda1f.x[] = (ef > F_ERR) ? lambda1f.x[] / (rhoG*cpG*ef + rhoS*cpS*(1. - ef)) : 0.;
-    lambda2f.x[] = lambda2f.x[] / (rhoG*cpG);
-  }
-
-  foreach() {
-    theta1[] = cm[] * max(fS[], F_ERR);
-    theta2[] = cm[] * max(fG[], F_ERR);
-  }
-
-  foreach() {
-    sST[] = (f[] > F_ERR) ? sST[] / (rhoG*cpG*porosity[] + rhoS*cpS*(1. - porosity[])) : 0.;
-    sGT[] = sGT[] / (rhoG*cpG);
-#if INT_TEMP_ROBIN
-    betaST[] = (f[] > F_ERR) ? betaST[] / (rhoG*cpG*porosity[] + rhoS*cpS*(1. - porosity[])) : 0.;
-    betaGT[] = betaGT[] / (rhoG*cpG);
-#endif
-  }
-
-  foreach()
-    porosity[] *= f[];
-#endif
 
 /**
 ## The tolerance of the two temperature solves
@@ -1507,11 +1561,6 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
   tg_stage_check ("B-presolve");
 #endif
 
-# ifdef EXPLICIT_DIFFUSION
-    diffusion_explicit (TS, dt, D=lambda1f, r=sST, theta=theta1);
-    diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);
-# else
-
   /**
   Read the two heat capacities BEFORE either solve. `diffusion()` overwrites
   `theta` in place. See `int-temperature-tol.h` for why the inherited
@@ -1532,7 +1581,27 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     mgG.i = 0; mgG.nrelax = 0; mgG.resa = 0.;
 #  endif
 
-#  if INT_TEMP_ROBIN
+#  if INT_TEMP_VOFBC
+
+  /**
+  Name the phase before its own solve: `plic_flux()` reads one pair of
+  fraction fields, and the two solves differ only in that pair. */
+
+    plicbc_phase (fS, fsS);
+#   if INT_TEMP_TOL
+    TOLERANCE = tolS;
+#   endif
+    mgS = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1,
+                     flux = plic_flux);
+#   ifndef TEMPERATURE_PROFILE
+    plicbc_phase (fG, fsG);
+#    if INT_TEMP_TOL
+    TOLERANCE = tolG;
+#    endif
+    mgG = diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2,
+                     flux = plic_flux);
+#   endif
+#  elif INT_TEMP_ROBIN
 #   if INT_TEMP_TOL
     TOLERANCE = tolS;
     mgS = diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
@@ -1652,7 +1721,6 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     }
   }
 #endif
-# endif
 
 # if INT_TEMP_PICARD
 

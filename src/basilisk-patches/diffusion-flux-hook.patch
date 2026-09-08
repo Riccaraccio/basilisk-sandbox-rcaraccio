@@ -1,0 +1,19 @@
+--- diffusion.h
++++ diffusion.h
+@@ -41,7 +41,8 @@
+ 		   face vector D = {{-1}},  // default 1
+ 		   scalar r = {-1},         // default 0
+ 		   scalar beta = {-1},      // default 0
+-		   scalar theta = {-1})     // default 1
++		   scalar theta = {-1},     // default 1
++		   double (* flux) (Point, scalar, vector, double *) = NULL)
+ {
+
+   /**
+@@ -90,5 +91,5 @@
+   /**
+   Finally we solve the system. */
+
+-  return poisson (f, ar, D, lambda);
++  return poisson (f, ar, D, lambda, flux = flux);
+ }

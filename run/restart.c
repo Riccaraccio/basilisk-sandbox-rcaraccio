@@ -110,7 +110,7 @@ event init (i= 0) {
     }
 
   if (restore (file = "last-snapshot", list = all)) {
-    fprintf (stderr, "Restart file found!\n);
+    fprintf (stderr, "Restart file found!\n");
     restarted = true;
   } else {
     fprintf (stderr, "No restart file found, starting from scratch!\n");

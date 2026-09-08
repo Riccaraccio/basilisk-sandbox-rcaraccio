@@ -1,0 +1,67 @@
+--- poisson.h
++++ poisson.h
+@@ -258,9 +258,7 @@
+   double tolerance;
+   int nrelax, minlevel;
+   scalar * res;
+-#if EMBED
+   double (* embed_flux) (Point, scalar, vector, double *);
+-#endif
+ };
+
+ /**
+@@ -315,7 +313,6 @@
+       n += alpha.x[1]*a[1] + alpha.x[]*a[-1];
+       d += alpha.x[1] + alpha.x[];
+     }
+-#if EMBED
+     if (p->embed_flux) {
+       double c, e = p->embed_flux (point, a, alpha, &c);
+       n -= c*sq(Delta);
+@@ -324,7 +321,6 @@
+     if (!d)
+       c[] = 0., b[] = 0.;
+     else
+-#endif // EMBED
+       c[] = n/d;
+   }
+
+@@ -367,12 +363,10 @@
+     res[] = b[] - lambda[]*a[];
+     foreach_dimension()
+       res[] -= (g.x[1] - g.x[])/Delta;
+-#if EMBED
+     if (p->embed_flux) {
+       double c, e = p->embed_flux (point, a, alpha, &c);
+       res[] += c - e*a[];
+     }
+-#endif // EMBED
+     if (fabs (res[]) > maxres)
+       maxres = fabs (res[]);
+   }
+@@ -383,12 +377,10 @@
+     foreach_dimension()
+       res[] += (alpha.x[0]*face_gradient_x (a, 0) -
+ 		alpha.x[1]*face_gradient_x (a, 1))/Delta;
+-#if EMBED
+     if (p->embed_flux) {
+       double c, e = p->embed_flux (point, a, alpha, &c);
+       res[] += c - e*a[];
+     }
+-#endif // EMBED
+     if (fabs (res[]) > maxres)
+       maxres = fabs (res[]);
+   }
+@@ -442,11 +434,10 @@
+     TOLERANCE = tolerance;
+
+   struct Poisson p = {a, b, alpha, lambda, tolerance, nrelax, minlevel, res };
++  p.embed_flux = flux;
+ #if EMBED
+   if (!flux && a.boundary[embed] != symmetry)
+     p.embed_flux = embed_flux;
+-  else
+-    p.embed_flux = flux;
+ #endif // EMBED
+   mgstats s = mg_solve ({a}, {b}, residual, relax, &p,
+ 			nrelax, res, max(1, minlevel));

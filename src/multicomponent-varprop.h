@@ -99,6 +99,92 @@ Set all three off to get the previous code exactly. */
 #endif
 
 /**
+## The threshold of the gas energy equation
+
+`TG_FGMIN` is the smallest gas fraction that the gas energy equation solves
+for. Set it to 0 to get the behaviour of before.
+
+The gas heat capacity of a cell is `theta2 = cm*fG*rhoGv_G*cpGv_G`, which
+scales with the gas VOLUME. The interface heat flux is `Gheatflux*aov`, which
+scales with the interface AREA. The two do not carry the same factor, so the
+ratio of the source to the heat capacity has no bound as `fG` falls. The only
+threshold that admitted such a cell was `F_ERR = 1e-10`, which is a tolerance
+for a volume fraction and not a limit for the conditioning of an equation.
+
+A measurement at level 12 shows what this costs. In a cell with
+`fG = 9.13e-6` the interface flux is `qint = -6.28e+06` and the Robin cap
+gives back only `qrob = +6.75e+05`. The mass diffusion enthalpy is
+`qmde = -1.3e-03`, nine orders smaller, and it is not part of this. One solve
+takes `TG` from 307 K to -42 K. The next two solves give -754 K and -2127 K,
+because `qint` doubles at each step. `update_properties()` then leaves
+`rhoGv_G` at 0, `rhomix` becomes 0, and `1./rhomix` stops the run with SIGFPE.
+
+`INT_TEMP_ROBIN_SMAX` does not repair this. When the cap fires, the diagonal
+of the solve is `A/SMAX`, so the step in `TG` is proportional to `SMAX`. A
+larger `SMAX` makes the excursion larger. A `SMAX` of 1 removes the overshoot
+but gives the 20 K to 25 K bias of the surface temperature that the ladder
+measured.
+
+A cell below the threshold is not a gas cell. Its gas is in thermal
+equilibrium with the solid, so this module gives it the solid temperature and
+keeps the gas out of the interface source. At `fG = 1e-3` the gas layer is
+1e-3 of a cell wide, which no grid of this kind resolves, and it holds 0.1 per
+cent of the gas of a cell.
+
+Caution: the pin is not exactly conservative. It discards the enthalpy
+difference `fG*rhoGv_G*cpGv_G*(TG - TS)` of the cells that it freezes. Read
+`TG_fgmin_ncells` to see how many cells that is. If the count is more than a
+few per cent of the interface cells, the threshold is too high for the grid.
+
+Caution: the solid energy equation has the same weakness when `fS` is small.
+This module does NOT guard that side. No run has failed there yet. */
+
+#ifndef TG_FGMIN
+# define TG_FGMIN 1e-3
+#endif
+
+/**
+### The two treatments of a cell below the threshold
+
+`TG_FGMIN_MODE` selects what such a cell gets.
+
+`1`, the pin. The cell loses the gas side of the interface source, and it
+takes the solid temperature after the solve. This is simple and it stops the
+runaway, but it DISCARDS the heat transfer between the phases in that cell.
+The neighbours read the pinned value through `ebmgrad`, so the gas gradient
+at the wall changes. Measure `Tsurf` against `TG_FGMIN = 0` before you trust
+it.
+
+`2`, the steady limit. The cell keeps the full interface source, and the
+FULL conductance `A = |lambda2vh*hG|*aov` goes on the diagonal with no cap.
+The time derivative is what the cell loses, not the source, because `th2/dt`
+is 1e-6 of `A` at this gas fraction. The equation becomes
+
+    (A + sum lambda_f) TG = A TInt + sum lambda_f TG_neighbour
+
+which obeys a maximum principle: `TG` lands between `TInt` and its
+neighbours, for any `fG` and any `dt`. It cannot go negative, and the flux
+`A*(TInt - TG)` stays. This keeps the heat transfer that mode 1 throws away.
+
+Do not raise `INT_TEMP_ROBIN_SMAX` to get the same effect. The cap puts
+`A/SMAX` on the diagonal, which is LESS than `A`, and that deficit is what
+breaks the bound. `SMAX = 1` gives the full conductance everywhere, and the
+ladder measured that as a 20 K to 25 K bias of `Tsurf` and a collapse of the
+timestep at t = 8.48. Mode 2 applies the same limit ONLY to the cells whose
+heat capacity is truly negligible, so the well resolved cells keep the
+`SMAX = 20` path and the ladder results do not move. */
+
+#ifndef TG_FGMIN_MODE
+# define TG_FGMIN_MODE 2
+#endif
+
+double TG_fgmin_ncells = 0.;   // frozen cells of the last step
+
+#ifdef TG_PROBE
+FILE * tgf_fp = NULL;          // the count report of `TG_FGMIN`
+#endif
+
+/**
 The term feeds the two temperature solves, and the cut cell branch reads
 `TInt`. Without `SOLVE_TEMPERATURE` neither of them exists, so keep the
 previous gate in that build. */
@@ -148,6 +234,58 @@ Set `CORRECTIVE_CFL` to 0 to remove the limit and get the previous timestep. */
 #  define CORRECTIVE_CFL 0.5
 # endif
 
+#ifdef TG_PROBE
+scalar qint_dbg[], qmde_dbg[], qrob_dbg[], TGadv_dbg[];
+# ifndef TG_PROBE_TMIN
+#  define TG_PROBE_TMIN 100.
+# endif
+# ifndef TG_PROBE_MAX
+#  define TG_PROBE_MAX 400
+# endif
+#endif
+
+#ifdef TG_PROBE
+
+/**
+`tg_stage_check()` reports every cell whose gas temperature is negative. It
+tests the sign only, so it is correct in tracer form and in physical form.
+Call it at each stage of the step. The tag of the first row names the stage
+that makes the value negative. */
+
+FILE * tgs_fp = NULL;
+int tgs_n = 0;
+FILE * tgq_fp = NULL;
+int tgq_n = 0;
+
+#define tg_stage_check(TAG) do {                                        \
+  if (tgs_n < TG_PROBE_MAX) {                                           \
+    foreach (serial) {                                                  \
+      if (TG[] < 0. && tgs_n < TG_PROBE_MAX) {                          \
+        if (!tgs_fp) {                                                  \
+          char nm[80];                                                  \
+          sprintf (nm, "tgstage-%d.dat", pid());                        \
+          tgs_fp = fopen (nm, "w");                                     \
+          fprintf (tgs_fp, "#tag t i x y level f TG TS T\n");           \
+        }                                                               \
+        fprintf (tgs_fp, "%s %g %d %g %g %d %.17g %.17g %.17g %.17g\n", \
+                 TAG, t, i, x, y, level, f[], TG[], TS[], T[]);          \
+        fflush (tgs_fp);                                                \
+        tgs_n++;                                                        \
+      }                                                                 \
+    }                                                                   \
+  }                                                                     \
+} while (0)
+
+/**
+This event runs before every other `vof` event, because the same-name events
+run in reverse order of the declaration. It therefore reports the state that
+`adapt` left, before the advection of this step. */
+
+event vof (i++) {
+  tg_stage_check ("0-prevof");
+}
+#endif
+
 double corrective_uodx = 0.;    // max |u_c|/Delta of the last step
 double corrective_dtmax = HUGE; // the limit that it gives
 
@@ -176,16 +314,6 @@ The next columns separate the sources. `qint` is the interface heat flux,
 `theta2` is the heat capacity of the cell, and it carries the factor `fG`,
 which the interface flux does NOT carry. A small `fG` with a large `qint` is
 the runaway. */
-
-#ifdef TG_PROBE
-scalar qint_dbg[], qmde_dbg[], qrob_dbg[], TGadv_dbg[];
-# ifndef TG_PROBE_TMIN
-#  define TG_PROBE_TMIN 100.
-# endif
-# ifndef TG_PROBE_MAX
-#  define TG_PROBE_MAX 400
-# endif
-#endif
 
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
@@ -291,10 +419,19 @@ static void interface_temperature_sources (void)
       double aov = area/Delta*cm[];
 # endif
 
+      /**
+      A cell whose gas fraction is below `TG_FGMIN` keeps its gas out of the
+      interface source. The solid side is not changed, so the particle still
+      receives the full surface heat. */
+
+      bool gasfrozen = (TG_FGMIN > 0. && fG[] < TG_FGMIN);
+      bool gasdrop   = (gasfrozen && TG_FGMIN_MODE == 1);
+
       sST[] += Sheatflux*aov;
-      sGT[] += Gheatflux*aov;
+      if (!gasdrop)
+        sGT[] += Gheatflux*aov;
 #ifdef TG_PROBE
-      qint_dbg[] = Gheatflux*aov;
+      qint_dbg[] = gasdrop ? 0. : Gheatflux*aov;
 #endif
 
 /**
@@ -385,7 +522,13 @@ finite-difference it. */
 
       double smax = INT_TEMP_ROBIN_SMAX;
       double KS = max (0., fabs(lambda1vh*hS)*aov/smax - th1/dt);
-      double KG = max (0., fabs(lambda2vh*hG)*aov/smax - th2/dt);
+      /**
+      The full interface conductance. Mode 2 puts all of it on the diagonal
+      of a cell below the threshold, which is what bounds the solve. */
+
+      double Acond = fabs(lambda2vh*hG)*aov;
+      double KG = gasfrozen ?
+        (TG_FGMIN_MODE == 1 ? 0. : Acond) : max (0., Acond/smax - th2/dt);
 
       /**
       Keep the conductance. The debt update after the solve needs it to
@@ -393,6 +536,8 @@ finite-difference it. */
 
       KSf[] = KS;
       KGf[] = KG;
+      if (gasfrozen)
+        debtGT[] = 0.;
 
       betaST[] -= KS;
       betaGT[] -= KG;
@@ -431,6 +576,10 @@ finite-difference it. */
 #endif
 
 event tracer_diffusion (i++) {
+
+#ifdef TG_PROBE
+  tg_stage_check ("A-postvof");
+#endif
 
   //Check the mass fractions Can be removed for performance
   check_and_correct_fractions (YGList_S, NGS, false);
@@ -1093,6 +1242,37 @@ event tracer_diffusion (i++) {
 
   scalar theta1[], theta2[];
 
+#ifdef TG_PROBE
+
+/**
+`tg_source_check()` reports the full energy balance of every cell whose gas
+temperature is negative. Use it only inside this event, because `theta2` lives
+here. `TGadv` is the value before the solve. */
+
+#define tg_source_check(TAG) do {                                       \
+  if (tgq_n < TG_PROBE_MAX) {                                           \
+    foreach (serial) {                                                  \
+      if (TG[] < 0. && tgq_n < TG_PROBE_MAX) {                          \
+        if (!tgq_fp) {                                                  \
+          char nm[80];                                                  \
+          sprintf (nm, "tgsource-%d.dat", pid());                       \
+          tgq_fp = fopen (nm, "w");                                     \
+          fprintf (tgq_fp, "#tag t i x y level dt f fG theta2 sGT"      \
+                           " betaGT qint qmde qrob TGadv TG TS\n");     \
+        }                                                               \
+        fprintf (tgq_fp, "%s %g %d %g %g %d %g %.17g %.17g %.17g %.17g" \
+                         " %.17g %.17g %.17g %.17g %.17g %.17g %.17g\n",\
+                 TAG, t, i, x, y, level, dt, f[], fG[], theta2[],       \
+                 sGT[], betaGT[], qint_dbg[], qmde_dbg[], qrob_dbg[],   \
+                 TGadv_dbg[], TG[], TS[]);                              \
+        fflush (tgq_fp);                                                \
+        tgq_n++;                                                        \
+      }                                                                 \
+    }                                                                   \
+  }                                                                     \
+} while (0)
+#endif
+
 #if TREE
   theta1.refine = fraction_refine;
   set_prolongation (theta1, fraction_refine);
@@ -1323,6 +1503,10 @@ Caution: with `INT_TEMP_PICARD` the outer loop cannot converge below what the
 linear solve delivers. Keep `INT_TEMP_TOL_K` well under
 `INT_TEMP_PICARD_TOL`, and re-measure `rel_max` after any change. */
 
+#ifdef TG_PROBE
+  tg_stage_check ("B-presolve");
+#endif
+
 # ifdef EXPLICIT_DIFFUSION
     diffusion_explicit (TS, dt, D=lambda1f, r=sST, theta=theta1);
     diffusion_explicit (TG, dt, D=lambda2f, r=sGT, theta=theta2);
@@ -1386,6 +1570,55 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     ITT_iG = mgG.i; ITT_nrelaxG = mgG.nrelax; ITT_resaG = mgG.resa;
 #  endif
 
+  /**
+  Give the solid temperature to every cell that the gas energy equation does
+  not solve for. `TS` and `TG` both hold the value of one phase here, so this
+  is a direct assignment. The source of such a cell carries no interface term,
+  so the solve above left it near its old value; this line makes the value
+  mean something. */
+
+  if (TG_FGMIN > 0.) {
+    double nfrozen = 0., nint = 0.;
+    foreach (reduction(+:nfrozen) reduction(+:nint)) {
+      bool interfacial = (f[] > F_ERR && f[] < 1. - F_ERR);
+      if (interfacial)
+        nint += 1.;
+      if (fG[] < TG_FGMIN && fS[] > F_ERR) {
+
+        /**
+        Mode 1 replaces the answer of the solve. Mode 2 keeps it: the solve
+        of that cell is already bounded, because the full conductance sits on
+        its diagonal. */
+
+        if (TG_FGMIN_MODE == 1)
+          TG[] = TS[];
+
+        /**
+        Count only the cells that this changes. A pure solid cell already
+        holds `TG = TS` after the extrapolation of the last step, so it is
+        not part of the count. */
+
+        if (interfacial)
+          nfrozen += 1.;
+      }
+    }
+    TG_fgmin_ncells = nfrozen;
+#ifdef TG_PROBE
+    if (pid() == 0) {
+      if (!tgf_fp) {
+        tgf_fp = fopen ("fgmin.dat", "w");
+        fprintf (tgf_fp, "#t i nfrozen ninterface\n");
+      }
+      fprintf (tgf_fp, "%g %d %g %g\n", t, i, nfrozen, nint);
+      fflush (tgf_fp);
+    }
+#endif
+  }
+
+#ifdef TG_PROBE
+  tg_source_check ("S-postsolve");
+#endif
+
 #ifdef TG_PROBE
   {
     static FILE * fpt = NULL;
@@ -1393,8 +1626,8 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     foreach (serial) {
       double gfr = 1. - f[];
       if (gfr > F_ERR && nt < TG_PROBE_MAX) {
-        double Tpre  = TGadv_dbg[]/gfr;
-        double Tpost = TG[]/gfr;
+        double Tpre  = TGadv_dbg[];   // TG is physical inside this event
+        double Tpost = TG[];
         if (Tpre < TG_PROBE_TMIN || Tpost < TG_PROBE_TMIN) {
           if (!fpt) {
             char nm[80];
@@ -1545,6 +1778,10 @@ tracer form. */
 
   check_and_correct_fractions (YGList_S, NGS, false);
   check_and_correct_fractions (YGList_G, NGS, true);
+
+#ifdef TG_PROBE
+  tg_stage_check ("C-end433");
+#endif
 }
 
 /* 
@@ -1562,6 +1799,10 @@ foreach() {
     f[] = (f[] < 1.-F_ERR) ? f[] : 1.;
     fS[] = f[]; fG[] = 1. - f[];
   }
+
+#ifdef TG_PROBE
+  tg_stage_check ("D-pre1557");
+#endif
 
   //Compute face gradients
   face_fraction (fS, fsS);
@@ -1646,4 +1887,8 @@ foreach() {
       YG_G[] = (f[] < 1. - F_ERR) ? YG_G[]*(1. - f[]) : 0.;
     }
   }
+
+#ifdef TG_PROBE
+  tg_stage_check ("E-end1557");
+#endif
 }

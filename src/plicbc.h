@@ -170,10 +170,25 @@ double plic_flux (Point point, scalar s, face vector D, double * val)
   if (cs1[] < PLICBC_TOL || cs1[] > 1. - PLICBC_TOL)
     return 0.;
 
+  /**
+  The interface value, from the condition the case attached to the `interface`
+  boundary id.
+
+  Caution: a field with no such condition keeps the default of a new `bid`,
+  which is `symmetry`. That returns `s[]` and leaves the flag false, so
+  without this test the flux is built with the CELL's own value as the
+  interface value, the gradient collapses to an internal one, and the
+  interface exchange silently goes to nothing. It reads as a converged,
+  well behaved run with no heat transfer. Fail here instead. */
+
   bool dirichlet = false;
   double bc = s.boundary[interface] (point, point, s, &dirichlet);
-  if (!bc && !dirichlet)
-    return 0.;
+  if (!dirichlet) {
+    fprintf (stderr, "plic_flux: no Dirichlet condition on the interface for "
+             "this field. Set s[interface] = dirichlet(...) where the field "
+             "exists, not in a defaults event.\n");
+    assert (dirichlet);
+  }
 
   coord m = interface_normal (point, cs1), p;
   double alpha = plane_alpha (cs1[], m);

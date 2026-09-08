@@ -633,19 +633,6 @@ finite-difference it. */
 
 #endif
 
-#if INT_TEMP_VOFBC
-
-/**
-Attach the condition to the two temperatures. `TS` and `TG` are created in the
-`defaults` event of `memoryallocation-varprop.h`, so this cannot sit at file
-scope. `TInt[]` is read at the cell, so a per-cell interface value works. */
-
-event defaults (i = 0) {
-  TS[interface] = dirichlet (TInt[]);
-  TG[interface] = dirichlet (TInt[]);
-}
-#endif
-
 event tracer_diffusion (i++) {
 
 #ifdef TG_PROBE
@@ -1582,6 +1569,30 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
 #  endif
 
 #  if INT_TEMP_VOFBC
+
+  /**
+  Attach the interface condition to the two temperatures.
+
+  Caution: this MUST NOT go in a `defaults` event of this file. `TS` and `TG`
+  are created by `TS = new scalar` in the `defaults` event of
+  `memoryallocation-varprop.h`, which this file includes at the top. Same-name
+  Basilisk events run in REVERSE declaration order, so an event declared here
+  runs BEFORE the one that creates the fields, and the condition lands on a
+  handle that is not a field yet.
+
+  The real `TS` then keeps the default boundary of a new `bid`, which is
+  `symmetry`. `symmetry` returns `s[]` and leaves the Dirichlet flag false, so
+  `plic_flux()` builds the interface gradient with the CELL's own temperature
+  as the interface value. The gradient collapses to an internal one and the
+  interface exchange goes to nothing. A measured run of `test-vofbcm` cooled
+  the particle core from 300 K to 270 K in a furnace at 1123 K over 25 s, and
+  it lost 0.05 per cent of its mass where `test-base` loses 87 per cent.
+
+  Assign it here instead, in the event that uses it. The fields exist, the
+  cost is two function pointers, and no ordering rule can break it. */
+
+    TS[interface] = dirichlet (TInt[]);
+    TG[interface] = dirichlet (TInt[]);
 
   /**
   Name the phase before its own solve: `plic_flux()` reads one pair of

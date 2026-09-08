@@ -158,6 +158,51 @@ value that only excludes cells the geometry cannot describe. */
 #endif
 
 /**
+The threshold of the first-order branch, as a fraction of the reach of the
+accurate stencil. Zero keeps the accurate stencil everywhere, which is the
+behaviour of the original.
+
+Caution: the default is 0, and a value above 0 needs the residual sign fix of
+`poisson-flux-hook.patch` applied to the install. `relax` of `poisson.h`
+solves `lambda*a + div - (c + e*a) = b`, while its `residual` measures
+`lambda*a + div + e*a - c = b`. The two disagree on the sign of `e*a`. That is
+invisible for `embed.h`, whose `embed_flux` returns a non-zero `e` only in the
+rare degenerate branch, and `viscosity-embed.h` uses the same hook with the
+consistent signs. With this branch active `e` is non-zero on many cells at
+once, the multigrid relaxes toward one operator and measures another, and a
+measured `run/restart.c` stopped at the FIRST step.
+
+Caution: 0.05 is carried over from a sweep on the FROZEN-SOURCE path, where
+0.02 and 0.05 forced the same eight cells of 26 and moved the mass by 0.1 per
+cent, while 0.10 moved it by 2 per cent. That sweep does not transfer: inside
+the operator the neighbours are implicit, so the trade is different. Sweep it
+again on a case before you quote a run. */
+
+#ifndef PLICBC_ETA
+# define PLICBC_ETA 0.
+#endif
+
+/**
+The cap on the interface conductance, as a multiple of the face conductance
+of the same row.
+
+`relax` of `poisson.h` builds the denominator as `-lambda*Delta^2 + sum(alpha)`
+and the callback adds `e*Delta^2` to it. So the natural scale of the returned
+coefficient is `sum(alpha)/Delta^2`, and this number is the multiple of it
+that the interface term may reach.
+
+Caution: without a cap the first-order branch divides by `max(1e-3, d0)`, the
+floor of `embed.h`. That permits a diagonal a thousand times the rest of the
+row, and the multigrid does not survive it. A measured `run/restart.c` stopped
+at the first step. The maximum principle holds for ANY positive conductance,
+so the cap costs nothing in boundedness; it only protects the condition
+number. */
+
+#ifndef PLICBC_CMAX
+# define PLICBC_CMAX 100.
+#endif
+
+/**
 The callback. `poisson.h` uses the two returned numbers as
 
     flux = *val + (return value)*s[]
@@ -211,14 +256,50 @@ double plic_flux (Point point, scalar s, face vector D, double * val)
   third = true;
 #endif
 
-  double coef = 0.;
   /**
-  `force` is false: use the accurate stencil wherever it exists, exactly as
-  the original does. The first-order form is taken only where the stencil is
-  missing, and there it arrives through `coef`, not through a threshold. */
+  ## Which form of the gradient this cell needs
 
-  double grad = concentration_gradient (point, s, cs1, fs1, m, p, bc, third,
-                                        &coef, d0, false);
+  The accurate stencil reads the NEIGHBOURS along the normal and never the
+  cell, so it returns `coef = 0` and puts nothing on the diagonal. For a well
+  resolved cut cell that is right: the row still binds through its heat
+  capacity and its face conductance.
+
+  For a thin cell both of those vanish and the interface conductance does not,
+  so the row says nothing about how far the cell may go. Inside the operator
+  the neighbours are at the current iterate, which bounds the answer far
+  better than a frozen source, but it does not put the cell back in its own
+  equation.
+
+  Caution: this is not optional. `TG_FGMIN_MODE 2` used to give such a cell
+  the full conductance on its diagonal, but that line sits inside
+  `#if INT_TEMP_ROBIN`, which `INT_TEMP_VOFBC` forbids. Without the branch
+  below those cells have NO protection at all, and a measured `test-vofbcm`
+  stopped at t = 5.97 s with a negative gas temperature, at the same place as
+  the build with no interface treatment.
+
+  The test is the thickness of the phase in this cell against the reach of the
+  stencil. `d0` comes from `plane_center`; `d1` is `1/(h*Delta)`, where `h` is
+  the exact affine slope of the gradient in the interface value. Below
+  `PLICBC_ETA` the stencil reads a value from well outside the layer it claims
+  to differentiate, and the cell takes the first-order form that reads itself.
+
+  `h` costs two more calls per cut cell per sweep. Cut cells are a small part
+  of the grid, so the cost is small; measure it before you optimise it. */
+
+  double c1 = 0., c0 = 0.;
+  double h = concentration_gradient (point, s, cs1, fs1, m, p, 1., third,
+                                     &c1, d0, false)
+           - concentration_gradient (point, s, cs1, fs1, m, p, 0., third,
+                                     &c0, d0, false);
+  double d1 = (h != 0.) ? 1./(fabs (h)*Delta) : 0.;
+  bool force = (h == 0.) || (d1 > 0. && d0 < PLICBC_ETA*d1);
+
+  double coef = 0.;
+  double grad = force ?
+    concentration_gradient (point, s, cs1, fs1, m, p, bc, third,
+                            &coef, d0, true) :
+    concentration_gradient (point, s, cs1, fs1, m, p, bc, third,
+                            &coef, d0, false);
 
 #if PLICBC_DROP_DEGENERATE
   if (grad == nodata || coef != 0.)
@@ -236,8 +317,24 @@ double plic_flux (Point point, scalar s, face vector D, double * val)
   }
   double mua = Da/(fa + 1.e-30);
 
+  double e = - mua*coef*area/Delta;
+
+  /**
+  The cap. Scale the two parts by the same factor, so the pair is still the
+  flux `C*(bc - s[])` with a smaller `C`, and the value the cell relaxes to
+  does not move. */
+
+  if (e != 0. && PLICBC_CMAX > 0. && Da > 0.) {
+    double emax = PLICBC_CMAX*Da/sq(Delta);
+    if (fabs (e) > emax) {
+      double sc = emax/fabs (e);
+      grad *= sc;
+      e    *= sc;
+    }
+  }
+
   *val = - mua*grad*area/Delta;
-  return - mua*coef*area/Delta;
+  return e;
 }
 
 #endif // PLICBC_H

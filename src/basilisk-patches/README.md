@@ -53,3 +53,30 @@ include resolves against the directory of the including file, so
 `$BASILISK/viscosity.h` would still take the original while our `diffusion.h`
 took the copy. Both would land in one translation unit and every symbol of
 the file would be defined twice.
+
+## A latent inconsistency in `poisson.h`, recorded but NOT patched
+
+`relax` and `residual` do not solve the same equation when the flux callback
+returns a non-zero diagonal coefficient `e`.
+
+    relax     n -= c*Delta^2, d += e*Delta^2   =>  lambda*a + div - (c + e*a) = b
+    residual  res[] += c - e*a[]               =>  lambda*a + div + e*a - c = b
+
+They agree on `c` and disagree on the sign of `e*a`. `viscosity-embed.h` uses
+the same callback and is self-consistent: its relax puts `-dt*c` in the
+numerator and `+dt*d` in the denominator, and its residual does
+`res.x[] -= dt*(c + d*u.x[])`.
+
+This is invisible in normal use, because `embed_flux` returns a non-zero `e`
+only in its degenerate branch, which is rare and local. It becomes fatal when
+a callback returns `e` on many cells at once: the multigrid relaxes toward one
+operator and measures the residual of another. A measured `run/restart.c`
+stopped at the FIRST step.
+
+The patches here do NOT change it. This sandbox no longer needs a diagonal
+from the callback: `plic_flux` returns 0 and the small cells are excluded by
+`PLICBC_TOL`, as `embed.h` and the original do. The note is kept because the
+next person who returns a non-zero `e` will lose a day to it.
+
+If you ever do need it, the fix is `res[] += c + e*a[];` in both branches of
+`residual`, and it must be measured against every embed case in the install.

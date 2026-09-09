@@ -63,17 +63,17 @@ so it discards the diagonal coefficient and, in a degenerate cell, drops the
 interface flux entirely. That reproduces the behaviour of `intgrad.h`, where
 the same cell silently receives no surface heat.
 
-This version returns the coefficient, as `embed.h` does. Two consequences.
+This port keeps that behaviour. It was changed once, to return the
+coefficient as `embed.h` does, so that a degenerate cell kept its flux on the
+diagonal. That was reverted, for two measured reasons.
 
-1. A degenerate cell keeps its flux, in the first-order form
-   `(TInt - T_c)/(d0*Delta)`, which reads the cell and therefore lands on the
-   diagonal. `poisson.h` adds it there with `d += e*sq(Delta)`.
-2. That cell obeys a maximum principle: it lands between `TInt`, its old
-   value and its neighbours, for any fraction and any `dt`.
-
-`PLICBC_DROP_DEGENERATE` restores the original behaviour for a comparison. Do
-not run physics with it: a cut cell that receives no surface heat is a hole in
-the energy balance that nothing reports. */
+1. It is not needed. `PLICBC_TOL` excludes the cells that misbehave, and the
+   heat it costs is 0.1 per cent of `QS`. See the note at `PLICBC_TOL`.
+2. It does not work. `relax` and `residual` of `poisson.h` disagree on the
+   sign of `e*a`, which is invisible while `e` is non-zero only in the rare
+   degenerate branch and fatal when a branch returns it on many cells at once.
+   `run/restart.c` stopped at the FIRST step. See
+   `basilisk-patches/README.md`. */
 
 #ifndef PLICBC_H
 #define PLICBC_H
@@ -146,60 +146,34 @@ void plicbc_phase (scalar c, face vector fc)
 }
 
 /**
-The smallest fraction that carries an interface condition. Below it the cell
-is treated as pure and gets none.
+The smallest phase fraction that carries an interface condition. Below it the
+cell is treated as pure and gets none. This is the small-cell treatment, and
+it is the same one `embed.h` and the original use: EXCLUDE the cell, do not
+try to bound it.
 
-Caution: this is a hole, not a bound. A cut cell below the threshold receives
-no surface heat at all, which is what `TG_FGMIN_MODE 1` does. Keep it at the
-value that only excludes cells the geometry cannot describe. */
+The value 1e-3 is Alexandre's. Measured on `test-vofbcm`, MOISTURE, level 10,
+8 ranks, over t = 5.0 to 5.97 against a build with 1e-10:
+
+| PLICBC_TOL | QS | QG | outcome |
+|---|---|---|---|
+| 1e-10 | 0.008521 | -0.001395 | stops at t = 5.97, TG_min -2.3e6 |
+| 1e-3 | 0.008530 | -0.001404 | passes t = 6.12, TG_min 525 |
+
+So the exclusion changes the interfacial heat by +0.1 per cent on the solid
+side and +0.6 per cent on the gas side, and it removes the failure. The cells
+it drops hold under 0.1 per cent of the interfacial gas volume: they carried
+the instability, not the heat.
+
+In that run `SG_max` reached 287 with 93 cells above an exchange number of 1,
+and nothing happened. That is the point of the whole scheme: with the
+interface condition inside the operator, `S` stops being a stability number.
+
+Caution: this IS an energy hole, in the way `TG_FGMIN_MODE 1` is. It is small
+here because the excluded volume is small. Check `QS` against a run with a
+lower value before you raise it on a new case. */
 
 #ifndef PLICBC_TOL
-# define PLICBC_TOL 1.e-10
-#endif
-
-/**
-The threshold of the first-order branch, as a fraction of the reach of the
-accurate stencil. Zero keeps the accurate stencil everywhere, which is the
-behaviour of the original.
-
-Caution: the default is 0, and a value above 0 needs the residual sign fix of
-`poisson-flux-hook.patch` applied to the install. `relax` of `poisson.h`
-solves `lambda*a + div - (c + e*a) = b`, while its `residual` measures
-`lambda*a + div + e*a - c = b`. The two disagree on the sign of `e*a`. That is
-invisible for `embed.h`, whose `embed_flux` returns a non-zero `e` only in the
-rare degenerate branch, and `viscosity-embed.h` uses the same hook with the
-consistent signs. With this branch active `e` is non-zero on many cells at
-once, the multigrid relaxes toward one operator and measures another, and a
-measured `run/restart.c` stopped at the FIRST step.
-
-Caution: 0.05 is carried over from a sweep on the FROZEN-SOURCE path, where
-0.02 and 0.05 forced the same eight cells of 26 and moved the mass by 0.1 per
-cent, while 0.10 moved it by 2 per cent. That sweep does not transfer: inside
-the operator the neighbours are implicit, so the trade is different. Sweep it
-again on a case before you quote a run. */
-
-#ifndef PLICBC_ETA
-# define PLICBC_ETA 0.
-#endif
-
-/**
-The cap on the interface conductance, as a multiple of the face conductance
-of the same row.
-
-`relax` of `poisson.h` builds the denominator as `-lambda*Delta^2 + sum(alpha)`
-and the callback adds `e*Delta^2` to it. So the natural scale of the returned
-coefficient is `sum(alpha)/Delta^2`, and this number is the multiple of it
-that the interface term may reach.
-
-Caution: without a cap the first-order branch divides by `max(1e-3, d0)`, the
-floor of `embed.h`. That permits a diagonal a thousand times the rest of the
-row, and the multigrid does not survive it. A measured `run/restart.c` stopped
-at the first step. The maximum principle holds for ANY positive conductance,
-so the cap costs nothing in boundedness; it only protects the condition
-number. */
-
-#ifndef PLICBC_CMAX
-# define PLICBC_CMAX 100.
+# define PLICBC_TOL 1.e-3
 #endif
 
 /**
@@ -212,6 +186,7 @@ putting the first in the numerator and the second on the diagonal. */
 double plic_flux (Point point, scalar s, face vector D, double * val)
 {
   *val = 0.;
+
   if (cs1[] < PLICBC_TOL || cs1[] > 1. - PLICBC_TOL)
     return 0.;
 
@@ -242,13 +217,6 @@ double plic_flux (Point point, scalar s, face vector D, double * val)
   area *= (y + p.y*Delta);
 #endif
 
-  /**
-  The distance from the centroid of this phase to the interface, for the
-  first-order form. Compute it before `normalize`, because `plane_alpha`
-  returns the alpha of the box normal. */
-
-  double d0 = interface_phase_distance (point, cs1, m, alpha, false);
-
   normalize (&m);
 
   bool third = false;
@@ -256,55 +224,10 @@ double plic_flux (Point point, scalar s, face vector D, double * val)
   third = true;
 #endif
 
-  /**
-  ## Which form of the gradient this cell needs
-
-  The accurate stencil reads the NEIGHBOURS along the normal and never the
-  cell, so it returns `coef = 0` and puts nothing on the diagonal. For a well
-  resolved cut cell that is right: the row still binds through its heat
-  capacity and its face conductance.
-
-  For a thin cell both of those vanish and the interface conductance does not,
-  so the row says nothing about how far the cell may go. Inside the operator
-  the neighbours are at the current iterate, which bounds the answer far
-  better than a frozen source, but it does not put the cell back in its own
-  equation.
-
-  Caution: this is not optional. `TG_FGMIN_MODE 2` used to give such a cell
-  the full conductance on its diagonal, but that line sits inside
-  `#if INT_TEMP_ROBIN`, which `INT_TEMP_VOFBC` forbids. Without the branch
-  below those cells have NO protection at all, and a measured `test-vofbcm`
-  stopped at t = 5.97 s with a negative gas temperature, at the same place as
-  the build with no interface treatment.
-
-  The test is the thickness of the phase in this cell against the reach of the
-  stencil. `d0` comes from `plane_center`; `d1` is `1/(h*Delta)`, where `h` is
-  the exact affine slope of the gradient in the interface value. Below
-  `PLICBC_ETA` the stencil reads a value from well outside the layer it claims
-  to differentiate, and the cell takes the first-order form that reads itself.
-
-  `h` costs two more calls per cut cell per sweep. Cut cells are a small part
-  of the grid, so the cost is small; measure it before you optimise it. */
-
-  double c1 = 0., c0 = 0.;
-  double h = concentration_gradient (point, s, cs1, fs1, m, p, 1., third,
-                                     &c1, d0, false)
-           - concentration_gradient (point, s, cs1, fs1, m, p, 0., third,
-                                     &c0, d0, false);
-  double d1 = (h != 0.) ? 1./(fabs (h)*Delta) : 0.;
-  bool force = (h == 0.) || (d1 > 0. && d0 < PLICBC_ETA*d1);
-
   double coef = 0.;
-  double grad = force ?
-    concentration_gradient (point, s, cs1, fs1, m, p, bc, third,
-                            &coef, d0, true) :
-    concentration_gradient (point, s, cs1, fs1, m, p, bc, third,
-                            &coef, d0, false);
+  double grad = concentration_gradient (point, s, cs1, fs1, m, p, bc, third,
+                                        &coef, 0., false);
 
-#if PLICBC_DROP_DEGENERATE
-  if (grad == nodata || coef != 0.)
-    grad = 0., coef = 0.;
-#endif
 
   /**
   Recover the conductivity without the face fractions and without the metric.
@@ -317,24 +240,25 @@ double plic_flux (Point point, scalar s, face vector D, double * val)
   }
   double mua = Da/(fa + 1.e-30);
 
-  double e = - mua*coef*area/Delta;
+  *val = - mua*grad*area/Delta;
 
   /**
-  The cap. Scale the two parts by the same factor, so the pair is still the
-  flux `C*(bc - s[])` with a smaller `C`, and the value the cell relaxes to
-  does not move. */
+  No diagonal, ever. `concentration_gradient` is called with `force = false`,
+  so `coef` is zero in every branch: the accurate estimates do not read the
+  cell, and the degenerate branch reports no flux. The assertion states the
+  invariant rather than trusting it.
 
-  if (e != 0. && PLICBC_CMAX > 0. && Da > 0.) {
-    double emax = PLICBC_CMAX*Da/sq(Delta);
-    if (fabs (e) > emax) {
-      double sc = emax/fabs (e);
-      grad *= sc;
-      e    *= sc;
-    }
-  }
+  Caution: do NOT return `-mua*coef*area/Delta` here, even though it looks
+  more general. `relax` and `residual` of `poisson.h` disagree on the sign of
+  that term, so a non-zero value makes the multigrid relax toward one operator
+  and measure the residual of another. It is invisible until a degenerate cell
+  appears, and then the solve diverges in ONE step. A measured `test-vofbcm`
+  ran to t = 10.03 with the solid solve converging in 2 cycles, then reported
+  a residual of 1.5e35 and stopped inside the GSL Jacobian of
+  `EqTemperature`. Read `basilisk-patches/README.md` before you change this. */
 
-  *val = - mua*grad*area/Delta;
-  return e;
+  assert (coef == 0.);
+  return 0.;
 }
 
 #endif // PLICBC_H

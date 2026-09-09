@@ -19,32 +19,25 @@ See the note in the code below.
 
 'PIN_SOLID_INTERIOR' selects what the function keeps at 'maxlevel':
 
-* 1 (the default): every cell with 'vf[] > F_ERR', thus the interface and the
-  full body of the particle.
-* 0: only the cells that hold an interface.
+* 0 (the default): only the cells that hold an interface.
+* 1: every cell with 'vf[] > F_ERR', thus the interface and the full body of
+  the particle.
 
-Commit '5527632' set the second behaviour, because the restriction above
-removes the artificial interface cells that were the first reason for the
-pin. Two later results show that the pin is still necessary.
+Commit '5527632' set the default above. The restriction of 'vol_frac' that
+this function does, together with 'slist', removes the artificial interface
+cells in the body of the particle that were the first reason for the pin, and
+it closes the SIGFPE at 'src/variable-properties.h' on the line '1./rhomix'
+that the unpinned interior gave before that restriction.
 
-Caution: with 'PIN_SOLID_INTERIOR' at 0 the run can stop with SIGFPE at
-'src/variable-properties.h', on the line '1./rhomix'. 'centered.h' calls the
-'properties' event a second time after this function, and
-'update_properties()' does not run there. The cells that this function makes
-inside the particle, or across the interface, hold prolongated values of
-'rhoGv_G' and 'rhoGv_S'. A cell can then fall outside the gates of
-'update_properties()' and keep both densities at 0. With the pin, every cell
-that this function makes is far field gas at 'f == 0', and the gas gate
-always fills it. Do not set 'PIN_SOLID_INTERIOR' to 0 before the 'properties'
-event handles the cells that the adaptation makes.
+The pin costs cells. Measured at 'maxlevel' 10: 13 to 18 % more cells before
+the front lights, 0.5 to 2.6 % after. At 'maxlevel' 11: 74 % before, 26 % at
+t = 10.
 
-Caution: the pin also makes the grid inside the particle independent of the
-case. Without it, the wavelet criterion coarsens the interior, and the
-coarsening is different for each case. A comparison of two cases then
-measures the grid as much as the physics. The ladder campaign of
-'run/test.c' needs the pin for this reason. Measured cost at 'maxlevel' 10:
-13 to 18 % more cells before the front lights, 0.5 to 2.6 % after. At
-'maxlevel' 11: 74 % before, 26 % at t = 10.
+Caution: the pin makes the grid inside the particle independent of the case.
+Without it, the wavelet criterion coarsens the interior, and the coarsening is
+different for each case. A comparison of two cases then measures the grid as
+much as the physics. Set 'PIN_SOLID_INTERIOR' to 1 for a campaign that
+compares cases against each other, such as the ladder of 'run/test.c'.
 */
 #if TREE
 
@@ -53,7 +46,7 @@ measures the grid as much as the physics. The ladder campaign of
 #endif
 
 #ifndef PIN_SOLID_INTERIOR
-# define PIN_SOLID_INTERIOR 1
+# define PIN_SOLID_INTERIOR 0
 #endif
 
 astats adapt_wavelet_leave_interface(scalar *slist,      // list of scalars

@@ -419,6 +419,97 @@ static void accumulate_gas_sources (Point point, const double * ystart,
 }
 #endif
 
+/**
+## The gate that skips the cells the step cannot change
+
+`FROZEN_CELL_GATE` spends **one** evaluation of the reactor right-hand side to
+decide whether the stiff solve of a gas cell can change the state over the
+step. The measurements below come from `test/bench88.c` and
+`test/gate-ignition.c` with `biomass/Solid-gas-88` (87 gas species, 33 solid
+species) at `dt = 2.4e-4` s.
+
+The gas branch solves 88 equations in every cell that holds gas. In the free
+stream the mixture is air at the inlet temperature and it does not react, but
+the stiff solve still costs 1.8 to 3.8 ms, which is about 100 evaluations. The
+gate applies the explicit update instead, which is exact at that size, and
+skips the solve. It replaces those 100 evaluations with one.
+
+The margin is large. Air at 1123 K gives `max|dY|` of 2e-17 and `|dT|` of
+3e-13 K over the step. Hot air with 0.5 per cent of CO and 0.5 per cent of tar
+gives 2e-4 and 3e-2 K.
+
+## An ignition never closes the gate
+
+`test/gate-ignition.c` marches a batch reactor at the step of the production
+case and compares the gated trajectory with the ungated one. An ignition is
+the case that a rate test can miss: the species move slowly through the
+induction period, and the mixture then runs away inside one step.
+
+With the pyrolysis gas of the biomass in air, from 800 K to 1300 K, the gate
+stays open on **every one of the 3000 steps**, at every temperature. The
+ignition delay and the whole temperature trajectory are equal to the last bit,
+even at 800 K where the induction lasts 0.48 s, which is 2000 steps.
+
+At the tolerances below the gate closes on hot air only under about 1e-9 of
+fuel by mass. A mixture with 1e-8 of fuel still gets the solve. At the level
+where the gate does close, the mixture moves by 2e-9 K over 0.72 s, and the
+gated trajectory follows the solved one to 1.4e-9 K.
+
+## Why the tolerances are as tight as they are
+
+The tolerance is the size of the state that the gate throws away on one step,
+so it is also the size of the perturbation that the gate feeds to the rest of
+the solver. A 2-D A/B on `run/test.c` at `maxlevel` 8 measured it. With
+`FROZEN_CELL_YTOL` at 1e-10 the mass, `Tmax`, `dt` and the count of the
+pressure iterations stay equal to the printed precision over 0.6 s, but the
+projection residual moves by 5e-5 in relative terms from t = 0.33, and the two
+`Tavg` probes nearest the surface then differ, because they are a ratio of two
+integrals that are both near zero when the plume arrives.
+
+At 1e-15 the same run is equal to the ungated run in every column of every
+row. The tolerances are therefore the tight values: they still sit 40 times
+above the rate of the free stream, so the gate keeps its work, and they leave
+the trajectory reproducible. Raise them only if a run needs the speed more
+than it needs a run-to-run comparison.
+
+## What it is worth
+
+A 2-D `fatehi-combustion` at `maxlevel` 7 with the 88-species scheme, over a
+fixed wall budget, reaches **1.28 times** the simulated time of the same case
+with the gate off. The gate takes the whole domain on the first step, about
+42 per cent of the gas cells by step 10, and 9 per cent once the plume is
+established. At `FROZEN_CELL_YTOL` of 1e-10 the same case reaches 1.43 times,
+with the drift above.
+
+Caution: compare two builds only inside one batch of runs. The absolute time
+of this case swings 15 per cent from one run to the next on the same binary,
+while the ratio inside a batch repeats to 1 per cent.
+
+`FROZEN_CELL_GATE` is **off by default**. Set it to 1 to switch the gate on.
+*/
+
+#ifndef FROZEN_CELL_GATE
+# define FROZEN_CELL_GATE 0
+#endif
+
+#ifndef FROZEN_CELL_YTOL
+# define FROZEN_CELL_YTOL 1e-15
+#endif
+
+#ifndef FROZEN_CELL_TTOL
+# define FROZEN_CELL_TTOL 1e-11
+#endif
+
+#if FROZEN_CELL_GATE
+/**
+The number of cells that the gate skipped over the last step. It makes the
+gain of the gate visible in a production log. The `foreach` loop below carries
+a `reduction` clause for it, so the value is the total over every rank and
+every thread. */
+
+int frozen_cell_gate_n = 0;
+#endif
+
 event chemistry (i++) {
 
 #ifdef CHEMISTRY_LOG
@@ -430,6 +521,10 @@ event chemistry (i++) {
 
   struct timespec start, end;
   clock_gettime (CLOCK_MONOTONIC, &start);
+#endif
+
+#if FROZEN_CELL_GATE
+  frozen_cell_gate_n = 0;
 #endif
 
 #ifdef SOLVE_TEMPERATURE
@@ -727,7 +822,11 @@ event chemistry (i++) {
   }
 #else // !BINNING
 
+#if FROZEN_CELL_GATE
+  foreach (reduction(+:frozen_cell_gate_n)) {
+#else
   foreach() {
+#endif
     if (f[] < 1. - F_ERR) {
       double temperature = TG[]/(1. - f[]);
       if (!(temperature > 273.) || !(temperature < 3500.))
@@ -772,6 +871,35 @@ event chemistry (i++) {
       data.rhog = rhoG;
       data.cpg = cpG;
 # endif
+
+#if FROZEN_CELL_GATE
+      /**
+      One evaluation decides whether this cell reacts at all. When it does not,
+      the explicit update carries the whole change of the step, and the stiff
+      solve has nothing to add. The gate then continues to the write-back
+      below, so the expansion source and the fields stay on the same path as a
+      solved cell. */
+
+      bool frozen = false;
+      if (dt > 0.) {
+        double dy_gate[NGS + 1];
+        gas_batch_nonisothermal_constantpressure (y0ode, dt, dy_gate, &data);
+
+        double dYmax = 0.;
+        for (int jj = 0; jj < NGS; jj++)
+          dYmax = fmax (dYmax, fabs (dy_gate[jj]));
+
+        if (dYmax*dt < FROZEN_CELL_YTOL &&
+            fabs (dy_gate[NGS])*dt < FROZEN_CELL_TTOL) {
+          frozen = true;
+          frozen_cell_gate_n++;
+          for (int jj = 0; jj < NGS + 1; jj++)
+            y0ode[jj] += dt*dy_gate[jj];
+        }
+      }
+
+      if (!frozen)
+#endif
       /**
         Using an explicit solver for gas-phase reactions is not
         recommended as they are usually stiff.

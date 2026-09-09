@@ -124,11 +124,12 @@ TLAD_CASES = base da moist grav transport emis shape full l11 \
              rdt1 rdt2 pdt1 pdt2 \
              fullprobe fullrobin fullpicard \
              robindb robinls fullrobinls fullrobin20 fullrobininf \
-             vofbc vofbcfl vofbcm vofbcnp fullvofbc \
+             vofbc vofbcfl vofbcbase vofbcm vofbcnp fullvofbc \
              atol2 atol4 toloff \
              molar fick mde \
              transportold transportcfl transportlim transportmde fullold \
-             transrdt2 transoldrdt2
+             transrdt2 transoldrdt2 \
+             frozen frozenloose frozenfull
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -139,6 +140,20 @@ test-%.c: test.c
 test-links: $(TLAD_LINKS)
 test-unlink:
 	rm -f $(TLAD_LINKS)
+
+# Every rung of this ladder is read against the runs in ~/test/solid, and those
+# were made when PIN_SOLID_INTERIOR was 1 by default. The default became 0 on
+# 2026-09-09, so the ladder sets it back to 1 here.
+#
+# Caution: do not remove this line while the archive is the control. Without
+# the pin the wavelet criterion coarsens the body of the particle, and it
+# coarsens it differently for each case, so a comparison between two rungs
+# measures the grid as much as the physics.
+
+TLAD_PIN = -DPIN_SOLID_INTERIOR=1
+
+test-%.s:   CFLAGS += $(TLAD_PIN)
+test-%.tst: CFLAGS += $(TLAD_PIN)
 
 # The three transport flags travel together: the full case has all three.
 TLAD_TRANSPORT = -DMOLAR_DIFFUSION -DFICK_CORRECTED -DMASS_DIFFUSION_ENTHALPY
@@ -270,6 +285,46 @@ test-dtvar.tst:     CFLAGS += -DCFLNUM=$(TLAD_DTVAR_CFL)
 
 # --- (b) what closes the loop ----------------------------------------------
 # test-pyro is the reference of this group and reproduces ~/temp/10-fatehi.
+# The gate of the frozen gas cells (src/chemistry.h).
+#
+# `FROZEN_CELL_GATE` is OFF by default. In a cell that does not react, the
+# stiff solve of the 88-species scheme still costs about 100 evaluations of
+# the right-hand side. The gate spends one evaluation to find that out, takes
+# the explicit update, which is exact at that size, and skips the solve.
+#
+# `test-frozen` is the rung to compare against `test-base`. Both must give the
+# same answer: at the default tolerance of 1e-15 a 2-D A/B at level 8 was
+# equal to the ungated run in every column of every output row.
+#
+#   make test-base.tst test-frozen.tst
+#   diff test-base/OutputData-* test-frozen/OutputData-*
+#
+# `test-frozenloose` opens the tolerance to 1e-10. It is faster, 1.43x against
+# 1.28x on a level-7 fatehi with the 88-species scheme, but it perturbs the
+# trajectory: 21 of 62 output rows moved in the same A/B. Use it only when the
+# run does not have to compare against another run.
+#
+# `test-frozenfull` is the gate on top of the full flag set, to check that the
+# gate and the transport flags do not interact.
+#
+# Caution: compare two builds only inside one batch of runs. The absolute time
+# of the case swings 15 per cent from one run to the next on the same binary,
+# while the ratio inside a batch repeats to 1 per cent. Wall-clock claims made
+# across batches are meaningless.
+
+TLAD_FROZEN = -DFROZEN_CELL_GATE=1
+TLAD_FROZEN_LOOSE = -DFROZEN_CELL_GATE=1 -DFROZEN_CELL_YTOL=1e-10 \
+                    -DFROZEN_CELL_TTOL=1e-6
+
+test-frozen.s:          CFLAGS += $(TLAD_FROZEN)
+test-frozen.tst:        CFLAGS += $(TLAD_FROZEN)
+
+test-frozenloose.s:     CFLAGS += $(TLAD_FROZEN_LOOSE)
+test-frozenloose.tst:   CFLAGS += $(TLAD_FROZEN_LOOSE)
+
+test-frozenfull.s:      CFLAGS += $(TLAD_FULL) $(TLAD_FROZEN)
+test-frozenfull.tst:    CFLAGS += $(TLAD_FULL) $(TLAD_FROZEN)
+
 TLAD_PYRO = -DPYROLYSIS_ONLY=1
 
 test-pyro.s:        CFLAGS += $(TLAD_PYRO)
@@ -476,6 +531,9 @@ test-vofbc.tst:     CFLAGS += $(TLAD_PYRO) $(TLAD_VOFBC)
 
 test-vofbcfl.s:     CFLAGS += $(TLAD_VOFBC)
 test-vofbcfl.tst:   CFLAGS += $(TLAD_VOFBC)
+
+test-vofbcbase.s:   CFLAGS += -DINT_TEMP_VOFBC=1 $(TLAD_PROBE)
+test-vofbcbase.tst: CFLAGS += -DINT_TEMP_VOFBC=1 $(TLAD_PROBE)
 
 test-vofbcm.s:      CFLAGS += -DMOISTURE=1 $(TLAD_VOFBC)
 test-vofbcm.tst:    CFLAGS += -DMOISTURE=1 $(TLAD_VOFBC)

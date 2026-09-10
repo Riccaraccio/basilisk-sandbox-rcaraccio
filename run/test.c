@@ -63,8 +63,96 @@ is what separates the endothermic closure from the blowing closure. */
 #endif
 
 /**
-The log needs a value, and the four flags above carry none once they are
+## Pure heating
+
+`TURN_OFF_REACTIONS` removes every reaction and leaves the particle to heat
+up. `chemistry.h` reads it at line 29 with `#ifndef`, so the flag compiles out
+the whole `chemistry` event: no solid kinetics, no gas kinetics, and no stiff
+solve. The run keeps the flow, the transport of the species, the two
+temperature equations, the interface coupling and `darcy.h`.
+
+The particle therefore keeps its mass and its composition. `omega` stays at
+zero, so `gas_source` stays at zero, `zeta` stays at zero and the particle
+neither shrinks nor blows. Columns 3, 6, 7 and 17 of `expansion.dat` must hold
+0, and column 2 of `OutputData` must stay constant. Check those columns on the
+first run: they are the proof that the reactions are off.
+
+Caution: column 2 of `OutputData` does not hold exactly 1. The first
+adaptation changes the discrete volume of the solid by about 0.6 per cent, so
+the value falls to 0.9942 at the first output and holds there. Read the
+constancy, not the value.
+
+Use this build as the thermal reference of the ladder. It gives the transient
+of pure heat conduction, so it separates the response of the temperature from
+the loop of the reactions.
+
+Caution: the flag carries the trap of `TURN_OFF_HEAT_OF_REACTION` in the
+opposite direction. The test is `#ifndef`, so `-DTURN_OFF_REACTIONS=0` would
+also turn the reactions OFF. The block below undefines it when the value is 0,
+so `-DTURN_OFF_REACTIONS=0` means on, and both `-DTURN_OFF_REACTIONS` and
+`-DTURN_OFF_REACTIONS=1` mean off.
+
+Caution: no reaction makes H2O, so `T_H2O_weigthed_average` finds an empty
+weight and returns `TG0` at each of its points. Columns 4, 5 and 6 of
+`OutputData` and every column of `TemperatureProfile.dat` are constant in this
+build. Read columns 10 to 12 of `OutputData`, which weight the same three
+points uniformly and need no absorber, and `Tcore`, `Tbulk` and `Tsurf`,
+columns 14 to 16 of `expansion.dat`. */
+
+#if defined(TURN_OFF_REACTIONS) && !TURN_OFF_REACTIONS
+# undef TURN_OFF_REACTIONS
+#endif
+
+/**
+## No expansion of the gas
+
+`NO_EXPANSION` removes the expansion of the gas from the divergence. Two
+sites read it, and both use `#ifndef`:
+
+`centered-phasechange.h:120` builds the source of the projection as
+`div_source = gas_source + drhodt`. With the flag it keeps `gas_source`
+alone. `multicomponent-varprop.h:1071` then does not call
+`update_divergence()`, so `drhodt` is never written and it holds the 0 that
+the `reset_sources` event gives it.
+
+The particle still releases its mass, because `gas_source` carries the phase
+change and it does not pass through `drhodt`. What goes away is the volume
+which the gas gains when it heats up and when its composition changes. The
+build therefore separates the blowing of the phase change from the expansion
+of the gas around it.
+
+`test-constprop` also has no expansion, but for another reason: it has no
+`VARPROP`, so nothing writes `drhodt` at all. That build changes every
+property as well. This one keeps the variable properties everywhere else, so
+it is the clean test of the expansion alone.
+
+Caution: the test is `#ifndef`, so `-DNO_EXPANSION=0` would also turn the
+expansion OFF. The block below undefines the flag when the value is 0, so
+`-DNO_EXPANSION=0` means the expansion is on, and both `-DNO_EXPANSION` and
+`-DNO_EXPANSION=1` mean it is off.
+
+Caution: the flag must reach `centered-phasechange.h`, so it stays above the
+includes. */
+
+#if defined(NO_EXPANSION) && !NO_EXPANSION
+# undef NO_EXPANSION
+#endif
+
+/**
+The log needs a value, and the six flags above carry none once they are
 undefined. */
+
+#ifdef NO_EXPANSION
+# define NOEXP_ON 1
+#else
+# define NOEXP_ON 0
+#endif
+
+#ifdef TURN_OFF_REACTIONS
+# define NOREACT_ON 1
+#else
+# define NOREACT_ON 0
+#endif
 
 #ifdef TURN_OFF_HEAT_OF_REACTION
 # define NOHEAT_ON 1
@@ -216,9 +304,121 @@ an oxidiser. */
 # define PYROLYSIS_ONLY 0
 #endif
 
+/**
+## The shrinking of the particle
+
+`ZETA_POLICY` selects the policy of `shrinking.h`, which splits the volume of
+the phase change between the shrinkage of the solid and the release of gas.
+The ladder uses `ZETA_REACTION`, which ties the shrinkage to the local
+reaction rate. `ZETA_SWELLING` sets `zeta` to zero everywhere, so the
+interface stays where it is: the solid keeps its volume, and the decomposition
+raises the porosity instead.
+
+`zeta` enters through one term only, the source of the Poisson equation of the
+velocity potential, `prod = omega*f*zeta*cm/rhoS`
+(`velocity-potential.h:47`). With `zeta = 0` that source is zero, the solid
+velocity `ubf` is zero, and nothing advects the interface. `gas_source` does
+not carry `zeta`, so the particle releases the same mass into the gas in
+either policy. The two builds therefore separate the motion of the interface
+from the release of mass.
+
+A build with no reaction gives the same run under either policy. `omega` is
+zero everywhere, so `ZETA_REACTION` finds no maximum and sets `zeta` to zero,
+which is what `ZETA_SWELLING` sets. Use the pair as a control of the ladder:
+the two runs must agree in every column.
+
+`shrinking.h` declares the names, so this macro expands only in `main()`,
+after the includes. */
+
+#ifndef ZETA_POLICY
+# define ZETA_POLICY ZETA_REACTION
+#endif
+
+#define ZETA_STR_(x) #x
+#define ZETA_STR(x) ZETA_STR_(x)
+
+/**
+## Constant properties
+
+`CONST_PROPERTIES` replaces `opensmoke-properties.h` with
+`constant-properties.h`. The gas then carries one density, one viscosity, one
+conductivity and one heat capacity over the whole domain, and the solid
+carries one conductivity and one heat capacity. `run/POM.c` builds the same
+stack this way.
+
+The swap removes `VARPROP`, because `variable-properties.h` is what defines
+it. That is not a small change of the model. Three consequences:
+
+The gas no longer expands with the temperature. The density is a constant, so
+its material derivative is zero, and the divergence carries only the source of
+the phase change. The pair of builds therefore measures what the thermal
+expansion of the gas contributes.
+
+`multicomponent-properties.h` lies inside `#ifdef VARPROP`, so
+`update_properties()` and `solid-thermal-conductivity.h` are both absent.
+`constant-properties.h` writes `lambda1v` and `lambda2v` itself, from
+`lambdaS`, `lambdaG` and the porosity. `lambdaSmodel` does not exist in this
+build, so `main()` sets it in the other branch only.
+
+Caution: `constant-properties.h` fixes the diffusion coefficient of every
+species at 2.05e-5 m^2/s, the value for CO in N2 at 500 K, and the case cannot
+change it. At 1123 K the varprop build gives about ten times more. Do not read
+a difference in the transport of the species as a result of the constant
+properties alone.
+
+The six values below are the ones of the commented block in `main()`, for air
+at about 1100 K. Each one takes a `-D` of its own. */
+
+#ifndef CONST_PROPERTIES
+# define CONST_PROPERTIES 0
+#endif
+
+#ifndef RHOG_CONST
+# define RHOG_CONST 0.31     // air at 1100 K, 1 atm [kg/m3]
+#endif
+
+#ifndef MUG_CONST
+# define MUG_CONST 4.5e-5    // [Pa s]
+#endif
+
+#ifndef LAMBDAG_CONST
+# define LAMBDAG_CONST 0.08  // [W/m/K]
+#endif
+
+#ifndef CPG_CONST
+# define CPG_CONST 1200.     // [J/kg/K]
+#endif
+
+#ifndef LAMBDAS_CONST
+# define LAMBDAS_CONST 0.2   // [W/m/K]
+#endif
+
+#ifndef CPS_CONST
+# define CPS_CONST 1500.     // [J/kg/K]
+#endif
+
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
-#include "opensmoke-properties.h" 
+
+/**
+`multicomponent-varprop.h` defines `MULTICOMPONENT`, but it comes after
+`constant-properties.h`, which reads the flag to declare the fields of the
+diffusion coefficient. So this build defines it here, as `run/POM.c` does.
+
+`opensmoke.h` comes with `opensmoke-properties.h` in the other branch. Without
+it `common-phasechange.h` calls `OpenSMOKE_IndexOfSolidSpecies` before it sees
+the declaration, and the build gives two implicit-declaration warnings. Include
+it here. `qcc` includes each header once, so the later include in
+`memoryallocation-varprop.h` does nothing. */
+
+#if CONST_PROPERTIES
+# define MULTICOMPONENT
+# include "opensmoke.h"
+# include "constant-properties.h"
+#else
+# include "opensmoke-properties.h"
+#endif
+
 #include "two-phase.h"
 
 /**
@@ -268,27 +468,42 @@ int main() {
   if (pid() == 0)
     fprintf (stderr, "# ladder: MOLAR=%d FICK=%d MDE=%d MOISTURE=%d GRAVITY=%d"
                      " SHAPE=%d DIBLASI=%d Da=%g DT=%g maxlevel=%d"
-                     " CFL=%g Uin=%g PYRO=%d NOHEAT=%d nranks=%d\n",
+                     " CFL=%g Uin=%g PYRO=%d NOHEAT=%d NOREACT=%d"
+                     " ZETA=%s CONSTP=%d NOEXP=%d nranks=%d\n",
              MOLAR_ON, FICK_ON, MDE_ON, MOISTURE, GRAVITY, SHAPE,
              EMISSIVITY_DIBLASI, (double) DA_VALUE, (double) DT_VALUE,
              MAXLEVEL_VALUE, (double) CFLNUM, (double) UIN_VALUE,
-             PYROLYSIS_ONLY, NOHEAT_ON, npe());
+             PYROLYSIS_ONLY, NOHEAT_ON, NOREACT_ON,
+             ZETA_STR(ZETA_POLICY), CONST_PROPERTIES, NOEXP_ON, npe());
 
+  /**
+  `lambdaSmodel` comes with `solid-thermal-conductivity.h`, which
+  `multicomponent-properties.h` includes inside `#ifdef VARPROP`. The constant
+  build has neither, and `constant-properties.h` writes the conductivity of
+  the two pseudo-phases itself. */
+
+#if CONST_PROPERTIES
+  rhoG    = RHOG_CONST;
+  muG     = MUG_CONST;
+  lambdaG = LAMBDAG_CONST;  cpG = CPG_CONST;
+  lambdaS = LAMBDAS_CONST;
+#else
   lambdaSmodel = L_TENWOLDE;
+#endif
+
   TS0 = 300.; TG0 = 1123.;
   rhoS = 1550; cpS = 1800;
   eps0 = 0.2;
 
-  //rhoG    = 0.31;      // air ~1100 K, 1 atm
-  //muG     = 4.5e-5;
-  //lambdaG = 0.08;      cpG = 1200.;
-  //lambdaS = 0.2;       cpS = 1500.;
+#if CONST_PROPERTIES
+  cpS = CPS_CONST;
+#endif
 
   //dummy properties
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  zeta_policy = ZETA_REACTION;
+  zeta_policy = ZETA_POLICY;
 
   DT = DT_VALUE;
 
@@ -458,6 +673,47 @@ double T_H2O_weigthed_average (double x_interp, int n_samples = 1 << (maxlevel -
   return numerator/denominator;
 }
 
+/**
+The same path average with a uniform H2O concentration.
+
+The weight of `T_H2O_weigthed_average` cancels when the concentration is
+uniform, and the average becomes the harmonic mean of the temperature along
+the path:
+
+  Tuni = N / sum (1/T)
+
+This is the analogue of the weighted probe for a medium which carries the
+same H2O everywhere. It needs no reaction to make the absorber, so it holds
+a value in a `TURN_OFF_REACTIONS` build, where the weighted probe returns
+`TG0`. The two forms differ only through the weight, so a pair of columns
+separates the transport of H2O from the field of the temperature.
+
+Caution: every sample counts the same, and the path is a quarter of the
+domain, so the free stream at `TG0` dilutes this average. The weighted form
+does not carry that dilution, because the plume holds the H2O. Compare the two
+columns of one point against each other; do not read one for the other.
+
+`T` is positive everywhere the case runs, but a sample outside the domain
+returns `nodata`. The test below drops such a sample from both sums. */
+
+double T_uniform_average (double x_interp, int n_samples = 1 << (maxlevel - 1),
+                          const double length = L0/4.) {
+  double numerator = 0., denominator = 0.;
+  coord pos, box[2] = {{x_interp, 0.}, {x_interp, length}}, nn = {1, n_samples};
+  foreach_region (pos, box, nn, reduction(+:numerator) reduction(+:denominator)) {
+    double T_local = interpolate_linear (point, T, pos.x, pos.y, pos.z);
+    if (T_local > 0. && T_local < nodata) {
+      numerator   += 1.;
+      denominator += 1./T_local;
+    }
+  }
+
+  if (denominator <= 0) // avoid division by 0
+    return TG0;
+
+  return numerator/denominator;
+}
+
 event output (t += 0.01) {
 
   char name[80];
@@ -476,24 +732,37 @@ event output (t += 0.01) {
 
   The five points of the full case go to `TemperatureProfile.dat` instead.
   Do not add them here: `slow_flicker.py` reads the first six columns of
-  this file by position. */
+  this file by position.
 
-  double Tavg[3], sample_points[3] = {H0/2 + 2e-3, H0/2 + 6e-3, H0/2 + 11e-3};
+  Columns 10 to 12 hold the same three points with a uniform H2O
+  concentration, which is the analogue of the weighted average for a medium
+  which carries the same absorber everywhere. They go on the end for the same
+  reason: a reader which stops at column 9 keeps working. Each column pairs
+  with the weighted column of the same point, 10 with 4, 11 with 5, 12 with
+  6. */
 
-  for (int ii = 0; ii < 3; ii++)
+  double Tavg[3], Tuni[3];
+  double sample_points[3] = {H0/2 + 2e-3, H0/2 + 6e-3, H0/2 + 11e-3};
+
+  for (int ii = 0; ii < 3; ii++) {
       Tavg[ii] = T_H2O_weigthed_average (sample_points[ii]);
+      Tuni[ii] = T_uniform_average (sample_points[ii]);
+  }
 
   if (i == 0)
     fprintf (fp, "#t(1) Ms/Ms0(2) Tmax(3) Tavg_2mm(4) Tavg_6mm(5) Tavg_11mm(6)"
-                 " dt(7) mgp_i(8) mgp_resa(9)\n");
+                 " dt(7) mgp_i(8) mgp_resa(9)"
+                 " Tuni_2mm(10) Tuni_6mm(11) Tuni_11mm(12)\n");
 
   //log mass profile
   double solid_mass = 0.;
   foreach (reduction(+:solid_mass))
     solid_mass += (f[] - porosity[])*rhoS*dv();
 
-  fprintf (fp, "%g %g %g %g %g %g %g %d %g\n", t, solid_mass/solid_mass0, statsf(T).max,
-                                      Tavg[0], Tavg[1], Tavg[2], dt, mgp.i, mgp.resa);
+  fprintf (fp, "%g %g %g %g %g %g %g %d %g %g %g %g\n",
+           t, solid_mass/solid_mass0, statsf(T).max,
+           Tavg[0], Tavg[1], Tavg[2], dt, mgp.i, mgp.resa,
+           Tuni[0], Tuni[1], Tuni[2]);
 
   fflush(fp);
 }

@@ -117,7 +117,9 @@ gas-source-dtvar.tst:  CFLAGS += $(GSAB_DTVAR_FLAGS)
 # prints what the build actually enabled, not what the case name promises.
 
 TLAD_CASES = base da moist grav transport emis shape full l11 \
-             dtfix dtvar pyro uin2 uin05 noheat l9 \
+             dtfix dtvar pyro uin2 uin05 noheat heat \
+             heatnoshrink pyronoshrink basenoshrink fullnoshrink \
+             constprop constpropnoshrink noexp l9 \
              probe probefl probem \
              robin robinfl robinm \
              picard picardfl picardm picardnr \
@@ -355,6 +357,116 @@ test-uin05.tst:     CFLAGS += $(TLAD_PYRO) -DUIN_VALUE=0.065
 # block.
 test-noheat.s:      CFLAGS += $(TLAD_PYRO) -DTURN_OFF_HEAT_OF_REACTION
 test-noheat.tst:    CFLAGS += $(TLAD_PYRO) -DTURN_OFF_HEAT_OF_REACTION
+
+# Pure heating: no reaction at all. The particle keeps its mass and its
+# composition, and the case gives the transient of pure heat conduction. It is
+# the thermal reference of the ladder, and it is cheap because it runs no
+# stiff solve.
+#
+# Check the columns that prove the reactions are off: columns 3, 6, 7 and 17
+# of expansion.dat hold 0, and column 2 of OutputData stays constant.
+#
+# Caution: column 2 of OutputData does not hold exactly 1. The first adaptation
+# changes the discrete volume of the solid by about 0.6 per cent, so the value
+# falls to 0.9942 at the first output and holds there.
+#
+# Caution: chemistry.h tests the flag with #ifndef, so -DTURN_OFF_REACTIONS=0
+# would also turn the reactions off. test.c undefines it when the value is 0.
+# Do not pass =0 to a build that lacks that block.
+#
+# Caution: no reaction makes H2O, so the H2O-weighted probes return TG0. Read
+# Tcore, Tbulk and Tsurf, columns 14 to 16 of expansion.dat.
+test-heat.s:        CFLAGS += $(TLAD_PYRO) -DTURN_OFF_REACTIONS
+test-heat.tst:      CFLAGS += $(TLAD_PYRO) -DTURN_OFF_REACTIONS
+
+# The fixed-interface block. ZETA_SWELLING sets zeta to zero,
+# so the source of the velocity potential is zero, the solid velocity ubf is
+# zero, and nothing advects the interface. The particle keeps its volume and
+# the decomposition raises the porosity instead.
+#
+# gas_source does not carry zeta, so the release of mass into the gas is the
+# same in both policies. The pair therefore separates the motion of the
+# interface from the release of mass.
+#
+# test-heatnoshrink is a control, not an experiment. With no reaction omega is
+# zero, so ZETA_REACTION already gives zeta = 0, which is what ZETA_SWELLING
+# gives. The run must equal test-heat in every column:
+#
+#   make test-heat.tst test-heatnoshrink.tst
+#   diff test-heat/OutputData-10 test-heatnoshrink/OutputData-10
+#
+# The other three release mass, so the two policies give two different runs.
+# Each one pairs with the rung of the same name:
+#
+#   test-pyronoshrink   against test-pyro    pyrolysis only, no flame
+#   test-basenoshrink   against test-base    the reduced case with a flame
+#   test-fullnoshrink   against test-full    every ingredient of the full case
+#
+# Caution: the particle keeps its volume, so it does not lose surface as it
+# decomposes, and it burns at a different rate. Compare at matched remaining
+# mass, never at matched time.
+TLAD_NOSHRINK = -DZETA_POLICY=ZETA_SWELLING
+
+test-heatnoshrink.s:    CFLAGS += $(TLAD_PYRO) -DTURN_OFF_REACTIONS $(TLAD_NOSHRINK)
+test-heatnoshrink.tst:  CFLAGS += $(TLAD_PYRO) -DTURN_OFF_REACTIONS $(TLAD_NOSHRINK)
+
+test-pyronoshrink.s:    CFLAGS += $(TLAD_PYRO) $(TLAD_NOSHRINK)
+test-pyronoshrink.tst:  CFLAGS += $(TLAD_PYRO) $(TLAD_NOSHRINK)
+
+test-basenoshrink.s:    CFLAGS += $(TLAD_NOSHRINK)
+test-basenoshrink.tst:  CFLAGS += $(TLAD_NOSHRINK)
+
+test-fullnoshrink.s:    CFLAGS += $(TLAD_FULL) $(TLAD_NOSHRINK)
+test-fullnoshrink.tst:  CFLAGS += $(TLAD_FULL) $(TLAD_NOSHRINK)
+
+# The constant-property pair. CONST_PROPERTIES replaces opensmoke-properties.h
+# with constant-properties.h, so the gas carries one density, one viscosity,
+# one conductivity and one heat capacity over the whole domain, and the solid
+# carries one conductivity and one heat capacity. run/POM.c builds the same
+# stack this way.
+#
+# The swap removes VARPROP, because variable-properties.h is what defines it.
+# The density is then a constant, so the gas does not expand with the
+# temperature and the divergence carries only the source of the phase change.
+# Read the pair against test-base and test-basenoshrink.
+#
+# The six values are the ones of the commented block in main(), for air at
+# about 1100 K. Each takes a -D of its own:
+#   RHOG_CONST 0.31   MUG_CONST 4.5e-5   LAMBDAG_CONST 0.08
+#   CPG_CONST 1200    LAMBDAS_CONST 0.2  CPS_CONST 1500
+#
+# Caution: constant-properties.h fixes the diffusion coefficient of every
+# species at 2.05e-5 m^2/s, CO in N2 at 500 K, and the case cannot change it.
+# At 1123 K the varprop build gives about ten times more. Do not read a
+# difference in the transport of the species as a result of the constant
+# properties alone.
+TLAD_CONSTPROP = -DCONST_PROPERTIES=1
+
+test-constprop.s:           CFLAGS += $(TLAD_CONSTPROP)
+test-constprop.tst:         CFLAGS += $(TLAD_CONSTPROP)
+
+test-constpropnoshrink.s:   CFLAGS += $(TLAD_CONSTPROP) $(TLAD_NOSHRINK)
+test-constpropnoshrink.tst: CFLAGS += $(TLAD_CONSTPROP) $(TLAD_NOSHRINK)
+
+# The base case with no expansion of the gas. NO_EXPANSION drops drhodt from
+# the source of the projection (centered-phasechange.h:120) and stops the call
+# to update_divergence() (multicomponent-varprop.h:1071), so drhodt keeps the
+# 0 that reset_sources gives it.
+#
+# The particle still releases its mass: gas_source carries the phase change
+# and it does not pass through drhodt. What goes away is the volume the gas
+# gains as it heats up and as its composition changes. Read this one against
+# test-base.
+#
+# test-constprop also has no expansion, because it has no VARPROP and nothing
+# writes drhodt. That build changes every property as well. This one keeps the
+# variable properties, so it is the clean test of the expansion alone.
+#
+# Caution: the two sites test the flag with #ifndef, so -DNO_EXPANSION=0 would
+# also turn the expansion off. test.c undefines it when the value is 0. Do not
+# pass =0 to a build that lacks that block.
+test-noexp.s:       CFLAGS += -DNO_EXPANSION
+test-noexp.tst:     CFLAGS += -DNO_EXPANSION
 
 # --- (c) the grid sweep with a flame ---------------------------------------
 # Without a flame the amplitude falls with refinement: 17.9, 8.0, 7.2 per cent

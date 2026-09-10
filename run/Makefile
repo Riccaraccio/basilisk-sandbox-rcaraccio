@@ -126,7 +126,7 @@ TLAD_CASES = base da moist grav transport emis shape full l11 \
              rdt1 rdt2 pdt1 pdt2 \
              fullprobe fullrobin fullpicard \
              robindb robinls fullrobinls fullrobin20 fullrobininf \
-             vofbc vofbcfl vofbcbase vofbcm vofbcnp fullvofbc \
+             vofbc vofbcfl vofbcbase vofbcm vofbcnp fullvofbc vofbctrans \
              atol2 atol4 toloff \
              molar fick mde \
              transportold transportcfl transportlim transportmde fullold \
@@ -656,6 +656,25 @@ test-vofbcnp.tst:   CFLAGS += $(TLAD_PYRO) -DINT_TEMP_VOFBC=1 $(TLAD_PROBE)
 
 test-fullvofbc.s:   CFLAGS += $(TLAD_FULL) $(TLAD_VOFBC)
 test-fullvofbc.tst: CFLAGS += $(TLAD_FULL) $(TLAD_VOFBC)
+
+# The three transport flags with the coupling, and nothing else. test-vofbcm
+# passes and test-fullvofbc stops at t = 10.34, and five ingredients separate
+# them: Da 1e-12 -> 1e-10, gravity, the shape, the emissivity of Di Blasi, and
+# these three flags. No other VOFBC run carries them, and they act on the same
+# diffusion solves as INT_TEMP_VOFBC.
+#
+# This rung must pass t = 10.34. If it stops, the transport flags carry the
+# failure of test-fullvofbc. If it runs, they do not, and the other four
+# ingredients hold it.
+#
+# Caution: the transport flags do nothing before the flame lights. A paired
+# run is bit for bit identical over 560 rows up to the ignition at t = 5.66.
+# test-fullvofbc writes its first pf warning at line 5 of the log, which is
+# the FIRST step, so a clean run here does not clear the transport flags of
+# every charge; it clears them of the collapse. Read the first ten lines of
+# the log of this run for pf warnings before you read the end of it.
+test-vofbctrans.s:   CFLAGS += $(TLAD_TRANSPORT) $(TLAD_VOFBC)
+test-vofbctrans.tst: CFLAGS += $(TLAD_TRANSPORT) $(TLAD_VOFBC)
 
 TLAD_PICARD = -DINT_TEMP_PICARD=1 $(TLAD_ROBIN)
 

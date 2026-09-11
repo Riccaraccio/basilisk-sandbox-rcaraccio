@@ -89,6 +89,32 @@ default; set `INT_TEMP_TOL` to 0 to restore the inherited value. */
 # define INT_TEMP_TOL 1
 #endif
 
+/**
+## The transport of heat by the pore gas
+
+`TS_PORE_ADVECTION` controls the advection of `TS` with `u_prime` in the
+`tracer_diffusion` event. `u_prime` is the velocity at which the gas that
+flows through the pores carries the heat of the pseudo-phase:
+
+  u_prime = fsS*uf*rhoG*cpG/(rhoG*cpG*eps + rhoS*cpS*(1 - eps))
+
+The gas leaves the reaction front cold and flows out through the hot char,
+so this term cools the char layer when the release rate rises.
+
+The default is 1, which keeps the previous code bit for bit. Set it to 0 to
+remove the term and nothing else. The advection of `TG` and of the gas
+species stays. The advection of `TS` with the solid velocity `ubf` also
+stays, because `TS` is a tracer of `f` and `vof.h` moves it.
+
+Caution: a build with 0 is a different physical model. It measures whether
+the loop of the slow oscillation runs through this term. It is not a fix.
+
+The test is `#if`, so `-DTS_PORE_ADVECTION=0` means off. */
+
+#ifndef TS_PORE_ADVECTION
+# define TS_PORE_ADVECTION 1
+#endif
+
 #if INT_TEMP_TOL
 # include "int-temperature-tol.h"
 #endif
@@ -1924,6 +1950,7 @@ foreach() {
   advection_div(YGList_G, ufsave, dt);
 
 #ifdef SOLVE_TEMPERATURE
+# if TS_PORE_ADVECTION
   foreach_face() {
     double ef = clamp(face_value(porosity, 0), 0., 1.);
 
@@ -1945,6 +1972,7 @@ foreach() {
   }
 
   advection_div({TS}, u_prime, dt);
+# endif // TS_PORE_ADVECTION
 # ifndef TEMPERATURE_PROFILE
   advection_div({TG}, ufsave, dt);
 # endif

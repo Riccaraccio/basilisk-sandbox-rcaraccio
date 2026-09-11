@@ -116,10 +116,10 @@ gas-source-dtvar.tst:  CFLAGS += $(GSAB_DTVAR_FLAGS)
 # Caution: verify the header line of the log before you quote a case. It
 # prints what the build actually enabled, not what the case name promises.
 
-TLAD_CASES = base da moist grav transport emis shape full l11 \
+TLAD_CASES = base da moist grav transport emis shape full l11 l11noshrink\
              dtfix dtvar pyro uin2 uin05 noheat heat \
              heatnoshrink pyronoshrink basenoshrink fullnoshrink \
-             constprop constpropnoshrink noexp l9 \
+             constprop constpropnoshrink noexp pyrotsoff pyronoshrinktsoff l9 \
              probe probefl probem \
              robin robinfl robinm \
              picard picardfl picardm picardnr \
@@ -194,6 +194,10 @@ test-full.tst:      CFLAGS += $(TLAD_FULL)
 # at level 11. Compare this one against test-base at matched remaining mass.
 test-l11.s:         CFLAGS += -DMAXLEVEL_VALUE=11
 test-l11.tst:       CFLAGS += -DMAXLEVEL_VALUE=11
+
+# A variant of the grid test that doesn't shrink the grid.
+test-l11noshrink.s: CFLAGS += -DMAXLEVEL_VALUE=11 -DNO_SHRINK=1
+test-l11noshrink.tst: CFLAGS += -DMAXLEVEL_VALUE=11 -DNO_SHRINK=1
 
 # ---------------------------------------------------------------------------
 # Loop block, added 2026-09-04. See ~/oscillation-report/solid-ladder/.
@@ -412,6 +416,34 @@ test-heatnoshrink.tst:  CFLAGS += $(TLAD_PYRO) -DTURN_OFF_REACTIONS $(TLAD_NOSHR
 
 test-pyronoshrink.s:    CFLAGS += $(TLAD_PYRO) $(TLAD_NOSHRINK)
 test-pyronoshrink.tst:  CFLAGS += $(TLAD_PYRO) $(TLAD_NOSHRINK)
+
+# The transport of heat by the pore gas, off. TS_PORE_ADVECTION=0 removes the
+# advection of TS with u_prime in multicomponent-varprop.h and nothing else.
+# The pore gas leaves the reaction front cold and cools the char on its way
+# out, so a rise of the release cools the surface at once. In
+# test-pyronoshrink that is corr(mdot, Tsurf) = -0.92 at zero lag, with a slow
+# band of 0.80 per cent of mdot.
+#
+#   test-pyronoshrinktsoff  against test-pyronoshrink. The cleanest pair: no
+#                           flame, no motion of the interface. If the band and
+#                           the -0.92 both go, the loop runs through this term.
+#   test-pyrotsoff          against test-pyro. Tells whether the amplifier of
+#                           the moving interface needs the term too.
+#
+# Caution: test-pyro is a 09-04 build. Rebuild it next to test-pyrotsoff, or
+# the pair measures a week of source changes as well.
+#
+# Caution: a build without the term is a different physical model. It
+# measures the mechanism. It is not a fix.
+#
+# Check the header line: TSADV=0.
+TLAD_TSOFF = -DTS_PORE_ADVECTION=0
+
+test-pyronoshrinktsoff.s:   CFLAGS += $(TLAD_PYRO) $(TLAD_NOSHRINK) $(TLAD_TSOFF)
+test-pyronoshrinktsoff.tst: CFLAGS += $(TLAD_PYRO) $(TLAD_NOSHRINK) $(TLAD_TSOFF)
+
+test-pyrotsoff.s:           CFLAGS += $(TLAD_PYRO) $(TLAD_TSOFF)
+test-pyrotsoff.tst:         CFLAGS += $(TLAD_PYRO) $(TLAD_TSOFF)
 
 test-basenoshrink.s:    CFLAGS += $(TLAD_NOSHRINK)
 test-basenoshrink.tst:  CFLAGS += $(TLAD_NOSHRINK)

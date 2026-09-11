@@ -148,6 +148,28 @@ undefined. */
 # define NOEXP_ON 0
 #endif
 
+/**
+The coupling of the interface. `INT_TEMP_VOFBC` and `INT_TEMP_PICARD` are
+value-tested in `multicomponent-varprop.h`, so an undefined name reads as 0
+and the two blocks below need no `defined()`.
+
+The log must carry them. A build takes them from the Makefile rung only, and
+`test-%.c: test.c` makes the link for ANY name, so a rung that the local
+`Makefile` does not know still compiles and runs, with the flags of the
+pattern rule alone. The header line is what tells the two apart. */
+
+#if INT_TEMP_VOFBC
+# define VOFBC_ON 1
+#else
+# define VOFBC_ON 0
+#endif
+
+#if INT_TEMP_PICARD
+# define PICARD_ON 1
+#else
+# define PICARD_ON 0
+#endif
+
 #ifdef TURN_OFF_REACTIONS
 # define NOREACT_ON 1
 #else
@@ -469,12 +491,14 @@ int main() {
     fprintf (stderr, "# ladder: MOLAR=%d FICK=%d MDE=%d MOISTURE=%d GRAVITY=%d"
                      " SHAPE=%d DIBLASI=%d Da=%g DT=%g maxlevel=%d"
                      " CFL=%g Uin=%g PYRO=%d NOHEAT=%d NOREACT=%d"
-                     " ZETA=%s CONSTP=%d NOEXP=%d nranks=%d\n",
+                     " ZETA=%s CONSTP=%d NOEXP=%d VOFBC=%d PICARD=%d"
+                     " TSADV=%d nranks=%d\n",
              MOLAR_ON, FICK_ON, MDE_ON, MOISTURE, GRAVITY, SHAPE,
              EMISSIVITY_DIBLASI, (double) DA_VALUE, (double) DT_VALUE,
              MAXLEVEL_VALUE, (double) CFLNUM, (double) UIN_VALUE,
              PYROLYSIS_ONLY, NOHEAT_ON, NOREACT_ON,
-             ZETA_STR(ZETA_POLICY), CONST_PROPERTIES, NOEXP_ON, npe());
+             ZETA_STR(ZETA_POLICY), CONST_PROPERTIES, NOEXP_ON,
+             VOFBC_ON, PICARD_ON, TS_PORE_ADVECTION, npe());
 
   /**
   `lambdaSmodel` comes with `solid-thermal-conductivity.h`, which

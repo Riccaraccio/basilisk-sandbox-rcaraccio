@@ -9,6 +9,35 @@ The system of ODEs is solved using the *batch* method.
 
 #include "radiation.h"
 
+/**
+## The gas-phase reactions
+
+`TURN_OFF_GAS_REACTIONS` at 1 removes every gas-phase reaction. Two sites
+read it. The solid reactor below skips the reactions of the pore gas, and
+the `chemistry` event of `chemistry.h` skips the integration of the gas
+cells. The solid reactions and the gas that they release stay.
+
+The default is 0, which keeps the previous code bit for bit. The test is
+`#if`, so `-DTURN_OFF_GAS_REACTIONS=0` means the gas reactions are on.
+
+The default lives here and not in `chemistry.h`, because `chemistry.h`
+includes this file before its `TURN_OFF_REACTIONS` block. A case can then
+read the flag in every build, also in a build without chemistry.
+
+`GAS_PHASE_REACTIONS` does not replace it. No source file reads that name
+since `3cbc1e9`, so the gas kinetics always run unless this flag is 1.
+
+Caution: the flag does not cover the `BINNING` path of `chemistry.h`, and
+that path must not be extended. The two cannot be combined. */
+
+#ifndef TURN_OFF_GAS_REACTIONS
+# define TURN_OFF_GAS_REACTIONS 0
+#endif
+
+#if TURN_OFF_GAS_REACTIONS && defined(BINNING)
+# error "TURN_OFF_GAS_REACTIONS does not cover the BINNING path of chemistry.h. Use one."
+#endif
+
 #define R_GAS 8.31446261815324
 
 /**
@@ -204,9 +233,16 @@ void solid_batch_nonisothermal_constantpressure (const double * y, const double 
   for (int jj=0; jj<NGS; jj++)
     rgas_pure[jj] = 0.;
 
+  /**
+  The reactions of the pore gas. `TURN_OFF_GAS_REACTIONS` skips them, so
+  `rgas_pure` and `QRgas` stay at 0. The solid reactions and the gas that they
+  release stay. */
+
+#if !TURN_OFF_GAS_REACTIONS
   OpenSMOKE_GasProp_ReactionRates (cgas);
   OpenSMOKE_GasProp_FormationRates (rgas_pure); //[kmol/m3_gas/s]
   QRgas = OpenSMOKE_GasProp_HeatRelease (rgas_pure);
+#endif
 
   for (int jj=0; jj<NGS; jj++) {
     dy[jj] = gas_MWs[jj]* (rgas[jj]*(1-epsilon) + rgas_pure[jj]*epsilon);

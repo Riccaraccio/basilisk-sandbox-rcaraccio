@@ -822,6 +822,12 @@ event chemistry (i++) {
   }
 #else // !BINNING
 
+  /**
+  `TURN_OFF_GAS_REACTIONS` removes this whole loop, so no gas cell reacts.
+  The gas sources that the loop feeds are reset in every step, so they stay
+  at 0. The pore gas of the solid branch is switched in `reactors.h`. */
+
+# if !TURN_OFF_GAS_REACTIONS
 #if FROZEN_CELL_GATE
   foreach (reduction(+:frozen_cell_gate_n)) {
 #else
@@ -935,6 +941,7 @@ event chemistry (i++) {
       TG[] = y0ode[NGS]*(1. - f[]);
     }
   }
+# endif // !TURN_OFF_GAS_REACTIONS
 #endif // BINNING
 
 #ifdef CHEMISTRY_LOG

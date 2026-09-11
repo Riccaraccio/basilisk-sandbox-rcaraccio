@@ -119,7 +119,7 @@ gas-source-dtvar.tst:  CFLAGS += $(GSAB_DTVAR_FLAGS)
 TLAD_CASES = base da moist grav transport emis shape full l11 l11noshrink\
              dtfix dtvar pyro uin2 uin05 noheat heat \
              heatnoshrink pyronoshrink basenoshrink fullnoshrink \
-             constprop constpropnoshrink noexp pyrotsoff pyronoshrinktsoff l9 \
+             constprop constpropnoshrink noexp noexpnoshrink pyrotsoff pyronoshrinktsoff l9 \
              probe probefl probem \
              robin robinfl robinm \
              picard picardfl picardm picardnr \
@@ -131,7 +131,8 @@ TLAD_CASES = base da moist grav transport emis shape full l11 l11noshrink\
              molar fick mde \
              transportold transportcfl transportlim transportmde fullold \
              transrdt2 transoldrdt2 \
-             frozen frozenloose frozenfull
+             frozen frozenloose frozenfull \
+             pyronouinnoshrink
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -196,8 +197,9 @@ test-l11.s:         CFLAGS += -DMAXLEVEL_VALUE=11
 test-l11.tst:       CFLAGS += -DMAXLEVEL_VALUE=11
 
 # A variant of the grid test that doesn't shrink the grid.
-test-l11noshrink.s: CFLAGS += -DMAXLEVEL_VALUE=11 -DNO_SHRINK=1
-test-l11noshrink.tst: CFLAGS += -DMAXLEVEL_VALUE=11 -DNO_SHRINK=1
+# NO_SHRINK is not a flag of test.c. The fixed interface is TLAD_NOSHRINK.
+test-l11noshrink.s:   CFLAGS += -DMAXLEVEL_VALUE=11 $(TLAD_NOSHRINK)
+test-l11noshrink.tst: CFLAGS += -DMAXLEVEL_VALUE=11 $(TLAD_NOSHRINK)
 
 # ---------------------------------------------------------------------------
 # Loop block, added 2026-09-04. See ~/oscillation-report/solid-ladder/.
@@ -331,7 +333,18 @@ test-frozenloose.tst:   CFLAGS += $(TLAD_FROZEN_LOOSE)
 test-frozenfull.s:      CFLAGS += $(TLAD_FULL) $(TLAD_FROZEN)
 test-frozenfull.tst:    CFLAGS += $(TLAD_FULL) $(TLAD_FROZEN)
 
-TLAD_PYRO = -DPYROLYSIS_ONLY=1
+# Pyrolysis only: no oxidiser AND no gas kinetics. PYROLYSIS_ONLY removes the
+# O2. It does not remove the gas reactions: since 3cbc1e9 (2026-08-26) no
+# source file reads GAS_PHASE_REACTIONS, and the gas kinetics always run.
+# The scheme holds three gas reactions that need no O2: TAR cracking
+# (TAR => 3H2 + 5CO + CH4, nine moles out for one in), CH4 reforming and the
+# water-gas shift. TURN_OFF_GAS_REACTIONS removes them, in the gas cells and
+# in the pores.
+#
+# Caution: every pyro run in ~/test/solid up to 2026-09-11 ran WITH the gas
+# kinetics. Rebuild a rung before you compare it with a run of this
+# definition. Check the header line: PYRO=1 NOGASR=1.
+TLAD_PYRO = -DPYROLYSIS_ONLY=1 -DTURN_OFF_GAS_REACTIONS=1
 
 test-pyro.s:        CFLAGS += $(TLAD_PYRO)
 test-pyro.tst:      CFLAGS += $(TLAD_PYRO)
@@ -350,6 +363,12 @@ test-uin2.tst:      CFLAGS += $(TLAD_PYRO) -DUIN_VALUE=0.26
 
 test-uin05.s:       CFLAGS += $(TLAD_PYRO) -DUIN_VALUE=0.065
 test-uin05.tst:     CFLAGS += $(TLAD_PYRO) -DUIN_VALUE=0.065
+
+# No inflow, fixed interface, pyrolysis only. NO_INFLOW is an integer switch:
+# the preprocessor rejects a floating constant in #if, so test.c cannot test
+# UIN_VALUE there. Check the header line: Uin=0 ZETA=ZETA_SWELLING NOINFLOW=1.
+test-pyronouinnoshrink.s:   CFLAGS += $(TLAD_PYRO) -DNO_INFLOW=1 $(TLAD_NOSHRINK)
+test-pyronouinnoshrink.tst: CFLAGS += $(TLAD_PYRO) -DNO_INFLOW=1 $(TLAD_NOSHRINK)
 
 # Removes the endothermic arm and nothing else. The reaction absorbs 165 to
 # 203 kJ for each kg of biomass, so it is a real sink. If the oscillation
@@ -499,6 +518,9 @@ test-constpropnoshrink.tst: CFLAGS += $(TLAD_CONSTPROP) $(TLAD_NOSHRINK)
 # pass =0 to a build that lacks that block.
 test-noexp.s:       CFLAGS += -DNO_EXPANSION
 test-noexp.tst:     CFLAGS += -DNO_EXPANSION
+
+test-noexpnoshrink.s:       CFLAGS += -DNO_EXPANSION $(TLAD_NOSHRINK)
+test-noexpnoshrink.tst:     CFLAGS += -DNO_EXPANSION $(TLAD_NOSHRINK)
 
 # --- (c) the grid sweep with a flame ---------------------------------------
 # Without a flame the amplitude falls with refinement: 17.9, 8.0, 7.2 per cent

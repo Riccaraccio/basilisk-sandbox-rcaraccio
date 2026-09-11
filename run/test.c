@@ -308,10 +308,36 @@ burn. Compare at matched remaining mass, never at matched time. */
 #endif
 
 /**
+## No inflow
+
+`NO_INFLOW` removes the inlet. The particle then sits in a quiescent gas at
+`TG0`: the domain is `10*D0` with its origin at the centre of the particle,
+the gas temperature and composition are fixed at the right and top
+boundaries, and gravity is off.
+
+The switch is an integer on purpose. The preprocessor rejects a floating
+constant in `#if`, so a test such as `#if !NO_INFLOW` stops the build of
+every rung. Caution: do not test `UIN_VALUE` in `#if`. Test `NO_INFLOW`.
+
+A build with the switch on sets `UIN_VALUE` to 0, so the log line reports the
+velocity that the case really has. */
+
+#ifndef NO_INFLOW
+# define NO_INFLOW 0
+#endif
+
+#if NO_INFLOW
+# undef UIN_VALUE
+# define UIN_VALUE 0.
+#endif
+
+/**
 ## Pyrolysis only
 
-`PYROLYSIS_ONLY` removes the oxidiser and the reactions of the gas, and
-reproduces `~/temp/10-fatehi/test.c`. The release still oscillates, 7 to 18
+`PYROLYSIS_ONLY` removes the oxidiser. It does not remove the reactions of
+the gas: the Makefile adds `TURN_OFF_GAS_REACTIONS=1` to every
+pyrolysis-only rung for that. Before that flag existed, the rung reproduced
+`~/temp/10-fatehi/test.c`. The release still oscillates, 7 to 18
 per cent peak-to-peak, so the flame does not close the loop. The case is much
 cheaper and gives 6 cycles in 20 s, against 1.2 to 4.3 cycles in the runs
 with a flame, so it is the correct case for the questions about the loop.
@@ -449,7 +475,7 @@ it here. `qcc` includes each header once, so the later include in
 position of a module in this list changes when its events run. Keep the
 order of the full case. */
 
-#if GRAVITY
+#if GRAVITY && !NO_INFLOW
 # include "gravity.h"
 #endif
 
@@ -458,8 +484,9 @@ order of the full case. */
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 
-//#include "flame.h"
 #include "view.h"
+
+#if !NO_INFLOW
 
 const double Uin = UIN_VALUE; //inlet velocity
 u.n[left]    = dirichlet (Uin);
@@ -473,6 +500,20 @@ u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = neumann (0.);
+
+#else // NO_INFLOW
+
+u.n[right]    = neumann (0.);
+u.t[right]    = neumann (0.);
+p[right]      = dirichlet (0.);
+psi[right]    = dirichlet (0.);
+
+u.n[top]    = neumann (0.);
+u.t[top]    = neumann (0.);
+p[top]      = dirichlet (0.);
+psi[top]    = dirichlet (0.);
+
+#endif
 
 double tend = 40;
 int maxlevel = MAXLEVEL_VALUE, minlevel = 2;
@@ -492,13 +533,14 @@ int main() {
                      " SHAPE=%d DIBLASI=%d Da=%g DT=%g maxlevel=%d"
                      " CFL=%g Uin=%g PYRO=%d NOHEAT=%d NOREACT=%d"
                      " ZETA=%s CONSTP=%d NOEXP=%d VOFBC=%d PICARD=%d"
-                     " TSADV=%d nranks=%d\n",
+                     " TSADV=%d NOGASR=%d NOINFLOW=%d nranks=%d\n",
              MOLAR_ON, FICK_ON, MDE_ON, MOISTURE, GRAVITY, SHAPE,
              EMISSIVITY_DIBLASI, (double) DA_VALUE, (double) DT_VALUE,
              MAXLEVEL_VALUE, (double) CFLNUM, (double) UIN_VALUE,
              PYROLYSIS_ONLY, NOHEAT_ON, NOREACT_ON,
              ZETA_STR(ZETA_POLICY), CONST_PROPERTIES, NOEXP_ON,
-             VOFBC_ON, PICARD_ON, TS_PORE_ADVECTION, npe());
+             VOFBC_ON, PICARD_ON, TS_PORE_ADVECTION,
+             TURN_OFF_GAS_REACTIONS, NO_INFLOW, npe());
 
   /**
   `lambdaSmodel` comes with `solid-thermal-conductivity.h`, which
@@ -542,8 +584,12 @@ int main() {
 
   The oxidiser turns the gas phase off, not the mechanism. `PYROLYSIS_ONLY`
   sets `gas_start` to pure N2 and gives the boundaries the same value, so no
-  reaction of the gas has an oxidiser. The case also defines no
-  `GAS_PHASE_REACTIONS`, so `chemistry.h` integrates no gas kinetics at all.
+  reaction of the gas has an oxidiser. That does not stop the gas kinetics.
+  No source file reads `GAS_PHASE_REACTIONS` since `3cbc1e9`, and three
+  reactions of the scheme need no O2: TAR cracking, CH4 reforming and the
+  water-gas shift. The Makefile therefore gives every pyrolysis-only rung
+  `TURN_OFF_GAS_REACTIONS=1`, which removes them in the gas and in the
+  pores.
 
   Two consequences. The mechanism carries 8 gas species against 3, so the
   species transport costs about 2.7 times more and a `PYROLYSIS_ONLY` run is
@@ -558,8 +604,12 @@ int main() {
   kinfolder = "biomass/dummy-solid-gas";
   shift_prod = true;
 
+#if !NO_INFLOW
   L0 = 20*D0;
   origin (-L0/2, 0);
+#else
+  L0 = 10*D0;
+#endif
 
 #if EMISSIVITY_DIBLASI
   emissivity = emissivity_diblasi;
@@ -569,7 +619,7 @@ int main() {
 
   Da = (coord){DA_VALUE, DA_VALUE};
 
-#if GRAVITY
+#if GRAVITY && !NO_INFLOW
   /**
   `gravity.h` declares `coord G = {0.,0.,0.}`. Without this line the header
   is present, the acceleration event runs, and the gravity is zero. */
@@ -624,7 +674,12 @@ event init (i = 0) {
   foreach (reduction(+:solid_mass0))
     solid_mass0 += f0[]*(1. - eps0)*rhoS*dv(); //Note: (1-e) = (1-ef)!= (1-e)f
 
+#if !NO_INFLOW
   TG[left] = dirichlet (TG0);
+#else
+  TG[right] = dirichlet (TG0);
+#endif
+
   TG[top] = dirichlet (TG0);
 
   /**
@@ -635,20 +690,36 @@ event init (i = 0) {
     scalar YG = YGList_G[jj];
 #if PYROLYSIS_ONLY
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
+      #if !NO_INFLOW
       YG[left] = dirichlet (1.);
+      #else
+      YG[right] = dirichlet (1.);
+      #endif
       YG[top] = dirichlet (1.);
     }
 #else
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
+      #if !NO_INFLOW
       YG[left] = dirichlet (0.765);
+      #else
+      YG[right] = dirichlet (0.765);
+      #endif
       YG[top] = dirichlet (0.765);
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
+      #if !NO_INFLOW
       YG[left] = dirichlet (0.235);
+      #else
+      YG[right] = dirichlet (0.235);
+      #endif
       YG[top] = dirichlet (0.235);
     }
 #endif
     else {
+      #if !NO_INFLOW
       YG[left] = dirichlet (0.);
+      #else
+      YG[right] = dirichlet (0.);
+      #endif
       YG[top] = dirichlet (0.);
     }
   }
@@ -1100,15 +1171,36 @@ event adapt (i++) {
 }
 #endif
 
+/**
+The movie shows the isolines of the TAR mass fraction in the two halves, over
+the temperature and over the oxidiser. `TAR_G + TAR_S` is the mixture value,
+as `O2_G + O2_S` is for the oxidiser. The five levels go from 0.02 to 0.1 in
+steps of 0.02. Change `TAR_MIN`, `TAR_MAX` and `TAR_NISO` if the plume holds
+less or more TAR. */
+
+#ifndef TAR_MIN
+# define TAR_MIN 0.02
+#endif
+
+#ifndef TAR_MAX
+# define TAR_MAX 0.1
+#endif
+
+#ifndef TAR_NISO
+# define TAR_NISO 5
+#endif
+
 event movie (t += 1) {
   clear();
   view (theta=0, phi=0, psi=-pi/2., width = 1080, height = 1080);
   squares ("T", min = 300, max = 2000, spread = -1, linear = true);
-  //isoline ("zmix - zsto", lw = 1.5, lc = {1., 1., 1.});
+  isoline ("TAR_G + TAR_S", n = TAR_NISO, min = TAR_MIN, max = TAR_MAX,
+           lw = 1., lc = {1., 1., 1.});
   draw_vof ("f", lw = 1.5);
   mirror ({0, 1}) {
     squares ("O2_G + O2_S", min = 0., max = 0.235, spread = -1, linear = true);
-    //isoline ("zmix - zsto", lw = 1.5, lc = {1., 0., 0.});
+    isoline ("TAR_G + TAR_S", n = TAR_NISO, min = TAR_MIN, max = TAR_MAX,
+             lw = 1., lc = {1., 1., 1.});
     draw_vof ("f", lw = 1.5);
   }
   save ("movie.mp4");

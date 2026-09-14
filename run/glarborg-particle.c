@@ -1,16 +1,106 @@
+/**
+# Combustion of a small biomass particle in hot air: the Glarborg case
+
+A biomass particle burns in air at 1473 K, which enters at 1.5 m/s.
+`CASE_NUMBER` selects the shape. All five shapes have a volume near that of
+a sphere of 3 mm:
+
+| `CASE_NUMBER` | shape | D0 [mm] | H0 [mm] |
+|---|---|---|---|
+| 0 | sphere | 3.00 | - |
+| 1 | cylinder | 2.08 | 4.16 |
+| 2 | cylinder | 1.65 | 6.60 |
+| 3 | cylinder | 1.44 | 8.65 |
+| 4 | cylinder | 1.31 | 10.48 |
+
+## The configuration
+
+This case takes the configuration that the oscillation campaign of 2026-08-31
+to 2026-09-10 settled for `run/fatehi-combustion.c`. Read the header of that
+file for the run that supports each value. Do not change a value here without
+the run that supports it. The campaign ran on the Fatehi case only, so a value
+below is a transfer, not a measurement on this case.
+
+Applied:
+
+- `TOLERANCE = 1e-5` and `NITERMIN = 2`, because Basilisk scales the tolerance
+  of the projection as `TOLERANCE/dt^2`.
+- `init_grid (1 << min (maxlevel, 8))` with a `refine()` near the particle.
+  One cell holds 1104 fields, so a uniform grid at `maxlevel` allocates
+  gigabytes before the first adapt.
+- `FROZEN_CELL_GATE = 1` and `CORRECTIVE_CFL = 0.8`.
+- `zeta_policy = ZETA_REACTION`. The shrinkage follows the local rate of
+  reaction. The old case used `ZETA_CONST`.
+- `INT_TEMP_VOFBC` with `INT_TEMP_PICARD`, as in the Fatehi case.
+- `CFL` is set in `event init`, not in `main()`.
+- A guard on `pid() == 0` for every message and every file. Every collective
+  call (`statsf`) runs on every rank.
+
+`MAXLEVEL` stays at 10. The domain is `20*max (D0, H0)`, so the cell size
+changes with the case. At level 10 it is 59 um for case 0 and 205 um for
+case 4. The Fatehi case runs at 78 um. Caution: case 4 has only 6 cells across
+the diameter at level 10. Build it with `MAXLEVEL=11` or more for a result
+that you quote.
+
+`GAS_PHASE_REACTIONS` is NOT set here. No file in `src/` tests it, so it is a
+dead flag. Use `TURN_OFF_GAS_REACTIONS` to switch off the gas kinetics. */
+
+#define INT_TEMP_VOFBC 1
+#define INT_TEMP_PICARD 1
+
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
 #define MOLAR_DIFFUSION 1
 #define FICK_CORRECTED 1
 #define MASS_DIFFUSION_ENTHALPY 1
-#define GAS_PHASE_REACTIONS 1
 #define FLAME_PRINT_TIME 0.01
+
+/**
+The knobs below are overridable from the `Makefile`, so that an A/B keeps one
+source.
+
+Caution: `CORRECTIVE_CFL` is a floating constant. The preprocessor rejects a
+floating constant in an `#if`, so test it at run time, never with `#if`. */
 
 #ifndef CASE_NUMBER
 # define CASE_NUMBER 0
 #endif
 
-#include "axi.h" 
+#ifndef FROZEN_CELL_GATE
+# define FROZEN_CELL_GATE 1
+#endif
+
+#ifndef CORRECTIVE_CFL
+# define CORRECTIVE_CFL 0.8
+#endif
+
+#ifndef MAXLEVEL
+# define MAXLEVEL 10
+#endif
+
+#ifndef TEND
+# define TEND 15.
+#endif
+
+/**
+`DT_VALUE` caps the step. The CFL binds far below it at 1.5 m/s, so this
+value only stops a runaway. */
+
+#ifndef DT_VALUE
+# define DT_VALUE 5e-4
+#endif
+
+/**
+`CFL_VALUE` is applied in `event init`, never in `main()`. The `defaults`
+event of `navier-stokes/centered.h` sets `CFL = 0.8` and runs after `main()`.
+An `init` event runs after every `defaults` event, so a value set there
+survives. */
+
+#ifndef CFL_VALUE
+# define CFL_VALUE 0.5
+#endif
+
+#include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
@@ -35,16 +125,18 @@ u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
 psi[right]    = neumann (0.);
 
-double tend = 15;
-int maxlevel = 10, minlevel = 3;
+const double tend = TEND; //simulation time
+int maxlevel = MAXLEVEL, minlevel = 3;
 double solid_mass0 = 0.;
 double D0, H0;
 
 double D0_arr[] = {3e-3, 2.08e-3, 1.65e-3, 1.44e-3, 1.31e-3};
-double H0_arr[] = {0., 4.16e-3, 6.60e-3, 8.65e-3, 10.48e-3}; 
+double H0_arr[] = {0., 4.16e-3, 6.60e-3, 8.65e-3, 10.48e-3};
+
+#define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
 int main() {
-  
+
   lambdaSmodel = L_LU;
   TS0 = 300.; TG0 = 1473.;
   rhoS = 1000;
@@ -54,38 +146,78 @@ int main() {
   rho1 = 1., rho2 = 1.;
   mu1 = 1., mu2 = 1.;
 
-  zeta_policy = ZETA_CONST;
+  zeta_policy = ZETA_REACTION;
 
-  DT = 1e-2;
+  DT = DT_VALUE;
 
   G.x = -9.81;
 
   kinfolder = "biomass/Solid-gas-88";
   shift_prod = true;
-  
+
   if (CASE_NUMBER < 0 || CASE_NUMBER >= 5) {
-    fprintf(stderr, "Invalid CASE_NUMBER %d. Must be between 0 and 4.\n", CASE_NUMBER);
+    if (pid() == 0)
+      fprintf (stderr, "Invalid CASE_NUMBER %d. Must be between 0 and 4.\n",
+               CASE_NUMBER);
     return 1;
   } else {
     D0 = D0_arr[CASE_NUMBER];
     H0 = H0_arr[CASE_NUMBER];
   }
 
+  /**
+  Caution: under MPI every rank shares this stderr. Guard the message with
+  `pid() == 0`, or the log carries one copy per rank.
+
+  Read this line before you quote a run. It prints what the build enabled,
+  not what the directory name promises. */
+
+  if (pid() == 0)
+    fprintf (stderr, "# glarborg: case=%d D0=%g H0=%g maxlevel=%d DT=%g"
+                     " CFL=%g Uin=%g tend=%g zeta=REACTION frozen=%d"
+                     " corrCFL=%g averaged=%d exact=%d nranks=%d\n",
+             CASE_NUMBER, D0, H0, MAXLEVEL, (double) DT_VALUE,
+             (double) CFL_VALUE, Uin, (double) TEND, FROZEN_CELL_GATE,
+             (double) CORRECTIVE_CFL, (int) gas_source_averaged,
+             (int) GAS_SOURCE_EXACT, npe());
+
   L0 = 20*max (D0, H0);
   origin (-L0/2, 0);
   emissivity = emissivity_lu;
-  init_grid(1 << maxlevel);
+
+  /**
+  One cell holds 1104 fields. Start coarse and refine near the particle, so
+  that the first adapt and the chemistry event of `i = 0` do not run on a
+  uniform grid at `maxlevel`. */
+
+  init_grid (1 << min (maxlevel, 8));
+  refine (circle (x, y, 4.*max (D0, H0)) > 0. && level < maxlevel);
+
+  /**
+  The projection. `project_sf()` passes `TOLERANCE/sq(dt)` to `poisson()`, so
+  the default 1e-3 stops the solve after one cycle at every step. Keep both
+  lines together.
+
+  Caution: no `defaults` event resets `TOLERANCE` or `NITERMIN`, so `main()`
+  is the right place for them. `CFL` is the opposite case; see `event init`. */
+
+  TOLERANCE = 1e-5;
+  NITERMIN = 2;
 
   run();
 }
 
-#define circle(x,y,R)(sq(R) - sq(x) - sq(y))
+event init (i = 0) {
 
-double r0;
-event init (i= 0) {
+  /**
+  Caution: `navier-stokes/centered.h` assigns `CFL = 0.8` in its `defaults`
+  event, which runs after `main()`. So the value belongs here. */
+
+  CFL = CFL_VALUE;
+
   scalar f0[];
   if (CASE_NUMBER == 0) {
-    fraction (f0, circle(x, y, 0.5 * D0));
+    fraction (f0, circle (x, y, 0.5*D0));
   } else {
     fraction (f0, superquadric (x, y, 20, 0.5*H0, 0.5*D0));
   }
@@ -102,6 +234,10 @@ event init (i= 0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0168;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0030;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.0930;
+
+  /**
+  Caution: the porosity follows `f0`, not `f`. The solver has not assigned
+  `f` yet at this point. */
 
   foreach()
     porosity[] = eps0*f0[];
@@ -129,31 +265,30 @@ event init (i= 0) {
   }
 
   if (restore (file = "last-snapshot", list = all)) {
-    fprintf (stderr, "Restart file found!\n");
+    if (pid() == 0)
+      fprintf (stderr, "Restart file found!\n");
     restarted = true;
   } else {
-    fprintf (stderr, "No restart file found, starting from scratch!\n");
+    if (pid() == 0)
+      fprintf (stderr, "No restart file found, starting from scratch!\n");
 
     foreach() {
       f[] = f0[];
       porosity[] = eps0*f[];
     }
   }
-
 }
 
+/**
+The scalar series.
+
+Caution: keep the sampling at 0.01 s. A slower sampling folds the flicker of
+the flame into the low band.
+
+Caution: `statsf` is collective. It runs on every rank, before the guard on
+`pid()`. Only rank 0 opens and writes the file. */
+
 event output (t += 0.01) {
-
-  char name[80];
-  sprintf(name, "OutputData-%d", maxlevel);
-  static FILE * fp = fopen (name, restarted ? "a" : "w");
-  if (fp == NULL) {
-    fprintf (stderr, "Error opening OutputData\n");
-    exit(1);
-  }
-
-  if (i == 0)
-    fprintf (fp, "# t(1), Ms/Ms0(2), Tmax(3), Char/Ms0(4), Wood/Ms0(5)\n");
 
   //log mass profile
   double solid_mass = 0.;
@@ -171,10 +306,29 @@ event output (t += 0.01) {
     }
   }
 
-  fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, statsf(T).max, 
-                                  char_mass/solid_mass0, wood_mass/solid_mass0);
+  stats sT = statsf (T);
 
-  fflush(fp);
+  if (pid() != 0)
+    return 0;
+
+  char name[80];
+  sprintf (name, "OutputData-%d", maxlevel);
+  static FILE * fp = NULL;
+  if (fp == NULL) {
+    fp = fopen (name, restarted ? "a" : "w");
+    if (fp == NULL) {
+      fprintf (stderr, "Error opening %s\n", name);
+      exit (1);
+    }
+  }
+
+  if (i == 0)
+    fprintf (fp, "# t(1), Ms/Ms0(2), Tmax(3), Char/Ms0(4), Wood/Ms0(5)\n");
+
+  fprintf (fp, "%g %g %g %g %g\n", t, solid_mass/solid_mass0, sT.max,
+           char_mass/solid_mass0, wood_mass/solid_mass0);
+
+  fflush (fp);
 }
 
 #if TREE
@@ -209,12 +363,19 @@ event movie (t += 0.1) {
 }
 
 event dump (t = 1; t += 1) {
-  dump("last-snapshot");
+  dump ("last-snapshot");
 }
 
-event stop (t = tend);
+/**
+Caution: `return 1` is what ends the run, not the time of the event. If a
+later edit adds an event with a condition such as `t <= X`, a bare
+`event stop (t = tend)` does not end the run. */
 
-/** 
+event stop (t = tend) {
+  return 1;
+}
+
+/**
 ~~~gnuplot
 ~~~
 **/

@@ -53,6 +53,10 @@ double calculate_moisture_fraction(Point point, const scalar * YList, scalar f) 
   return Cw;
 }
 
+#ifndef Y_CUT
+# define Y_CUT 1e-15   // mass fraction below which a species is set to 0, from OS++
+#endif
+
 void check_and_correct_fractions (scalar* YList, int n, bool inverse) {
   foreach() {
     double denom = inverse ? (1. - f[]) : f[];
@@ -71,7 +75,7 @@ void check_and_correct_fractions (scalar* YList, int n, bool inverse) {
       for (int jj = 0; jj < n; jj++) {
         scalar Y = YList[jj];
         double val = Y[] * inv_denom;
-        temp[jj] = (val < 0.) ? 0. : val;
+        temp[jj] = (val < Y_CUT) ? 0. : val;
         sum += temp[jj];
       }
 

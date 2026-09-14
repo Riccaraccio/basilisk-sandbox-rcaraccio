@@ -132,7 +132,7 @@ TLAD_CASES = base da moist grav transport emis shape full l11 l11noshrink\
              transportold transportcfl transportlim transportmde fullold \
              transrdt2 transoldrdt2 \
              frozen frozenloose frozenfull \
-             pyronouinnoshrink
+             pyronouinnoshrink pyronouinnoshrinkl9 ytol
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -369,6 +369,9 @@ test-uin05.tst:     CFLAGS += $(TLAD_PYRO) -DUIN_VALUE=0.065
 # UIN_VALUE there. Check the header line: Uin=0 ZETA=ZETA_SWELLING NOINFLOW=1.
 test-pyronouinnoshrink.s:   CFLAGS += $(TLAD_PYRO) -DNO_INFLOW=1 $(TLAD_NOSHRINK)
 test-pyronouinnoshrink.tst: CFLAGS += $(TLAD_PYRO) -DNO_INFLOW=1 $(TLAD_NOSHRINK)
+
+test-pyronouinnoshrinkl9.s:   CFLAGS += $(TLAD_PYRO) -DNO_INFLOW=1 -DMAXLEVEL_VALUE=9 $(TLAD_NOSHRINK)
+test-pyronouinnoshrinkl9.tst: CFLAGS += $(TLAD_PYRO) -DNO_INFLOW=1 -DMAXLEVEL_VALUE=9 $(TLAD_NOSHRINK)
 
 # Removes the endothermic arm and nothing else. The reaction absorbs 165 to
 # 203 kJ for each kg of biomass, so it is a real sink. If the oscillation
@@ -619,6 +622,13 @@ test-fullrobinls.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBINLOSSY)
 # do not compare wall clock without several alternating runs.
 test-toloff.s:    CFLAGS += -DINT_TEMP_TOL_K=1e-30 $(TLAD_FULL) $(TLAD_PROBE)
 test-toloff.tst:  CFLAGS += -DINT_TEMP_TOL_K=1e-30 $(TLAD_FULL) $(TLAD_PROBE)
+
+# The tolerance of the gas species solves. YTOL_PROBE does not change the run:
+# it solves each species again every YTOL_EVERY steps, against a reference and
+# a set of trial tolerances, and writes ysolve.dat and yerr.dat. Read the
+# header of src/species-tol-probe.h for the columns.
+test-ytol.s:    CFLAGS += -DYTOL_PROBE=1 $(TLAD_FULL)
+test-ytol.tst:  CFLAGS += -DYTOL_PROBE=1 $(TLAD_FULL)
 
 TLAD_ATOL = $(TLAD_FULL) $(TLAD_PROBE)
 

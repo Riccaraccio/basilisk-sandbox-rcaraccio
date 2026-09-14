@@ -71,7 +71,7 @@ void check_and_correct_fractions (scalar* YList, int n, bool inverse) {
       for (int jj = 0; jj < n; jj++) {
         scalar Y = YList[jj];
         double val = Y[] * inv_denom;
-        temp[jj] = (val < F_ERR) ? 0. : val;
+        temp[jj] = (val < 0.) ? 0. : val;
         sum += temp[jj];
       }
 

@@ -191,7 +191,8 @@ runs after every `defaults` event, so a value set there survives. */
 # define CFL_VALUE 0.5
 #endif
 
-#define PRINT_FIELDS 1
+#define PRINT_FIELDS 0
+#define VTK_OUTPUT 1
 
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
@@ -204,6 +205,10 @@ runs after every `defaults` event, so a value set there survives. */
 #include "darcy.h"
 #include "view.h"
 #include "flame.h"
+
+#if VTK_OUTPUT
+#include "vtk.h"
+#endif
 
 const double Uin = 0.13; //inlet velocity
 u.n[left]    = dirichlet (Uin);
@@ -578,9 +583,8 @@ event movie (t += 1) {
     XH2O[] = XH2O_S[]*f[] + XH2O_G[]*(1. - f[]);
 
   clear();
-  view (theta=0, phi=0, psi=-pi/2., width = 1080, height = 1080);
-  squares ("T", min = 300, max = 2000, spread = -1, linear = true);
-  isoline ("T", val = statsf(T).max);
+  view (theta=0, phi=0, psi=-pi/2., width = 2400, height = 2400);
+  squares ("T", min = 300, max = 2200, spread = -1, linear = true);
   isoline ("zmix - zsto", lw = 1.5, lc = {1., 1., 1.});
   draw_vof ("f", lw = 1.5);
   mirror ({0, 1}) {
@@ -590,6 +594,43 @@ event movie (t += 1) {
   }
   save ("movie.mp4");
 }
+
+#if VTK_OUTPUT
+event vtk (t += 5; t <= 80) {
+
+  mixture_fraction (zmix);
+  scalar zdiff[];
+  foreach()
+    zdiff[] = zmix[] - zsto[];
+
+  char name[120];
+  sprintf (name, "fatehi-%d.vtk", (int) (t));
+  FILE* fvtk = fopen (name, "w");
+
+  // H2O
+  scalar XH2O_G = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+  scalar XH2O_S = XGList_S[OpenSMOKE_IndexOfSpecies ("H2O")];
+  scalar XH2O[];
+  foreach()
+    XH2O[] = XH2O_S[]*f[] + XH2O_G[]*(1. - f[]);
+
+  // CO2
+  scalar XCO2_G = XGList_G[OpenSMOKE_IndexOfSpecies ("CO2")];
+  scalar XCO2_S = XGList_S[OpenSMOKE_IndexOfSpecies ("CO2")];
+  scalar XCO2[];
+  foreach()
+    XCO2[] = XCO2_S[]*f[] + XCO2_G[]*(1. - f[]);
+
+  // OH
+  scalar XOH_G = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
+  scalar XOH_S = XGList_S[OpenSMOKE_IndexOfSpecies ("OH")];
+  scalar XOH[];
+  foreach()
+    XOH[] = XOH_S[]*f[] + XOH_G[]*(1. - f[]);
+
+  output_vtk ({f, T, XH2O, XCO2, XOH, u.x, u.y, zdiff}, n=(1<<maxlevel), fp=fvtk, linear=true);
+}
+#endif
 
 #if PRINT_FIELDS
 event save_fields (t += 10) {

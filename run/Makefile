@@ -132,7 +132,8 @@ TLAD_CASES = base da moist grav transport emis shape full l11 l11noshrink\
              transportold transportcfl transportlim transportmde fullold \
              transrdt2 transoldrdt2 \
              frozen frozenloose frozenfull \
-             pyronouinnoshrink pyronouinnoshrinkl9 ytol
+             pyronouinnoshrink pyronouinnoshrinkl9 ytol \
+             l12 l11full l12full
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -172,6 +173,11 @@ TLAD_FULL = $(TLAD_TRANSPORT) -DDA_VALUE=1e-10 -DMOISTURE=1 -DGRAVITY=1 \
 test-da.s:          CFLAGS += -DDA_VALUE=1e-10
 test-da.tst:        CFLAGS += -DDA_VALUE=1e-10
 
+# Moisture, compared against test-base. The build of 2026-09-04 stopped at
+# t = 5.94 s with the TG runaway in a sliver cell. The target has no interface
+# treatment on purpose, so that the pair with test-base stays clean. Since
+# 34ee613 (2026-09-08) TG_FGMIN acts in every build. Re-run it as it is. If it
+# stops at t = 5.94 s again, TG_FGMIN alone does not hold the sliver.
 test-moist.s:       CFLAGS += -DMOISTURE=1
 test-moist.tst:     CFLAGS += -DMOISTURE=1
 
@@ -195,6 +201,12 @@ test-full.tst:      CFLAGS += $(TLAD_FULL)
 # at level 11. Compare this one against test-base at matched remaining mass.
 test-l11.s:         CFLAGS += -DMAXLEVEL_VALUE=11
 test-l11.tst:       CFLAGS += -DMAXLEVEL_VALUE=11
+
+# The grid test, one more level. Without this target the pattern rule builds
+# test-l12 at the default level 10, and the run is a copy of test-base.
+# The statistics go to OutputData-12. Check the header line: maxlevel=12.
+test-l12.s:         CFLAGS += -DMAXLEVEL_VALUE=12
+test-l12.tst:       CFLAGS += -DMAXLEVEL_VALUE=12
 
 # A variant of the grid test that doesn't shrink the grid.
 # NO_SHRINK is not a flag of test.c. The fixed interface is TLAD_NOSHRINK.
@@ -266,18 +278,21 @@ test-l11noshrink.tst: CFLAGS += -DMAXLEVEL_VALUE=11 $(TLAD_NOSHRINK)
 # (3.30e-4 against 4.09e-4) and a lower residual (2.45 against 2.73) at the
 # same instant, and it dies while test-base lives.
 #
-# THE FIX IS INT_TEMP_ROBIN, and the proof already exists. test-rdt1 carries
-# the SAME DT=2e-4 CFL=2 as test-dtfix plus TLAD_ROBIN, and it crosses t=6.45,
-# 6.60, 7.0 and 8.0 and runs to t=20.4. So test-dtfix + Robin IS test-rdt1:
-# do not re-run it. The rung that is missing is the varying-step partner at a
-# matched mean step. Robin is near enough to neutral to allow the comparison:
-# over the matched-mass window test-rdt1 and test-base agree to 0.25 per cent
-# on mdot and 4.3 K on Tsurf.
+# UPDATED 2026-09-15. Both stops are the TG runaway in a sliver cell, and the
+# two builds (2026-09-07 11:46) came before TG_FGMIN (34ee613, 2026-09-08),
+# which now acts in every build. The pair is read against test-base, so it
+# keeps NO interface treatment. Re-run both as they are.
 #
-# Caution: test-rdt1, test-rdt2, test-pdt1 and test-pdt2 were all BUILT
+# If they stop at t = 6.5 s again, TG_FGMIN does not hold the sliver. Then the
+# fallback is INT_TEMP_ROBIN: test-rdt1 carries the same DT=2e-4 CFL=2 as
+# test-dtfix plus TLAD_ROBIN, so test-dtfix + Robin is test-rdt1. The pair is
+# then test-rdt1 against a test-dtvar with TLAD_ROBIN, not against test-base.
+#
+# Caution: test-rdt1, test-rdt2, test-pdt1 and test-pdt2 on disk were BUILT
 # 2026-09-04 18:23, which is BEFORE the heat-loss fix of d2d5f2c
 # (2026-09-06 16:59). They ran with INT_TEMP_ROBIN_SMAX=1 and no
-# INT_TEMP_ROBIN_DEBT. Re-run the block before you quote it against test-base.
+# INT_TEMP_ROBIN_DEBT. A rebuild now gets SMAX=20 and the debt term. Re-run
+# the block before you quote it against test-base.
 # To check any run: `stat -c %y <case>/warn` is the BUILD time, because the
 # .tst harness writes that file from the compiler. The mtime of the data files
 # only says when the run last wrote, and a running binary never picks up a
@@ -452,8 +467,10 @@ test-pyronoshrink.tst:  CFLAGS += $(TLAD_PYRO) $(TLAD_NOSHRINK)
 #   test-pyrotsoff          against test-pyro. Tells whether the amplifier of
 #                           the moving interface needs the term too.
 #
-# Caution: test-pyro is a 09-04 build. Rebuild it next to test-pyrotsoff, or
-# the pair measures a week of source changes as well.
+# Caution: build the two rungs of each pair in the same batch, or the pair
+# measures the source changes between the builds as well. The runs of
+# 2026-09-11 were built before TURN_OFF_GAS_REACTIONS joined TLAD_PYRO, so
+# they carry the gas kinetics. A rebuild now does not.
 #
 # Caution: a build without the term is a different physical model. It
 # measures the mechanism. It is not a fix.
@@ -813,6 +830,13 @@ test-pdt2.tst:      CFLAGS += $(TLAD_PICARD) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
 # does. Compare the probe columns of these five cases with test-full and
 # test-transport only, never with test-base.
 #
+# Caution: the table above comes from the code before the transport fixes of
+# 44ddaf6 (2026-09-07). With the fixes the ranking changes. Measured
+# 2026-09-14 at matched mass 0.9 to 0.5, band 0.10 to 0.45 Hz: test-transport
+# gives 4.68 per cent on mdot, below test-base at 5.94 per cent, and
+# test-transportold (fixes off) gives 8.67 per cent. The transport rung is no
+# longer the loudest ingredient.
+#
 # THE REFERENCE. test-fullprobe is test-full plus the probe. The probe changes
 # no field: test-probefl and test-base give 65.0 against 65.6 per cent on
 # mdot over t = 2.0 to 6.4 s. So test-fullprobe reproduces test-full and adds
@@ -824,12 +848,17 @@ test-pdt2.tst:      CFLAGS += $(TLAD_PICARD) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
 # THE TWO MODIFICATIONS, and what each one tests.
 #
 #   fullrobin   The conductance on the diagonal. It caps the effective
-#               exchange number of a cut cell at INT_TEMP_ROBIN_SMAX = 1.
-#               A cell already under the limit gets K = 0 and is untouched bit
-#               for bit, and the two added terms cancel at steady state, so
-#               the fixed point does not move. A change in the slow band is
+#               exchange number of a cut cell at INT_TEMP_ROBIN_SMAX, which is
+#               20 since d2d5f2c (2026-09-06). The same commit added
+#               INT_TEMP_ROBIN_DEBT, which carries the withheld heat to the
+#               next step. The first runs used SMAX = 1 and no debt term, and
+#               they lost heat. A cell already under the limit gets K = 0 and
+#               is untouched bit for bit. A change in the slow band is
 #               therefore attributable to the cut-cell over-drive alone.
 #               This is the run to make after fullprobe.
+#
+#               It is also the L10 point of the grid ladder of the full case:
+#               test-l11full and test-l12full carry the same flags.
 #
 #   fullpicard  The conductance plus the Picard loop on TInt. Expect this to
 #               be WORSE than fullrobin, not better. Measured on the moisture
@@ -993,9 +1022,10 @@ test-fullold.tst:     CFLAGS += $(TLAD_FULL) $(TLAD_LEGACY)
 # and DT is far below it. So CORRECTIVE_CFL is INERT in both rungs below, and
 # the only fixes that act are CORRECTIVE_LIMITER and MDE_INTERFACE.
 #
-# Caution: do NOT read test-transrdt2 against the archived test-transport.
-# That run was built 2026-09-04 00:53, before the transport fixes of 44ddaf6,
-# so the difference would mix the fixes with the step. test-transoldrdt2 is
+# Caution: do NOT read test-transrdt2 against test-transportbkp. That run was
+# built 2026-09-04 00:53, before the transport fixes of 44ddaf6, so the
+# difference would mix the fixes with the step. The folder test-transport now
+# holds the rebuild of 2026-09-07 14:56, with the fixes. test-transoldrdt2 is
 # the control: the same step, the same source, every fix off. The pair gives
 # the step alone in the old code, which is the question the campaign asks.
 
@@ -1005,12 +1035,28 @@ test-transrdt2.tst:   CFLAGS += $(TLAD_TRANSPORT) -DDT_VALUE=$(TLAD_DT2) -DCFLNU
 test-transoldrdt2.s:  CFLAGS += $(TLAD_TRANSPORT) $(TLAD_LEGACY) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
 test-transoldrdt2.tst:CFLAGS += $(TLAD_TRANSPORT) $(TLAD_LEGACY) -DDT_VALUE=$(TLAD_DT2) -DCFLNUM=2
 
+# The grid ladder of the full case: test-fullrobin (L10), test-l11full (L11)
+# and test-l12full (L12). All three carry TLAD_FULL and TLAD_ROBIN, so the
+# level is the only difference. Do not use test-full as the L10 point: it has
+# no conductance.
+#
+# Caution: the three must share every flag. If test-l12full stops at
+# t = 0.02 s on 1./rhomix, add -DPHASE_AWARE_PROPERTIES=1 to all three
+# targets, not to test-l12full alone.
 test-l11full.s:   CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=11
 test-l11full.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=11
 
+test-l12full.s:   CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=12
+test-l12full.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=12
+
+# The debug switches of the gas state. For a diagnostic build only, append
+# $(TLAD_TGDBG) to the two lines of the target, then remove it again. Do not
+# pass CFLAGS on the command line: that replaces the flags of the target.
+#
+# Caution: PROPERTIES_TRAP=0 turns off the FPE trap over the properties loop,
+# so a bad cell carries inf into the projection and the run continues. Never
+# quote a result of such a build. The run of 2026-09-08 in ~/test/solid
+# was built this way.
 TLAD_TGDBG = -DTG_PROBE -DTG_PROBE_TMIN=250. -DTG_PROBE_MAX=2000 \
              -DPROPERTIES_TRAP=0 -DPHASE_AWARE_PROPERTIES=1 \
              -DGAS_STATE_FALLBACK_DEBUG
-
-test-l12full.s:   CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=12 $(TLAD_TGDBG)
-test-l12full.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=12 $(TLAD_TGDBG)

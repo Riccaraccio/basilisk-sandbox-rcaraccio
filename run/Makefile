@@ -133,7 +133,8 @@ TLAD_CASES = base da moist grav transport emis shape full l11 l11noshrink\
              transrdt2 transoldrdt2 \
              frozen frozenloose frozenfull \
              pyronouinnoshrink pyronouinnoshrinkl9 ytol \
-             l12 l11full l12full
+             l12 l11full l12full \
+             dt2 dt4 ttol10 ttol2p5 ttol1p25 otol5e3
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -305,6 +306,26 @@ test-dtfix.tst:     CFLAGS += -DDT_VALUE=$(TLAD_DTFIX) -DCFLNUM=2
 
 test-dtvar.s:       CFLAGS += -DCFLNUM=$(TLAD_DTVAR_CFL)
 test-dtvar.tst:     CFLAGS += -DCFLNUM=$(TLAD_DTVAR_CFL)
+
+# --- the timestep ladder, added 2026-09-16 -----------------------------------
+# The effect of the step on T at 2 mm and on the mass loss, against test-base.
+# Each rung divides BOTH limits by 2: the cap DT_VALUE and the CFL number.
+# test-base runs near its cap (mean step 4.4e-4 against DT_VALUE 5e-4), so a
+# smaller CFL alone does not halve the step: test-dtvar gives only 1.4.
+#
+#   test-base   DT_VALUE 5e-4     CFLNUM 0.8
+#   test-dt2    DT_VALUE 2.5e-4   CFLNUM 0.4
+#   test-dt4    DT_VALUE 1.25e-4  CFLNUM 0.2
+#
+# The step still adapts, so the runs start from scratch and go through the
+# ignition like test-base. Do not use CFLNUM=2 here: test-dtfix dies on the
+# ignition ramp at t = 6.47. Both values divide 0.01 exactly.
+# Cost: about 2 and 4 times the steps of test-base.
+test-dt2.s:         CFLAGS += -DDT_VALUE=2.5e-4 -DCFLNUM=0.4
+test-dt2.tst:       CFLAGS += -DDT_VALUE=2.5e-4 -DCFLNUM=0.4
+
+test-dt4.s:         CFLAGS += -DDT_VALUE=1.25e-4 -DCFLNUM=0.2
+test-dt4.tst:       CFLAGS += -DDT_VALUE=1.25e-4 -DCFLNUM=0.2
 
 # --- (b) what closes the loop ----------------------------------------------
 # test-pyro is the reference of this group and reproduces ~/temp/10-fatehi.
@@ -646,6 +667,32 @@ test-toloff.tst:  CFLAGS += -DINT_TEMP_TOL_K=1e-30 $(TLAD_FULL) $(TLAD_PROBE)
 # header of src/species-tol-probe.h for the columns.
 test-ytol.s:    CFLAGS += -DYTOL_PROBE=1 $(TLAD_FULL)
 test-ytol.tst:  CFLAGS += -DYTOL_PROBE=1 $(TLAD_FULL)
+
+# --- the adaptation tolerance, bare flags, added 2026-09-16 ------------------
+# The effect of the refinement criterion on T at 2 mm, against test-base, at
+# the same maxlevel. The defaults are ADAPT_T_TOL = 5 K and ADAPT_O_TOL = 1e-2
+# (the O2 mass fraction). The T rungs change only the T threshold; otol5e3
+# changes only the O2 threshold, so the two criteria stay separate.
+#
+#   test-ttol10     T 10 K      coarser than base
+#   test-base       T 5 K
+#   test-ttol2p5    T 2.5 K
+#   test-ttol1p25   T 1.25 K
+#   test-otol5e3    O2 5e-3     T at the default
+#
+# Caution: these are NOT test-atol2 and test-atol4. Those carry the full set
+# and change both thresholds; their reference is test-fullprobe.
+test-ttol10.s:      CFLAGS += -DADAPT_T_TOL=10.
+test-ttol10.tst:    CFLAGS += -DADAPT_T_TOL=10.
+
+test-ttol2p5.s:     CFLAGS += -DADAPT_T_TOL=2.5
+test-ttol2p5.tst:   CFLAGS += -DADAPT_T_TOL=2.5
+
+test-ttol1p25.s:    CFLAGS += -DADAPT_T_TOL=1.25
+test-ttol1p25.tst:  CFLAGS += -DADAPT_T_TOL=1.25
+
+test-otol5e3.s:     CFLAGS += -DADAPT_O_TOL=5.e-3
+test-otol5e3.tst:   CFLAGS += -DADAPT_O_TOL=5.e-3
 
 TLAD_ATOL = $(TLAD_FULL) $(TLAD_PROBE)
 

@@ -28,10 +28,11 @@ Applied, each one a removal of an artifact:
   projection as `TOLERANCE/dt^2`, so the default 1e-3 stops the solve after
   one multigrid cycle at every step. A refinement near the flame then left a
   residual 100 times larger and a spike of 30 K that lasted 0.3 s.
-- `init_grid (1 << min (maxlevel, 8))` with a `refine()` near the pellet. One
-  cell of this case holds 1104 fields, which is 8.8 kB, so
-  `init_grid (1 << 10)` allocates 9.3 GB before the first adapt, and the
-  chemistry event of `i = 0` runs on all of it.
+- `init_grid (1 << min (maxlevel, 8))` in `main()`, and a `refine()` of a disc
+  of 0.75 D0 in `event init`, before `fraction()`. One cell of this case holds
+  1104 fields, which is 8.8 kB, so `init_grid (1 << 10)` allocates 9.3 GB
+  before the first adapt, and the chemistry event of `i = 0` runs on all of
+  it. A `refine()` in `main()` does nothing: read `event init`.
 - `event output (t += 0.01)`. At 0.1 s the Nyquist limit is 5 Hz, and the
   flame flickers near 17 Hz, so the jitter folds into the band below 1 Hz and
   the run appears to wander. The profile events stay at 0.1 s, because they
@@ -272,10 +273,10 @@ int main() {
   /**
   One cell holds 1104 fields, which is 8.8 kB. A uniform grid at `maxlevel`
   would allocate 9.3 GB before the first adapt, and the chemistry event of
-  `i = 0` would run on all of it. Start coarse and refine near the pellet. */
+  `i = 0` would run on all of it. Start coarse. `event init` refines near the
+  pellet. */
 
   init_grid (1 << min (maxlevel, 8));
-  refine (circle (x, y, 4.*D0) > 0. && level < maxlevel);
 
   emissivity = emissivity_diblasi;
 
@@ -327,6 +328,28 @@ event init (i = 0) {
   not the macro. */
 
   CFL = CFL_VALUE;
+
+  /**
+  Refine near the particle BEFORE `fraction()`. `fraction()` computes the
+  volume fraction on the grid that exists at this point.
+
+  Caution: do not move this `refine()` to `main()`. `run()` calls
+  `init_grid (N)` again (`$BASILISK/run.h:17`), and `init_grid` of the tree
+  frees the grid. A `refine()` in `main()` does nothing, so the particle
+  started on a uniform grid at level 8. The first adapt then built the finest
+  cells from coarse PLIC lines: the solid lost 0.3 % at the first step, and the
+  corner of the pellet smeared. `run/shrink-corner.c` measures this.
+
+  The disc holds the particle and no more: the corner of a square pellet is at
+  0.71 of its size. One cell holds 1104 fields, so a disc of 4 sizes at level
+  11 would hold 2.3 GB, and the chemistry event of `i = 0` would run on all of
+  it. The adapt of the first steps refines the gas near the particle.
+
+  Caution: runs before this change took `solid_mass0` from the level 8 `f0`.
+  Their normalized mass reads about 0.3 % lower. Compare new runs with new
+  runs. */
+
+  refine (circle (x, y, 0.75*max (D0, H0)) > 0. && level < maxlevel);
 
   scalar f0[];
   fraction (f0, superquadric (x, y, 20, 0.5*H0, 0.5*D0));

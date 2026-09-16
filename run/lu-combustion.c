@@ -22,9 +22,10 @@ Applied:
 
 - `TOLERANCE = 1e-5` and `NITERMIN = 2`, because Basilisk scales the tolerance
   of the projection as `TOLERANCE/dt^2`.
-- `init_grid (1 << min (maxlevel, 8))` with a `refine()` near the particle.
-  One cell holds 1104 fields, so a uniform grid at `maxlevel` allocates
-  gigabytes before the first adapt.
+- `init_grid (1 << min (maxlevel, 8))` in `main()`, and a `refine()` near the
+  particle in `event init`, before `fraction()`. One cell holds 1104 fields,
+  so a uniform grid at `maxlevel` allocates gigabytes before the first adapt.
+  A `refine()` in `main()` does nothing: read `event init`.
 - `event output (t += 0.01)`, so that the flicker of the flame does not fold
   into the band below 1 Hz.
 - `FROZEN_CELL_GATE = 1` and `CORRECTIVE_CFL = 0.8`.
@@ -149,7 +150,7 @@ int main() {
                      " zeta=%d frozen=%d corrCFL=%g"
                      " averaged=%d exact=%d nranks=%d\n",
              MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, Uin,
-             (double) TEND, Zeta_policy, FROZEN_CELL_GATE, (double) CORRECTIVE_CFL,
+             (double) TEND, (int) ZETA_POLICY, FROZEN_CELL_GATE, (double) CORRECTIVE_CFL,
              (int) gas_source_averaged, (int) GAS_SOURCE_EXACT, npe());
 
   lambdaSmodel = L_LU;
@@ -174,12 +175,11 @@ int main() {
   origin (-L0/2, 0);
 
   /**
-  One cell holds 1104 fields. Start coarse and refine near the particle, so
-  that the first adapt and the chemistry event of `i = 0` do not run on a
-  uniform grid at `maxlevel`. */
+  One cell holds 1104 fields. Start coarse, so that the first adapt and the
+  chemistry event of `i = 0` do not run on a uniform grid at `maxlevel`.
+  `event init` refines near the particle. */
 
   init_grid (1 << min (maxlevel, 8));
-  refine (circle (x, y, 4.*D0) > 0. && level < maxlevel);
 
   emissivity = emissivity_lu;
 
@@ -221,6 +221,28 @@ event init (i = 0) {
   event, which runs after `main()`. So the value belongs here. */
 
   CFL = CFL_VALUE;
+
+  /**
+  Refine near the particle BEFORE `fraction()`. `fraction()` computes the
+  volume fraction on the grid that exists at this point.
+
+  Caution: do not move this `refine()` to `main()`. `run()` calls
+  `init_grid (N)` again (`$BASILISK/run.h:17`), and `init_grid` of the tree
+  frees the grid. A `refine()` in `main()` does nothing, so the particle
+  started on a uniform grid at level 8. The first adapt then built the finest
+  cells from coarse PLIC lines: the solid lost 0.3 % at the first step, and the
+  corner of the pellet smeared. `run/shrink-corner.c` measures this.
+
+  The disc holds the particle and no more: the corner of a square pellet is at
+  0.71 of its size. One cell holds 1104 fields, so a disc of 4 sizes at level
+  11 would hold 2.3 GB, and the chemistry event of `i = 0` would run on all of
+  it. The adapt of the first steps refines the gas near the particle.
+
+  Caution: runs before this change took `solid_mass0` from the level 8 `f0`.
+  Their normalized mass reads about 0.3 % lower. Compare new runs with new
+  runs. */
+
+  refine (circle (x, y, 0.75*D0) > 0. && level < maxlevel);
 
   scalar f0[];
   fraction (f0, circle (x, y, 0.5*D0));

@@ -573,9 +573,12 @@ void update_divergence (void) {
   foreach() {
     double divu1 = 0., divu2 = 0.;
 
-    // Add internal gas temperature contribution
+    // Add internal gas temperature contribution. Only the pore gas expands,
+    // so the term carries the intrinsic porosity eps. porosity is in tracer
+    // form here, so eps = porosity/f.
+    double eps = f[] > F_ERR ? porosity[]/f[] : 0.;
     divu1 += (TS[]*rhoGv_S[]*cpGv_S[] > 0.) ?
-      1./(TS[]*(rhoGv_S[]*cpGv_S[]*porosity[]/f[] + rhoSv[]*cpSv[]*(1-porosity[]/f[])))*DTDtS[] : 0.;
+      eps/(TS[]*(rhoGv_S[]*cpGv_S[]*eps + rhoSv[]*cpSv[]*(1. - eps)))*DTDtS[] : 0.;
 
     // Add external gas temperature contribution
     divu2 += (TG[]*rhoGv_G[]*cpGv_G[] > 0.) ?

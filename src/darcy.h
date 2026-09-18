@@ -3,13 +3,29 @@
 This file implements the Darcy and Forchheimer terms for flow in porous media.
 They allow to account for the resistance to flow due to the presence of a porous matrix.
 
-In this step, we want to solve the following equation:
+In this step, we want to solve the following equation for the superficial
+velocity $\mathbf{u}$:
 $$
 \frac{\partial \mathbf{u}}{\partial t} = - \frac{1}{\rho_g}
-\left[ \frac{\mu_g \epsilon_g \mathbf{u}_g}{\mathbf{K}} + 
-\rho_g\frac{1.75}{\sqrt{150\epsilon_g^3}} \frac{\epsilon_g
-|\mathbf{u}_g|\mathbf{u}_g}{\sqrt{\mathbf{K}}} \right]
+\left[ \frac{\mu_g\,\mathbf{u}}{\mathbf{K}} +
+\rho_g\,F\,\frac{|\mathbf{u}|\,\mathbf{u}}{\sqrt{\mathbf{K}}} \right],
+\qquad
+F = \frac{1.75}{\sqrt{150\,\epsilon_g^3}} .
 $$
+$\mu_g$ is the viscosity of the gas, not an effective viscosity. With
+$K = \epsilon^3 d^2/(150(1-\epsilon)^2)$ the steady state is the Ergun
+equation, $-\nabla p = \mu\mathbf{u}/K + \rho F|\mathbf{u}|\mathbf{u}/\sqrt{K}$.
+
+This is the formulation without `POROUS_ADVECTION`: the momentum equation has
+the inertia $\rho$ and the pressure mobility $1/\rho$. The drag rate must carry
+the same porosity factor as the mobility, so here it carries none.
+
+Caution: `POROUS_ADVECTION` changes the mobility to $\epsilon/\rho$ in
+`project_sf`, but not in `centered_gradient()`. With that flag the drag of this
+file gives $K_{\rm eff} = K\epsilon$, and the cell velocity in the porous region
+is $\mathbf{u}/\epsilon$. Do not use `POROUS_ADVECTION` with this file until the
+mobility of that flag is moved into `alpha`.
+
 Note that the permeability tensor **K** (Da in the code) can reach very small values.
 Therefore, an implicit treatment of the Darcy and Forchheimer
 terms must and is here implemented.
@@ -77,17 +93,55 @@ coord Da = {1e-10, 1e-10};
 # define DARCY_PRESSURE_COUPLING 1
 #endif
 
-#if DARCY_PRESSURE_COUPLING
-
 /**
 ## The drag rate
 
-`darcy_lambda.x` holds $\lambda = f(A + B)$ for the direction `x`. The
-`advection_term` event fills it once per step. The `viscous_term` event then
-reads the same values, so the predictor and the mobility use the same $c$.
-The Forchheimer term uses the velocity at the start of the step. */
+`darcy_lambda.x` holds $\lambda = f(A + B)$ for the direction `x`, with
+$A = \mu/(K\rho)$ and $B = F|\mathbf{u}|/\sqrt{K}$. Both schemes below use
+this function, so `DARCY_PRESSURE_COUPLING` changes only the coupling with the
+pressure, not the drag.
+
+`rhoGv_S` and `muGv_S` are the density and the viscosity of the pore gas.
+Do not use the Brinkman viscosity $\mu/\epsilon$ here. A case can give that
+value to the viscous term through `mu`, and it is a different quantity. */
 
 vector darcy_lambda[];
+
+static void darcy_cell_rate (void)
+{
+  foreach() {
+    foreach_dimension()
+      darcy_lambda.x[] = 0.;
+    if (f[] > F_ERR) {
+      double e = porosity[]/f[];
+      double F = 1.75/sqrt (150.*cube (e));
+      double Umag = norm(u);
+
+      double muGh, rhoGh;
+      #ifdef VARPROP
+      muGh = muGv_S[];
+      rhoGh = rhoGv_S[];
+      #else
+      muGh = muG;
+      rhoGh = rhoG;
+      #endif
+
+      foreach_dimension() {
+        double A = muGh/(Da.x*rhoGh);   // Darcy term
+        double B = F*Umag/sqrt(Da.x);   // Forchheimer term
+        darcy_lambda.x[] = (A + B)*f[];
+      }
+    }
+  }
+}
+
+#if DARCY_PRESSURE_COUPLING
+
+/**
+The `advection_term` event fills `darcy_lambda` once per step. The
+`viscous_term` event then reads the same values, so the predictor and the
+mobility use the same $c$. The Forchheimer term uses the velocity at the
+start of the step. */
 
 /**
 `alphad` is the mobility with the drag. `alpha_base` is the mobility that the
@@ -103,34 +157,6 @@ event defaults (i = 0) {
   foreach_dimension() {
     darcy_lambda.x.nodump = true;
     alphad.x.nodump = true;
-  }
-}
-
-static void darcy_cell_rate (void)
-{
-  foreach() {
-    foreach_dimension()
-      darcy_lambda.x[] = 0.;
-    if (f[] > F_ERR) {
-      double e = porosity[]/f[];
-      double F = 1.75/sqrt (150.*pow (e, 3));
-      double Umag = norm(u);
-
-      double muGh, rhoGh;
-      #ifdef VARPROP
-      muGh = muGv_S[];
-      rhoGh = rhoGv_S[];
-      #else
-      muGh = muG/e; // effective viscosity
-      rhoGh = rhoG;
-      #endif
-
-      foreach_dimension() {
-        double A = muGh*e/(Da.x*rhoGh);     // Darcy term
-        double B = F*Umag*e/sqrt(Da.x);     // Forchheimer term
-        darcy_lambda.x[] = (A + B)*f[];
-      }
-    }
   }
 }
 
@@ -187,29 +213,16 @@ account for the Darcy and Forchheimer resistance. The projection does not see
 the drag.
 */
 
+event defaults (i = 0) {
+  foreach_dimension()
+    darcy_lambda.x.nodump = true;
+}
+
 event viscous_term (i++) {
-  foreach() {
-    if (f[] > F_ERR) {
-      double e = porosity[]/f[];
-      double F = 1.75/sqrt (150.*pow (e, 3));
-      double Umag = norm(u);
-
-      double muGh, rhoGh;
-      #ifdef VARPROP
-      muGh = muGv_S[];
-      rhoGh = rhoGv_S[];
-      #else
-      muGh = muG/e; // effective viscosity
-      rhoGh = rhoG;
-      #endif
-
-      foreach_dimension() {
-        double A = muGh*e/(Da.x*rhoGh);     // Darcy term
-        double B = F*Umag*e/sqrt(Da.x);     // Forchheimer term
-        u.x[] *= exp(-(A + B)*dt*f[]);
-      }
-    }
-  }
+  darcy_cell_rate();
+  foreach()
+    foreach_dimension()
+      u.x[] *= exp(-darcy_lambda.x[]*dt);
 }
 
 #endif // DARCY_PRESSURE_COUPLING

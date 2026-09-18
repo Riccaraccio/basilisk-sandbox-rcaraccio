@@ -14,6 +14,36 @@ Note that the permeability tensor **K** (Da in the code) can reach very small va
 Therefore, an implicit treatment of the Darcy and Forchheimer
 terms must and is here implemented.
 
+## The coupling with the pressure
+
+Write $\lambda = f(A + B)$ for the drag rate of a cell and $c = \lambda\Delta t$.
+Over one step, with the pressure gradient $G = \nabla p/\rho$ held constant,
+the exact solution of $\partial_t \mathbf{u} = -\lambda\mathbf{u} - G$ is
+$$
+\mathbf{u}^{n+1} = e^{-c}\,\mathbf{u}^{*} - \Delta t\,\varphi(c)\,G,
+\qquad
+\varphi(c) = \frac{1 - e^{-c}}{c} .
+$$
+The `viscous_term` event applies the factor $e^{-c}$ to the predictor. The
+`advection_term` event applies $\varphi(c)$ to the face mobility `alpha`, so
+both projections of the step and `centered_gradient()` see the drag. In a
+steady state this gives the Darcy law $\mathbf{u} = -G/\lambda$ for every
+$\Delta t$.
+
+Without the factor on `alpha`, the steady state is
+$\mathbf{u} = -\Delta t\,G/(1 - e^{-c})$. For $c \gg 1$ that is
+$-\Delta t\,G$: the pressure then depends on $\Delta t$ and does not depend on
+**K**. Compile with `-DDARCY_PRESSURE_COUPLING=0` to get that old scheme back.
+
+Caution: do not apply $e^{-c}$ to `alpha`. The steady state is then
+$-\Delta t\,G\,e^{-c}/(1 - e^{-c})$, and for $c \gg 1$ the Poisson problem
+becomes singular.
+
+`alpha` stays a mobility, not a specific volume. No module reads it back as a
+density. `gravity.h` reads it to turn a force into an acceleration, and that
+acceleration then gets the factor $\varphi$, which the exact solution above
+also gives to a constant force.
+
 Extern variables defined elsewhere:
 
 + *porosity*: scalar field representing the porosity of the medium
@@ -43,10 +73,118 @@ to account for anisotropic porous media. Units: m^2
 
 coord Da = {1e-10, 1e-10};
 
+#ifndef DARCY_PRESSURE_COUPLING
+# define DARCY_PRESSURE_COUPLING 1
+#endif
+
+#if DARCY_PRESSURE_COUPLING
+
+/**
+## The drag rate
+
+`darcy_lambda.x` holds $\lambda = f(A + B)$ for the direction `x`. The
+`advection_term` event fills it once per step. The `viscous_term` event then
+reads the same values, so the predictor and the mobility use the same $c$.
+The Forchheimer term uses the velocity at the start of the step. */
+
+vector darcy_lambda[];
+
+/**
+`alphad` is the mobility with the drag. `alpha_base` is the mobility that the
+other modules set: `fm` by default, or `alphav` of `two-phase.h` and
+`variable-properties.h`. Those modules write `alphav` again in each
+`properties` event, and they never read `alpha` back, so `alpha` can point to
+`alphad` for the whole run. */
+
+face vector alphad[];
+(const) face vector alpha_base = unityf;
+
+event defaults (i = 0) {
+  foreach_dimension() {
+    darcy_lambda.x.nodump = true;
+    alphad.x.nodump = true;
+  }
+}
+
+static void darcy_cell_rate (void)
+{
+  foreach() {
+    foreach_dimension()
+      darcy_lambda.x[] = 0.;
+    if (f[] > F_ERR) {
+      double e = porosity[]/f[];
+      double F = 1.75/sqrt (150.*pow (e, 3));
+      double Umag = norm(u);
+
+      double muGh, rhoGh;
+      #ifdef VARPROP
+      muGh = muGv_S[];
+      rhoGh = rhoGv_S[];
+      #else
+      muGh = muG/e; // effective viscosity
+      rhoGh = rhoG;
+      #endif
+
+      foreach_dimension() {
+        double A = muGh*e/(Da.x*rhoGh);     // Darcy term
+        double B = F*Umag*e/sqrt(Da.x);     // Forchheimer term
+        darcy_lambda.x[] = (A + B)*f[];
+      }
+    }
+  }
+}
+
+/**
+## The mobility event
+
+Same-name events run in reverse order of the declaration, so this event runs
+before the `advection_term` event of `centered.h` (and of `POROUS_ADVECTION`).
+It runs after every `properties` event of the step. It therefore sets the
+mobility for the projection of `pf`, the projection of `p`, and
+`centered_gradient()`.
+
+Caution: do not move this to a `properties` event. A `properties` event of
+this file runs BEFORE the one of `variable-properties.h`. That event then
+writes `alphav` again, and the change of the mobility has no effect.
+
+The projection of `pf` in `advection_term` uses `dt/2`, but this factor uses
+`dt`. That projection only predicts the face velocity for the advection. */
+
+event advection_term (i++) {
+  darcy_cell_rate();
+
+  if (alpha.x.i != alphad.x.i) {
+    alpha_base = alpha;
+    alpha = alphad;
+  }
+
+  foreach_face() {
+    double c = dt*face_value (darcy_lambda.x, 0);
+    double phi = c > 0. ? -expm1 (-c)/c : 1.;
+    alphad.x[] = alpha_base.x[]*phi;
+  }
+}
+
 /**
 ## Viscous term event
-After the viscous term is computed, this event modifies the velocity field
-to account for the Darcy and Forchheimer resistance.
+This event runs BEFORE the viscous solve of `centered.h`, because same-name
+events run in reverse order of the declaration. It damps the predictor with
+the factor $e^{-c}$ of the rate from the `advection_term` event. */
+
+event viscous_term (i++) {
+  foreach()
+    foreach_dimension()
+      u.x[] *= exp(-darcy_lambda.x[]*dt);
+}
+
+#else // !DARCY_PRESSURE_COUPLING
+
+/**
+## Viscous term event (old scheme)
+This event runs BEFORE the viscous solve of `centered.h`, because same-name
+events run in reverse order of the declaration. It damps the velocity to
+account for the Darcy and Forchheimer resistance. The projection does not see
+the drag.
 */
 
 event viscous_term (i++) {
@@ -73,6 +211,8 @@ event viscous_term (i++) {
     }
   }
 }
+
+#endif // DARCY_PRESSURE_COUPLING
 
 /**
 ## Previous implementation (commented out)

@@ -1896,6 +1896,79 @@ tracer advection step.
 */
 extern face vector ufsave;
 face vector u_prime[];
+
+/**
+## The velocity of the pore species
+
+`uf` is the superficial velocity: the projection makes its divergence equal
+to the gas source per unit volume of the cell. The diffusion solve of `YG_S`
+uses the capacity `rho*eps*f` (`theta1`). So the equation of the pore species
+in non-conservative form is
+
+  eps*rho*dY/dt + rho*u.grad(Y) = div(rho*D*grad(Y)) + ...
+
+and the consistent velocity is the interstitial velocity `u/eps`.
+`advection_div` with `NO_ADVECTION_DIV` gives `-dt*u.grad(Y)` for any face
+velocity, thus the velocity that it receives must be `u/eps`.
+
+`PORE_SPECIES_INTERSTITIAL` 1 (the default) moves `YGList_S` with
+
+  u_pore = ufsave/max (face_value (e1), PORE_EPS_MIN),  e1 = f*eps + 1 - f
+
+`e1` is the one-fluid porosity that `centered-phasechange.h` also uses. It is
+`eps` in a full solid cell and 1 in the gas, so the gas side does not change.
+`PORE_EPS_MIN` stops a division by a small porosity.
+
+`PORE_SPECIES_INTERSTITIAL` 0 gives the previous code: `YGList_S` moves with
+`ufsave`, which is `eps` times too slow inside the particle.
+
+Caution: `u_pore` is `1/eps` times larger than `uf` inside the particle. The
+`stability` event below therefore adds a CFL limit on `u_pore`. It computes
+the limit from `uf` and from the `f` and `porosity` of the start of the step,
+because `uf` becomes `ufsave` in the `vof` event of `shrinking.h`. It only
+lowers `dtmax`, and the `stability` events of `shrinking.h` and `centered.h`
+run after it and use that value. `pore_dtmax` keeps the limit for output.
+
+The test is `#if`, so `-DPORE_SPECIES_INTERSTITIAL=0` means off. */
+
+#ifndef PORE_SPECIES_INTERSTITIAL
+# define PORE_SPECIES_INTERSTITIAL 1
+#endif
+
+#ifndef PORE_EPS_MIN
+# define PORE_EPS_MIN 0.05
+#endif
+
+double pore_dtmax = HUGE; // the CFL limit of u_pore, for output only
+
+#if PORE_SPECIES_INTERSTITIAL
+event stability (i++) {
+
+  /**
+  `porosity` is in tracer form here, so `porosity + 1 - f` is `f*eps + 1 - f`.
+  Only the faces with `e1 < 1` can give a limit below that of `uf`. The gas
+  faces are left to `centered.h`. */
+
+  scalar e1[];
+  foreach()
+    e1[] = porosity[] + 1. - f[];
+
+  double dtp = HUGE;
+  foreach_face (reduction(min:dtp)) {
+    double ef = face_value (e1, 0);
+    if (uf.x[] != 0. && ef < 1.) {
+      double dtf = max (ef, PORE_EPS_MIN)*Delta*fm.x[]/fabs (uf.x[]);
+      if (dtf < dtp)
+        dtp = dtf;
+    }
+  }
+
+  pore_dtmax = CFL*dtp;
+  if (pore_dtmax < dtmax)
+    dtmax = pore_dtmax;
+}
+#endif
+
 event tracer_diffusion (i++,last) {
 
 foreach() {
@@ -1946,7 +2019,22 @@ foreach() {
     }
   }
 
+#if PORE_SPECIES_INTERSTITIAL
+  {
+    // porosity is intrinsic here, and 0 where f <= F_ERR
+    scalar e1[];
+    foreach()
+      e1[] = f[]*porosity[] + 1. - f[];
+
+    face vector u_pore[];
+    foreach_face()
+      u_pore.x[] = ufsave.x[]/max (face_value (e1, 0), PORE_EPS_MIN);
+
+    advection_div(YGList_S, u_pore, dt);
+  }
+#else
   advection_div(YGList_S, ufsave, dt);
+#endif
   advection_div(YGList_G, ufsave, dt);
 
 #ifdef SOLVE_TEMPERATURE

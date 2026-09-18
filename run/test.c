@@ -483,6 +483,7 @@ order of the full case. */
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
+#include "divergence-budget.h"
 
 #include "view.h"
 
@@ -929,12 +930,17 @@ event temperature_profile (t += 0.01) {
 /**
 Diagnostics for the phase-change expansion field, sampled every timestep.
 
-The projection enforces div(uf) = -gas_source, so we log the two sides of that
-identity separately:
+Columns 3 to 5 compare div(uf) with gas_source only:
   Qsrc = int gas_source dV   the source computed by the chemistry
   Qdiv = int div(uf) dV      the expansion the velocity field actually carries
-and 'resmax', the largest pointwise violation. Note gas_source already carries
+and 'resmax' = max |div(uf) + gas_source|. Note gas_source already carries
 cm[], as does the discrete div(uf) below, so both integrate with sq(Delta).
+
+Caution: 'resmax' is NOT the residual of the solver. The projection enforces
+div(uf) = -div_source = -(gas_source + drhodt), so 'resmax' is approximately
+max |drhodt|. Columns 20 to 23 come from `divergence-budget.h`. They read
+div_source at the end of the step, before `adapt`. 'resds' is the residual of
+the solver and must be approximately dt*mgp_resa (columns 2 and 12).
 
 'ur' probes the radial velocity on a 45 degree ray just outside the particle:
 this is the quantity the velocity vectors show.
@@ -1042,17 +1048,20 @@ event probe_expansion (t += 0.01) {
       fprintf (fe, "#t(1) dt(2) Qsrc(3) Qdiv(4) resmax(5) omega_min(6) omega_max(7)"
                    " ur_0.5mm(8) ur_1mm(9) ur_1.5mm(10) mgp_i(11) mgp_resa(12)"
                    " mgpsf_i(13) Tcore(14) Tbulk(15) Tsurf(16)"
-                   " mdot(17) ncells(18) nsolid(19)\n");
+                   " mdot(17) ncells(18) nsolid(19)"
+                   " Qds(20) Qdivb(21) resds(22) dsmax(23)\n");
 
     /**
     The new columns go on the end. `slow_flicker.py` reads this file with
     `load(path, 16)`, so it truncates to column 16 and keeps working. */
 
-    fprintf (fe, "%g %g %g %g %g %g %g %g %g %g %d %g %d %g %g %g %g %ld %g\n",
+    fprintf (fe, "%g %g %g %g %g %g %g %g %g %g %d %g %d %g %g %g %g %ld %g"
+                 " %g %g %g %g\n",
              t, dt, Qsrc, Qdiv, resmax, so.min, so.max,
              ur[0], ur[1], ur[2], mgp.i, mgp.resa, mgpsf.i,
              Tcore, Tbulk, Tsurf,
-             mdot, grid->tn, nsolid);
+             mdot, grid->tn, nsolid,
+             divb_Qds, divb_Qdiv, divb_resmax, divb_dsmax);
     fflush (fe);
   }
 }

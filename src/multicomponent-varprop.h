@@ -567,7 +567,7 @@ static void interface_temperature_sources (void)
   foreach() {
 #endif
     if (f[] > F_ERR && f[] < 1. - F_ERR) {
-      coord n = facet_normal (point, fS, fsS), p;
+      coord n = interface_source_normal (point, fS, fsS), p;
       double alpha = plane_alpha (fS[], n);
       double area = plane_area_center (n, alpha, &p);
       normalize (&n);
@@ -858,7 +858,7 @@ event tracer_diffusion (i++) {
   //Calculate the source therm
   foreach() {
     if (f[] > F_ERR && f[] < 1. - F_ERR) {
-      coord n = facet_normal (point, fS, fsS), p;
+      coord n = interface_source_normal (point, fS, fsS), p;
       double alpha = plane_alpha (fS[], n);
       double area = plane_area_center (n, alpha, &p);
       normalize (&n);

@@ -115,7 +115,7 @@ void int_temperature_probe (void)
 
     if (f[] > F_ERR && f[] < 1. - F_ERR && TS[] > 0. && TG[] > 0.) {
 
-    coord n = facet_normal (point, fS, fsS), pc;
+    coord n = interface_source_normal (point, fS, fsS), pc;
     double alpha = plane_alpha (fS[], n);
     double area = plane_area_center (n, alpha, &pc);
     normalize (&n);

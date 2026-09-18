@@ -333,73 +333,58 @@ vofrecon vof_reconstruction (Point point, scalar f) {
 * *fts*: field to shift
 * *f*: vof volume fraction field
 * *dir*: shifting direction: 1 liquid, gas otherwise
+
+The shift conserves the sum of *fts* times the cell volume. A cut cell gives
+its value in equal parts to the pure cells of its 3x3 stencil. The count and
+the gather use only leaf cells in the domain, thus each part goes to one cell
+of the same size. A cut cell with no pure cell in its stencil keeps its value.
 */
+
+#if TREE
+# define SHIFT_CELL (is_leaf(cell) && !is_boundary(cell))
+#else
+# define SHIFT_CELL (!is_boundary(point))
+#endif
 
 void shift_field (scalar fts, scalar f, int dir) {
 
   scalar avg[];
-//#if TREE
-//  avg.refine = avg.prolongation = refinement_avg;
-//  avg.restriction = no_restriction;
-//  avg.dirty = true;
-//#endif
 
-  // Compute avg
+  // Compute avg: the number of pure cells that receive a part of the cut cell
   foreach() {
     avg[] = 0.;
     if (f[] > F_ERR && f[] < 1. - F_ERR) {
-      if (dir == 1) {
-        int count = 0;
-        foreach_neighbor (1) {
-          if (f[] > 1.-F_ERR) // Number of pure-liquid cells close to the interfacial cell
-            count ++;
-        }
-        avg[] = count;
+      int count = 0;
+      foreach_neighbor (1) {
+        if (SHIFT_CELL && (dir == 1 ? f[] > 1.-F_ERR : f[] < F_ERR))
+          count ++;
       }
-      else {
-        int count = 0;
-        foreach_neighbor (1) {
-          if (f[] < F_ERR) // Number of pure-gas cells close to the interfacial cell
-            count ++;
-        }
-        avg[] = count;
-      }
+      avg[] = count;
     }
   }
 
+  // A cut cell with no receiver keeps its value
   scalar sf0[];
   foreach() {
     sf0[] = fts[];
-    if (f[] > F_ERR && f[] < 1. - F_ERR)
+    if (f[] > F_ERR && f[] < 1. - F_ERR && avg[] > 0)
       fts[] = 0.;
   }
 
-  // Compute m
+  // Each pure cell gathers its parts from the cut cells of its stencil
   foreach() {
-    if (dir == 1) {
-      if (f[] > 1.-F_ERR) { // Move toward pure-liquid
-        double val = 0.;
-        foreach_neighbor (1) {
-          if (f[] > F_ERR && f[] < 1. - F_ERR && avg[] > 0) {
-            val += sf0[]/avg[];
-          }
-        }
-        fts[] += val;
+    if (dir == 1 ? f[] > 1.-F_ERR : f[] < F_ERR) {
+      double val = 0.;
+      foreach_neighbor (1) {
+        if (SHIFT_CELL && f[] > F_ERR && f[] < 1. - F_ERR && avg[] > 0)
+          val += sf0[]/avg[];
       }
-    }
-    else {
-      if (f[] < F_ERR) { // Move toward pure-gas
-        double val = 0.;
-        foreach_neighbor (1) {
-          if (f[] > F_ERR && f[] < 1. - F_ERR && avg[] > 0) {
-            val += sf0[]/avg[];
-          }
-        }
-        fts[] += val;
-      }
+      fts[] += val;
     }
   }
 }
+
+#undef SHIFT_CELL
 
 /**
 ## *distribute_field()*: Distribute a field localized at the interface in the closest pure gas or liquid cells (5x5 stencil)

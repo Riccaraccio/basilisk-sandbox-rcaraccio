@@ -145,14 +145,23 @@ keeps its intrinsic value while `f` changes. The steps are:
 carries the pore gas, and the solid side of a cut cell must follow the
 interface.
 
-The default is 0, the new transport. Set `GAS_UBF_ADVECTION` to 1 to get the
-previous code bit for bit. */
+`shrinking.h` defines the switch `GAS_UBF_ADVECTION`:
 
-#ifndef GAS_UBF_ADVECTION
-# define GAS_UBF_ADVECTION 0
-#endif
+  0  The two events below. This is the default.
+  1  The previous code, bit for bit.
+  2  The mask of `shrinking.h`: `ubf` is 0 on the faces between two pure
+     gas cells. The gas side of a cut cell still moves with `ubf`.
 
-#if !GAS_UBF_ADVECTION
+Caution: in a cut cell, the `ubf` transport of the gas side is not a double
+count. It fills the gas volume that the interface frees with upwind gas. The
+advection with `ufsave` moves the intrinsic value and does not see the change
+of `1 - f`. With 0, the freed volume takes the value of the cell itself. In a
+sliver cell (`1 - f` near 2e-4) that value is cold, and a hot start
+(`TS0 = 700`, level 8, `ZETA_SHRINK`) gave a minimum `TG` 40 to 70 K lower than
+with 1. Option 2 keeps the fill in the cut cells and removes only the double
+count in the pure gas. */
+
+#if GAS_UBF_ADVECTION == 0
 scalar * gas_ubf_saved = NULL;
 
 event vof (i++) {
@@ -206,7 +215,7 @@ event tracer_advection (i++) {
 #endif
   }
 }
-#endif // !GAS_UBF_ADVECTION
+#endif // GAS_UBF_ADVECTION == 0
 
 #if INT_TEMP_TOL
 # include "int-temperature-tol.h"

@@ -27,6 +27,32 @@ scalar drhodt_chem[];
 scalar * DYDtG_S = NULL;
 
 /**
+## The weight of the phase fraction in `drhodt`
+
+The accumulators `DTDtS`, `DTDtG`, `DYDtG_S` and `DYDtG_G` (and
+`drhodt_chem`) get two kinds of term:
+
+- `chemistry.h` adds the rates of the reactor per unit volume of ONE phase.
+- `update_divergence()` adds the face fluxes (weight `fsS`, `fsG`) and the
+  interface sources (weight `aov`) per unit volume of the CELL. These are the
+  same terms that the diffusion solve divides by `theta = cm*f*rho*cp`.
+
+`DRHODT_CELL_AVERAGE` at 1 (the default) multiplies the chemistry part by `f`
+(or `1-f`) at the start of `update_divergence()`, before the first flux term.
+All the terms are then per unit volume of the cell, and `drhodt` is their sum
+with no weight. A pure cell keeps the same `drhodt`, bit for bit. In a cut
+cell the flux and interface part of the solid side increases by `1/f`, and
+that of the gas side by `1/(1-f)`.
+
+Set `DRHODT_CELL_AVERAGE` to 0 to get the previous code, which multiplied the
+flux and interface part by `f` (or `1-f`) a second time. This is section 3 of
+`~/discretization-report/discretization-consistency.md`. */
+
+#ifndef DRHODT_CELL_AVERAGE
+# define DRHODT_CELL_AVERAGE 1
+#endif
+
+/**
 ## The state of a newly uncovered gas cell
 
 `GAS_STATE_FALLBACK` at 1 gives a cell that changes from solid to gas a
@@ -377,6 +403,26 @@ void update_divergence (void) {
   restriction (XGList_S);
 #endif
 
+#if DRHODT_CELL_AVERAGE
+  /**
+  Here the accumulators hold only the chemistry part, per unit volume of one
+  phase. Only `chemistry.h` writes them between `reset_sources` and this
+  function. Change them to the value per unit volume of the cell before the
+  first flux term. */
+
+  foreach() {
+    DTDtS[] *= f[];
+    DTDtG[] *= 1. - f[];
+    for (scalar s in DYDtG_S)
+      s[] *= f[];
+    for (scalar s in DYDtG_G)
+      s[] *= 1. - f[];
+#if GAS_SOURCE_EXACT
+    drhodt_chem[] *= 1. - f[];
+#endif
+  }
+#endif
+
 //   /**
 //   We calculate the Lagrangian derivative of the temperature fields. */
 
@@ -573,9 +619,12 @@ void update_divergence (void) {
   foreach() {
     double divu1 = 0., divu2 = 0.;
 
-    // Add internal gas temperature contribution
+    // Add internal gas temperature contribution. Only the pore gas expands,
+    // so the term carries the intrinsic porosity eps. porosity is in tracer
+    // form here, so eps = porosity/f.
+    double eps = f[] > F_ERR ? porosity[]/f[] : 0.;
     divu1 += (TS[]*rhoGv_S[]*cpGv_S[] > 0.) ?
-      1./(TS[]*(rhoGv_S[]*cpGv_S[]*porosity[]/f[] + rhoSv[]*cpSv[]*(1-porosity[]/f[])))*DTDtS[] : 0.;
+      eps/(TS[]*(rhoGv_S[]*cpGv_S[]*eps + rhoSv[]*cpSv[]*(1. - eps)))*DTDtS[] : 0.;
 
     // Add external gas temperature contribution
     divu2 += (TG[]*rhoGv_G[]*cpGv_G[] > 0.) ?
@@ -602,8 +651,21 @@ void update_divergence (void) {
     divu2 += drhodt_chem[];
 #endif
 
+#if DRHODT_CELL_AVERAGE
+    /**
+    All the terms are per unit volume of the cell, so add them with no
+    weight.
+
+    Caution: do not remove the guards. A face between a pure gas cell and a
+    cut cell can have `fsS > 0`, so `DYDtG_S` and `DTDtS` can be nonzero in a
+    pure gas cell. The old weight `f` removed that term. The guard removes it
+    now, and the same holds for the gas side of a pure solid cell. */
+
+    drhodt[] = (f[] > F_ERR ? divu1 : 0.) + (f[] < 1. - F_ERR ? divu2 : 0.);
+#else
     // Volume averaged contributions
     drhodt[] = divu1*f[] + divu2*(1. - f[]);
+#endif
 
     // Adjust sign for internal convention
     drhodt[] *= -1.;

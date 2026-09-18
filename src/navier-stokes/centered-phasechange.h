@@ -265,8 +265,13 @@ event advection_term (i++, last) {
     double ef = face_value(eps, 0);
     ufn.x[] = uf.x[]/ef;
   }
-  
-  advection ((scalar *){u}, ufn, dt, (scalar *){g});
+
+  /**
+  Call `advection_div` by its name. The macro `advection` does not exist
+  here: the file removes it after `centered.h`. The name `advection` calls
+  the function of `bcg.h`, which ignores `NO_ADVECTION_DIV`. */
+
+  advection_div ((scalar *){u}, ufn, dt, (scalar *){g});
 }
 
 /** 

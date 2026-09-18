@@ -490,9 +490,15 @@ order of the full case. */
 #if !NO_INFLOW
 
 const double Uin = UIN_VALUE; //inlet velocity
+/**
+Caution: give `pf` the same conditions as `p`. Basilisk does not copy them,
+so without these lines every boundary of `pf` is Neumann, and the projection
+of `uf` has no solution. See the comment in `fatehi-combustion.c`. */
+
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
+pf[left]     = neumann (0.);
 psi[left]    = dirichlet (0.);
 
 psi[top]     = dirichlet (0.);
@@ -500,6 +506,7 @@ psi[top]     = dirichlet (0.);
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
+pf[right]     = dirichlet (0.);
 psi[right]    = neumann (0.);
 
 #else // NO_INFLOW
@@ -507,11 +514,13 @@ psi[right]    = neumann (0.);
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
+pf[right]     = dirichlet (0.);
 psi[right]    = dirichlet (0.);
 
 u.n[top]    = neumann (0.);
 u.t[top]    = neumann (0.);
 p[top]      = dirichlet (0.);
+pf[top]     = dirichlet (0.);
 psi[top]    = dirichlet (0.);
 
 #endif
@@ -835,6 +844,125 @@ double T_uniform_average (double x_interp, int n_samples = 1 << (maxlevel - 1),
   return numerator/denominator;
 }
 
+/**
+## Higher-order interpolation
+
+`interpolate_linear` is bilinear on a 2x2 stencil. The function below is
+biquadratic on the 3x3 stencil of the leaf that holds the sample: a Lagrange
+parabola through the centres of the cells at -1, 0 and +1 in each direction.
+It is exact for a quadratic field, where the bilinear form is exact only for a
+linear field.
+
+The parabola overshoots at a jump. `T` has a jump at the interface, and the
+H2O field is near 0 at the edge of the plume, so an overshoot can give a
+negative weight. The function therefore clips the result to the minimum and
+maximum of the 9 values of the stencil. Where the field is smooth, the clip
+does nothing.
+
+Caution: the function is for cell-centred fields only (`T`, `u.x`, `u.y`,
+species). It ignores `v.d`, so do not use it for a face field.
+
+Caution: the case is axisymmetric, so the function is 2D only. On the axis
+the row at `j = -1` holds the ghost values of the symmetry condition. */
+
+static double interpolate_biquadratic (Point point, scalar v,
+                                       double xp = 0., double yp = 0.)
+{
+  double xi = (xp - x)/Delta, eta = (yp - y)/Delta;
+  double wx[3] = {0.5*xi*(xi - 1.), 1. - sq(xi), 0.5*xi*(xi + 1.)};
+  double wy[3] = {0.5*eta*(eta - 1.), 1. - sq(eta), 0.5*eta*(eta + 1.)};
+
+  double val = 0., vmin = HUGE, vmax = -HUGE;
+  for (int ii = -1; ii <= 1; ii++)
+    for (int jj = -1; jj <= 1; jj++) {
+      double vij = v[ii,jj];
+      val += wx[ii + 1]*wy[jj + 1]*vij;
+      vmin = min (vmin, vij);
+      vmax = max (vmax, vij);
+    }
+
+  return clamp (val, vmin, vmax);
+}
+
+/**
+## The weighted average with the depth of the mesh
+
+This is `T_H2O_weigthed_average` with two changes. It interpolates with
+`interpolate_biquadratic`, and it records the level of the leaf at each
+sample. The weight and the path are the same, so the result compares directly
+with `TemperatureProfile.dat`.
+
+The line holds 2 samples per cell at `maxlevel`, so every leaf along the line
+gets at least one sample. `line_depth` summarises the levels:
+
+  lmin, lmax  the coarsest and the finest leaf on the line
+  lmean       the mean level over the samples
+  fmax        the fraction of the samples on a leaf at `maxlevel`
+  ycoarse     the smallest `y` where the leaf is coarser than `maxlevel`,
+              which is how far from the axis the finest mesh reaches.
+              It holds `length` when the whole line is at `maxlevel`.
+
+If `fmax` or `ycoarse` moves in time at a fixed point, the mesh adapts along
+that line, and the probe changes its resolution during the run.
+
+The function is collective. Call it on every rank. Each sample is on one rank
+only, and the reductions combine them. */
+
+typedef struct {
+  double lmin, lmax, lmean, fmax, ycoarse;
+} line_depth;
+
+double T_H2O_weighted_average_hq (double x_interp, line_depth * depth = NULL,
+                                  int n_samples = 1 << (maxlevel - 1),
+                                  const double length = L0/4.) {
+#ifdef MOLAR_DIFFUSION
+  scalar YH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+#else
+  scalar YH2O = YGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+#endif
+
+  double numerator = 0., denominator = 0.;
+  double lmin = HUGE, lmax = -HUGE, lsum = 0., nsamp = 0., nfine = 0.;
+  double ycoarse = length;
+
+  coord pos, box[2] = {{x_interp, 0.}, {x_interp, length}}, nn = {1, n_samples};
+  foreach_region (pos, box, nn,
+                  reduction(+:numerator) reduction(+:denominator)
+                  reduction(min:lmin) reduction(max:lmax)
+                  reduction(+:lsum) reduction(+:nsamp) reduction(+:nfine)
+                  reduction(min:ycoarse)) {
+    double lev = point.level;
+    lmin = min (lmin, lev);
+    lmax = max (lmax, lev);
+    lsum  += lev;
+    nsamp += 1.;
+    if (point.level >= maxlevel)
+      nfine += 1.;
+    else
+      ycoarse = min (ycoarse, pos.y);
+
+    double yH2O_local = interpolate_biquadratic (point, YH2O, pos.x, pos.y);
+    double T_local    = interpolate_biquadratic (point, T, pos.x, pos.y);
+    if (T_local > 0. && T_local < nodata) {
+      numerator   += yH2O_local;
+      denominator += yH2O_local/T_local;
+    }
+  }
+
+  if (depth) {
+    depth->lmin    = nsamp > 0. ? lmin : -1.;
+    depth->lmax    = nsamp > 0. ? lmax : -1.;
+    depth->lmean   = nsamp > 0. ? lsum/nsamp : -1.;
+    depth->fmax    = nsamp > 0. ? nfine/nsamp : 0.;
+    depth->ycoarse = ycoarse;
+  }
+
+  if (denominator <= 0) // avoid division by 0
+    return TG0;
+
+  return numerator/denominator;
+}
+
 event output (t += 0.01) {
 
   char name[80];
@@ -924,6 +1052,157 @@ event temperature_profile (t += 0.01) {
     fprintf (fpT, "%g %g %g %g %g %g\n",
              t, Tavg[0], Tavg[1], Tavg[2], Tavg[3], Tavg[4]);
     fflush (fpT);
+  }
+}
+
+/**
+## The high-order profile and the depth of the mesh
+
+The same five lines as `TemperatureProfile.dat`, with
+`T_H2O_weighted_average_hq`. Each line gives 6 columns: the temperature, then
+`lmin`, `lmax`, `lmean`, `fmax` and `ycoarse`. The file is separate, so the
+readers of `TemperatureProfile.dat` keep working.
+
+Compare column `T` of a line here with the same line in
+`TemperatureProfile.dat`. A large difference says that the interpolation
+error is not small against the oscillation. */
+
+event temperature_profile_hq (t += 0.01) {
+
+  double sample_points[5] = {H0/2 + 2e-3, H0/2 + 4e-3, H0/2 + 8e-3,
+                             H0/2 + 11e-3, H0/2 + 15e-3};
+  const char * names[5] = {"2mm", "4mm", "8mm", "11mm", "15mm"};
+  double Tavg[5];
+  line_depth dep[5];
+
+  for (int ii = 0; ii < 5; ii++)
+    Tavg[ii] = T_H2O_weighted_average_hq (sample_points[ii], &dep[ii]);
+
+  if (pid() == 0) {
+    static FILE * fpH = NULL;
+    if (!fpH) {
+      fpH = fopen ("TemperatureProfileHQ.dat", restarted ? "a" : "w");
+      if (fpH == NULL) {
+        fprintf (stderr, "Error opening TemperatureProfileHQ.dat\n");
+        exit (1);
+      }
+      if (!restarted) {
+        fprintf (fpH, "#t(1)");
+        for (int ii = 0; ii < 5; ii++) {
+          int c = 2 + 6*ii;
+          fprintf (fpH, " T%s(%d) lmin%s(%d) lmax%s(%d) lmean%s(%d)"
+                        " fmax%s(%d) ycoarse%s(%d)",
+                   names[ii], c, names[ii], c + 1, names[ii], c + 2,
+                   names[ii], c + 3, names[ii], c + 4, names[ii], c + 5);
+        }
+        fprintf (fpH, "\n");
+      }
+    }
+    fprintf (fpH, "%g", t);
+    for (int ii = 0; ii < 5; ii++)
+      fprintf (fpH, " %g %g %g %g %g %g", Tavg[ii], dep[ii].lmin, dep[ii].lmax,
+               dep[ii].lmean, dep[ii].fmax, dep[ii].ycoarse);
+    fprintf (fpH, "\n");
+    fflush (fpH);
+  }
+}
+
+/**
+## Point probes around the particle
+
+Each probe gives the local `u.x`, `u.y`, `T`, H2O and the level of the leaf
+that holds the point. The values come from `interpolate_biquadratic`. The
+level is the local depth of the mesh, so a jump in a probe signal at a change
+of level is a grid event, not a physics event.
+
+The H2O column follows the weight of `T_H2O_weigthed_average`: the mole
+fraction with `MOLAR_DIFFUSION`, the mass fraction without it. The header
+says which one the build writes.
+
+The points are in the frame of `angular_profile`: the flow comes from the
+left, `theta = 0` is the downstream pole on `+x`, and `r` is from the centre
+of the particle. `R = D0/2 = 4 mm`.
+
+| k | position | x [mm] | y [mm] |
+|---|---|---|---|
+| 0 | upstream stagnation, R + 1 mm | -5 | 0 |
+| 1 | upstream, R + 3 mm | -7 | 0 |
+| 2 | 135 deg, R + 1 mm | -3.54 | 3.54 |
+| 3 | equator, R + 1 mm | 0 | 5 |
+| 4 | equator, R + 3 mm | 0 | 7 |
+| 5 | 45 deg, R + 1 mm | 3.54 | 3.54 |
+| 6 | downstream, R + 1 mm | 5 | 0 |
+| 7 | downstream, R + 4 mm | 8 | 0 |
+| 8 | wake, R + 8 mm | 12 | 0 |
+
+Caution: with `NO_INFLOW` the domain starts at `x = 0`. Points 0, 1 and 2
+are then outside the domain, and their columns hold `nodata` and level -1.
+
+The file is in long form: one line for each probe at each output. Select a
+probe with its column 2. */
+
+#define NPROBE 9
+
+event probe_points (t += 0.01) {
+
+  const double R = 0.5*D0;
+  const double c45 = cos (pi/4.);
+  coord probes[NPROBE] = {
+    {-(R + 1e-3), 0.},
+    {-(R + 3e-3), 0.},
+    {-(R + 1e-3)*c45, (R + 1e-3)*c45},
+    {0., R + 1e-3},
+    {0., R + 3e-3},
+    {(R + 1e-3)*c45, (R + 1e-3)*c45},
+    {R + 1e-3, 0.},
+    {R + 4e-3, 0.},
+    {R + 8e-3, 0.}
+  };
+
+#ifdef MOLAR_DIFFUSION
+  scalar YH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+#else
+  scalar YH2O = YGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
+#endif
+
+  double ux[NPROBE], uy[NPROBE], Tp[NPROBE], yw[NPROBE], lev[NPROBE];
+
+  for (int k = 0; k < NPROBE; k++) {
+    double xp = probes[k].x, yp = probes[k].y;
+    double vx = nodata, vy = nodata, vT = nodata, vw = nodata, vl = -1.;
+    foreach_point (xp, yp, 0., reduction(min:vx) reduction(min:vy)
+                   reduction(min:vT) reduction(min:vw) reduction(max:vl)) {
+      vx = interpolate_biquadratic (point, u.x, xp, yp);
+      vy = interpolate_biquadratic (point, u.y, xp, yp);
+      vT = interpolate_biquadratic (point, T, xp, yp);
+      vw = interpolate_biquadratic (point, YH2O, xp, yp);
+      vl = point.level;
+    }
+    ux[k] = vx; uy[k] = vy; Tp[k] = vT; yw[k] = vw; lev[k] = vl;
+  }
+
+  if (pid() == 0) {
+    static FILE * fpp = NULL;
+    if (!fpp) {
+      fpp = fopen ("probes.dat", restarted ? "a" : "w");
+      if (fpp == NULL) {
+        fprintf (stderr, "Error opening probes.dat\n");
+        exit (1);
+      }
+      if (!restarted)
+        fprintf (fpp, "#t(1) k(2) x(3) y(4) ux(5) uy(6) T(7) %s(8) level(9)\n",
+#ifdef MOLAR_DIFFUSION
+                 "xH2O"
+#else
+                 "yH2O"
+#endif
+                 );
+    }
+    for (int k = 0; k < NPROBE; k++)
+      fprintf (fpp, "%g %d %g %g %g %g %g %g %g\n",
+               t, k, probes[k].x, probes[k].y,
+               ux[k], uy[k], Tp[k], yw[k], lev[k]);
+    fflush (fpp);
   }
 }
 

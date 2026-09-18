@@ -115,6 +115,108 @@ The test is `#if`, so `-DTS_PORE_ADVECTION=0` means off. */
 # define TS_PORE_ADVECTION 1
 #endif
 
+/**
+## The gas side does not move with the solid velocity
+
+`TG` and `YGList_G` are tracers of `f`. The `vof` event of `shrinking.h` sets
+`uf = ubf`, and `vof.h` then moves every tracer of `f` with `ubf`. `ubf` is
+not zero in the gas, because the solver solves `psi` over the full domain.
+The `tracer_diffusion` event then moves the gas side again with `ufsave`.
+
+`ufsave` is the total volume flux `(1 - eps) ubf + eps v_g`. The projection
+source does not contain `prod` or `zeta`. So `ufsave` already carries the
+gas that fills the volume that the shrinkage frees. In the gas, the second
+transport with `ubf` counts that flow two times.
+
+The two events below take `TG` and `YGList_G` out of `f.tracers` for the
+sweep of `vof.h`, and put them back after it. The gas side of a cut cell then
+keeps its intrinsic value while `f` changes. The steps are:
+
+1. Before the sweep, divide by `1 - f` with the old `f`. In a pure solid
+   cell, the gas side has no value, so copy the solid side (`TS`,
+   `YGList_S`). This is the same value that the extrapolation in
+   `tracer_diffusion` gives. If the interface uncovers the cell, the gas side
+   starts from the pore gas and not from 0 K.
+2. After the sweep, multiply by `1 - f` with the new `f`. Clip `f` with the
+   same rule as `tracer_diffusion`, so that its division gives back the
+   intrinsic value.
+
+`TS`, `YGList_S`, `YSList` and `porosity` stay in the list. The matrix
+carries the pore gas, and the solid side of a cut cell must follow the
+interface.
+
+`shrinking.h` defines the switch `GAS_UBF_ADVECTION`:
+
+  0  The two events below. This is the default.
+  1  The previous code, bit for bit.
+  2  The mask of `shrinking.h`: `ubf` is 0 on the faces between two pure
+     gas cells. The gas side of a cut cell still moves with `ubf`.
+
+Caution: in a cut cell, the `ubf` transport of the gas side is not a double
+count. It fills the gas volume that the interface frees with upwind gas. The
+advection with `ufsave` moves the intrinsic value and does not see the change
+of `1 - f`. With 0, the freed volume takes the value of the cell itself. In a
+sliver cell (`1 - f` near 2e-4) that value is cold, and a hot start
+(`TS0 = 700`, level 8, `ZETA_SHRINK`) gave a minimum `TG` 40 to 70 K lower than
+with 1. Option 2 keeps the fill in the cut cells and removes only the double
+count in the pure gas. */
+
+#if GAS_UBF_ADVECTION == 0
+scalar * gas_ubf_saved = NULL;
+
+event vof (i++) {
+  foreach() {
+    double fG = 1. - f[];
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YG_S = YGList_S[jj];
+      scalar YG_G = YGList_G[jj];
+      YG_G[] = (fG > F_ERR) ? YG_G[]/fG :
+               (f[] > F_ERR) ? YG_S[]/f[] : 0.;
+    }
+#ifdef SOLVE_TEMPERATURE
+    TG[] = (fG > F_ERR) ? TG[]/fG :
+           (f[] > F_ERR) ? TS[]/f[] : 0.;
+#endif
+  }
+
+  scalar * gasl = list_copy (YGList_G);
+#ifdef SOLVE_TEMPERATURE
+  gasl = list_append (gasl, TG);
+#endif
+  scalar * kept = NULL;
+  for (scalar s in f.tracers)
+    if (!list_lookup (gasl, s))
+      kept = list_append (kept, s);
+  free (gasl);
+
+  gas_ubf_saved = f.tracers;
+  f.tracers = kept;
+}
+
+/**
+`vof.h` has moved `f` and the other tracers here. The event of
+`two-phase-generic.h` with the same name runs after this one and reads only
+`f`. */
+
+event tracer_advection (i++) {
+  free (f.tracers);
+  f.tracers = gas_ubf_saved;
+  gas_ubf_saved = NULL;
+
+  foreach() {
+    double fc = clamp (f[], 0., 1.);
+    fc = (fc > F_ERR) ? fc : 0.;
+    fc = (fc < 1. - F_ERR) ? fc : 1.;
+    double fG = 1. - fc;
+    for (scalar YG_G in YGList_G)
+      YG_G[] = (fG > F_ERR) ? YG_G[]*fG : 0.;
+#ifdef SOLVE_TEMPERATURE
+    TG[] = (fG > F_ERR) ? TG[]*fG : 0.;
+#endif
+  }
+}
+#endif // GAS_UBF_ADVECTION == 0
+
 #if INT_TEMP_TOL
 # include "int-temperature-tol.h"
 #endif

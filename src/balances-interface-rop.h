@@ -52,7 +52,7 @@ scalar rhot[];
 static void interface_fluxes (Point point) {
 
   // Calculate interfacial area and normal vector
-  coord n = facet_normal (point, fS, fsS), p;
+  coord n = interface_source_normal (point, fS, fsS), p;
   double alpha = plane_alpha (fS[], n);
   double area = plane_area_center (n, alpha, &p);
   normalize (&n);

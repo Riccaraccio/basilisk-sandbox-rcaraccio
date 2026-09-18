@@ -223,6 +223,61 @@ static inline double interface_phase_distance (Point point, scalar fL,
 }
 
 /**
+## The plane of a cut cell
+
+`ebmgrad` takes the gradient along `interface_normal (point, fL)`. That is
+the `mycs` plane, and the VOF advection moves the same plane. The interface
+sources must take the area, the centroid and the weights of the anisotropic
+conductivity from this plane too. If they do not, one cut cell uses two
+planes: the flux comes from one plane and the area from the other.
+
+`interface_source_normal()` gives the normal that the sources use. Call it
+at every site that multiplies an `ebmgrad` gradient by an area.
+`INTERFACE_NORMAL_MYCS` selects the normal:
+
+- 1, the default: `interface_normal (point, c)`, the plane of `ebmgrad`.
+- 0: `facet_normal (point, c, s)`, the old code, bit for bit. This normal
+  comes from the face fractions `s`. `face_fraction()` sets each face
+  fraction from the geometric mean of the planes of the two cells of the
+  face, and it sets 0 on a face next to an empty cell. So this normal is not
+  the plane of the cell.
+
+Do not expect a more accurate flux from the default. On a smooth sphere the
+two normals differ by 0.1 to 0.3 degrees on average, and the old normal
+gives an area that is 3 per cent more accurate. The error of `ebmgrad` sets
+the error of the flux (`test/interface-normal-flux.c`). The default gives
+three other things:
+
+1. One plane per cell. `ebmgrad` takes its start point and its direction
+   from the same plane as the area.
+2. Under `INT_TEMP_VOFBC`, `plic_flux()` in `plicbc.h` already uses the
+   `mycs` plane. The sources `sST` and `sGT`, which the divergence reads,
+   now use the same area as the solve.
+3. A normal in every cut cell. When `F_ERR < f < 1e-6`, `face_fraction()`
+   sets all four face fractions of the cell to 0. `facet_normal()` then
+   returns the diagonal `(1/2, 1/2)`, whatever the geometry is, and the
+   sign of `n.x` can be wrong. `balances-interface.h` multiplies by that
+   sign.
+
+Both normals are box-normalised (`|n.x| + |n.y| = 1`), so `plane_alpha()`
+accepts either one. Call `normalize()` only after `plane_alpha()` and
+`plane_area_center()`. */
+
+#ifndef INTERFACE_NORMAL_MYCS
+# define INTERFACE_NORMAL_MYCS 1
+#endif
+
+coord interface_source_normal (Point point, scalar c, face vector s)
+{
+#if INTERFACE_NORMAL_MYCS
+  NOT_UNUSED (s);
+  return interface_normal (point, c);
+#else
+  return facet_normal (point, c, s);
+#endif
+}
+
+/**
 ## *ebmgrad()*: high-level interface for the calculation of the interface gradients:
 * *tr*: scalar fields whose gradients must be computed
 * *fL*: liquid phase volume fraction (*f*)

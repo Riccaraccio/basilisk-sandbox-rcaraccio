@@ -761,6 +761,15 @@ finite-difference it. */
 
 #endif
 
+/**
+`DRHODT_BUDGET` measures the time level of the transport part of `drhodt`:
+the explicit fluxes of `update_divergence()` against the implicit solves of
+the event below. It does not change the run. See `drhodt-budget.h`. */
+
+#if DRHODT_BUDGET
+# include "drhodt-budget.h"
+#endif
+
 event tracer_diffusion (i++) {
 
 #ifdef TG_PROBE
@@ -1648,6 +1657,10 @@ matches the fields that built the source. */
 #endif
   }
 
+#if DRHODT_BUDGET
+  drhodt_budget_presolve (theta1, theta2);
+#endif
+
 
 /**
 ## The tolerance of the two temperature solves
@@ -1777,6 +1790,10 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     ITT_iS = mgS.i; ITT_nrelaxS = mgS.nrelax; ITT_resaS = mgS.resa;
     ITT_iG = mgG.i; ITT_nrelaxG = mgG.nrelax; ITT_resaG = mgG.resa;
 #  endif
+
+#if DRHODT_BUDGET
+  drhodt_budget_postsolve();
+#endif
 
   /**
   Give the solid temperature to every cell that the gas energy equation does

@@ -540,6 +540,63 @@ at about 1100 K. Each one takes a `-D` of its own. */
 # define CPS_CONST 1500.     // [J/kg/K]
 #endif
 
+/**
+## The three probes of the time level
+
+Each probe answers one question of
+`~/discretization-report/time-level-review.md` and of
+`~/discretization-report/formulation-coherence.md`. Each one is diagnostic
+only: with its flag at 0 the run is the same, bit for bit, as the run of the
+code without it. No probe writes a field, a boundary condition or `dt`, and
+no probe changes the order of an event that writes a field.
+
+| flag | header | file | question |
+|---|---|---|---|
+| `CHEM_SPLIT_PROBE` | `chem-split-probe.h` | `chemsplit.dat` | TL-1, the split of the gas chemistry from the transport |
+| `DRHODT_BUDGET` | `drhodt-budget.h` | `drhodtbudget.dat` | TL-2, the explicit fluxes of `drhodt` |
+| `SHRINK_BUDGET` | `shrink-budget.h` | `shrinkbudget.dat` | NEW-1, NEW-4 and 9d, the shrinkage that the VOF sweep removes |
+
+The three flags are ON in this case, because the next base run must carry
+them. Build with `-DCHEM_SPLIT_PROBE=0`, `-DDRHODT_BUDGET=0` or
+`-DSHRINK_BUDGET=0` to turn one off. Each header holds the column layout and
+the way to read it.
+
+Cost, measured at level 8 over 0.5 s (1012 steps): the three probes use
+0.14 s of CPU together, 0.2 per cent of the run. `CHEM_SPLIT_PROBE` and
+`DRHODT_BUDGET` work only on the step that starts at an output time
+(`t += 0.01`). `SHRINK_BUDGET` works at every step, because its running
+integrals need every step, and writes at the output times. Each probe
+prints its own CPU time at the end of the log.
+
+Caution: `DRHODT_BUDGET` must be set before `multicomponent-varprop.h`, which
+includes its header and calls its two functions. So the flag stays in this
+block, above the includes. */
+
+#ifndef CHEM_SPLIT_PROBE
+# define CHEM_SPLIT_PROBE 1
+#endif
+
+#ifndef DRHODT_BUDGET
+# define DRHODT_BUDGET 1
+#endif
+
+#ifndef SHRINK_BUDGET
+# define SHRINK_BUDGET 1
+#endif
+
+/**
+## The end of the run
+
+`TEND_VALUE` sets the end time. The ladder uses the default. A smoke test
+uses a small value, for example `-DTEND_VALUE=0.5`.
+
+Caution: keep the end time above the last time of every other event that
+carries an upper limit, or read the note of `event stop` below. */
+
+#ifndef TEND_VALUE
+# define TEND_VALUE 40.
+#endif
+
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 
@@ -579,6 +636,9 @@ order of the full case. */
 #include "multicomponent-varprop.h"
 #include "darcy.h"
 #include "divergence-budget.h"
+#include "probe-cache.h"
+#include "chem-split-probe.h"
+#include "shrink-budget.h"
 
 #include "view.h"
 
@@ -620,7 +680,7 @@ psi[top]    = dirichlet (0.);
 
 #endif
 
-double tend = 40;
+double tend = TEND_VALUE;
 int maxlevel = MAXLEVEL_VALUE, minlevel = 2;
 double solid_mass0 = 0.;
 double D0 = 8e-3, H0 = 8e-3;
@@ -1146,24 +1206,51 @@ event output (t += 0.01) {
   that case named them 1, 2 and 4 mm, but it sampled 2, 6 and 11 mm from the
   surface. The names below are the distances the case actually samples.
 
-  The five points of the full case go to `TemperatureProfile.dat` instead.
-  Do not add them here: `slow_flicker.py` reads the first six columns of
-  this file by position.
+  The five points of the full case go to `TemperatureProfile.dat`, which the
+  same event writes below. Do not add them to `OutputData`:
+  `slow_flicker.py` reads the first six columns of this file by position.
 
   Columns 10 to 12 hold the same three points with a uniform H2O
   concentration, which is the analogue of the weighted average for a medium
   which carries the same absorber everywhere. They go on the end for the same
   reason: a reader which stops at column 9 keeps working. Each column pairs
   with the weighted column of the same point, 10 with 4, 11 with 5, 12 with
-  6. */
+  6.
 
-  double Tavg[3], Tuni[3];
-  double sample_points[3] = {H0/2 + 2e-3, H0/2 + 6e-3, H0/2 + 11e-3};
+  Caution: columns 8 and 9, `mgp_i` and `mgp_resa`, hold the same two globals
+  as columns 11 and 12 of `expansion.dat`, at the same instant. They are a
+  duplicate. They stay because they cost nothing and because a removal would
+  move columns 10 to 12, which `explore.py` reads by position when a file
+  carries no header line. */
 
-  for (int ii = 0; ii < 3; ii++) {
-      Tavg[ii] = T_H2O_weigthed_average (sample_points[ii]);
-      Tuni[ii] = T_uniform_average (sample_points[ii]);
-  }
+  /**
+  The six points below are the union of the three points of this file and the
+  five points of `TemperatureProfile.dat`. The two files share the point at
+  2 mm and the point at 11 mm. An earlier version of the case had one event
+  for each file, so it computed those two path averages two times. This event
+  writes both files and computes each path average one time. One path average
+  costs `2^(maxlevel-1)` interpolations, so the merge saves 2 times 512
+  interpolations at each output at level 10.
+
+  Do not change the order of the columns of either file.
+  `slow_flicker.py` reads the first six columns of `OutputData` and the first
+  six columns of `TemperatureProfile.dat` by position. */
+
+  double Tw[6], Tuni[3];
+  double sample_points[6] = {H0/2 + 2e-3, H0/2 + 4e-3, H0/2 + 6e-3,
+                             H0/2 + 8e-3, H0/2 + 11e-3, H0/2 + 15e-3};
+  double uni_points[3] = {H0/2 + 2e-3, H0/2 + 6e-3, H0/2 + 11e-3};
+
+  for (int ii = 0; ii < 6; ii++)
+    Tw[ii] = T_H2O_weigthed_average (sample_points[ii]);
+
+  for (int ii = 0; ii < 3; ii++)
+    Tuni[ii] = T_uniform_average (uni_points[ii]);
+
+  /**
+  `Tavg` holds the three points of `OutputData`: 2, 6 and 11 mm. */
+
+  double Tavg[3] = {Tw[0], Tw[2], Tw[4]};
 
   if (i == 0)
     fprintf (fp, "#t(1) Ms/Ms0(2) Tmax(3) Tavg_2mm(4) Tavg_6mm(5) Tavg_11mm(6)"
@@ -1176,35 +1263,26 @@ event output (t += 0.01) {
     solid_mass += (f[] - porosity[])*rhoS*dv();
 
   fprintf (fp, "%g %g %g %g %g %g %g %d %g %g %g %g\n",
-           t, solid_mass/solid_mass0, statsf(T).max,
+           t, solid_mass/solid_mass0, probe_stats_T().max,
            Tavg[0], Tavg[1], Tavg[2], dt, mgp.i, mgp.resa,
            Tuni[0], Tuni[1], Tuni[2]);
 
   fflush(fp);
-}
 
-/**
-## The probes of the full case
+  /**
+  ## The probes of the full case
 
-`run/fatehi-combustion.c` writes `TemperatureProfile.dat` with five
-H2O-weighted path averages at 2, 4, 8, 11 and 15 mm from the surface. This
-event writes the same five points in the same order, so that the amplitudes
-compare directly with the runs under `~/temp/fatehi` and `slow_flicker.py`
-reads them
-with the branch it already has. The temperature gap between the two cases
-is a factor 5, which is larger than the gap of the release rate, so this
-file carries the quantity that this campaign must reduce.
+  `run/fatehi-combustion.c` writes `TemperatureProfile.dat` with five
+  H2O-weighted path averages at 2, 4, 8, 11 and 15 mm from the surface. This
+  block writes the same five points in the same order, so that the amplitudes
+  compare directly with the runs under `~/temp/fatehi` and `slow_flicker.py`
+  reads them with the branch it already has. The temperature gap between the
+  two cases is a factor 5, which is larger than the gap of the release rate,
+  so this file carries the quantity that this campaign must reduce.
 
-`T_H2O_weigthed_average` is collective: it reduces over `foreach_region`.
-Call it on every rank, and write on rank 0 only. */
-
-event temperature_profile (t += 0.01) {
-
-  double Tavg[5], sample_points[5] = {H0/2 + 2e-3, H0/2 + 4e-3, H0/2 + 8e-3,
-                                      H0/2 + 11e-3, H0/2 + 15e-3};
-
-  for (int ii = 0; ii < 5; ii++)
-    Tavg[ii] = T_H2O_weigthed_average (sample_points[ii]);
+  `T_H2O_weigthed_average` is collective: it reduces over `foreach_region`.
+  The loop above calls it on every rank, and this block writes on rank 0
+  only. */
 
   if (pid() == 0) {
     static FILE * fpT = NULL;
@@ -1217,7 +1295,7 @@ event temperature_profile (t += 0.01) {
       fprintf (fpT, "#t(1) T2mm(2) T4mm(3) T8mm(4) T11mm(5) T15mm(6)\n");
     }
     fprintf (fpT, "%g %g %g %g %g %g\n",
-             t, Tavg[0], Tavg[1], Tavg[2], Tavg[3], Tavg[4]);
+             t, Tw[0], Tw[1], Tw[3], Tw[4], Tw[5]);
     fflush (fpT);
   }
 }
@@ -1429,6 +1507,15 @@ event probe_expansion (t += 0.01) {
     resmax = max (resmax, fabs (d + gas_source[]));
   }
 
+  /**
+  `angular_profile` needs the same integral for its column `un_pred`. Give it
+  to the cache of `probe-cache.h`, so that the grid is swept one time only.
+  This event runs before `angular_profile`, because the case declares it
+  first. The cache holds the step index, so the order is not a condition:
+  a reader of a later step computes the value again. */
+
+  probe_div_uf_set (Qdiv);
+
   stats so = statsf (omega);
 
   double ur[3];
@@ -1452,7 +1539,7 @@ event probe_expansion (t += 0.01) {
     Tsurf  mean over interface cells: where the Arrhenius feedback bites first
   */
 
-  double Tcore = statsf(T).min;
+  double Tcore = probe_stats_T().min;
   double Tbulk = 0., fvol = 0., Tsurf = 0., nsurf = 0.;
   double mdot = 0., nsolid = 0.;
 
@@ -1612,16 +1699,10 @@ event angular_profile (t += 0.01) {
   /**
   Total production, for the uniform-blowing reference. Same weighting as in
   probe_expansion: the discrete divergence carries cm[], so it integrates
-  with sq(Delta).
-  */
+  with sq(Delta). `probe_expansion` has already computed this integral in
+  this step, so `probe_div_uf()` returns its value and sweeps no grid. */
 
-  double Qdiv = 0.;
-  foreach (reduction(+:Qdiv)) {
-    double d = 0.;
-    foreach_dimension()
-      d += uf.x[1] - uf.x[];
-    Qdiv += d*Delta;
-  }
+  double Qdiv = probe_div_uf();
   double un_pred = Qdiv/(2.*sq(R));
 
   if (pid() == 0) {
@@ -1698,7 +1779,18 @@ event dump (t = 1; t += 1) {
   dump("last-snapshot");
 }
 
-event stop (t = tend);
+/**
+## The end of the run
+
+The event returns 1, so `events()` stops the loop at once. A bare
+`event stop (t = tend)` also ends this case, because no other event carries
+an upper limit on `t`; but it first runs one more full step, whose result no
+file holds. The `return` also protects the case against a new event with a
+condition such as `t <= X`, which would hold the loop open past `tend`. */
+
+event stop (t = tend) {
+  return 1;
+}
 
 /**
 ~~~gnuplot

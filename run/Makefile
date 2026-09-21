@@ -134,7 +134,8 @@ TLAD_CASES = base da moist grav transport emis shape full l11 l11noshrink\
              frozen frozenloose frozenfull \
              pyronouinnoshrink pyronouinnoshrinkl9 ytol \
              l12 l11full l12full \
-             dt2 dt4 ttol10 ttol2p5 ttol1p25 otol5e3
+             dt2 dt4 ttol10 ttol2p5 ttol1p25 otol5e3 \
+             omegac omegau
 
 TLAD_LINKS = $(TLAD_CASES:%=test-%.c)
 
@@ -694,6 +695,44 @@ test-ttol1p25.tst:  CFLAGS += -DADAPT_T_TOL=1.25
 test-otol5e3.s:     CFLAGS += -DADAPT_O_TOL=5.e-3
 test-otol5e3.tst:   CFLAGS += -DADAPT_O_TOL=5.e-3
 
+# The steady-release pair. Both rungs overwrite `omega` after the chemistry
+# event, so the particle blows at a rate which does not oscillate. Read them
+# against test-base over 12 to 30 s. If the slow band of the probe
+# temperature survives, the loop does not close through the release rate.
+#
+# test-omegac rescales the field to a fixed mdot. It keeps the shape of the
+# front and it leaves `zeta` unchanged, so it is the clean rung. Prefer it.
+#
+# test-omegau makes `omega` uniform. Under ZETA_REACTION that also sets
+# `zeta` to 1 over the whole particle, so it changes the shrinkage as well.
+# It is the control of the shape, not of the amplitude.
+#
+# Caution: neither rung conserves the mass of the solid. The ODE has already
+# run when the override fires. Do not read column 2 of OutputData.
+#
+# The values are the mean of ~/test/new/test-base over 10 to 30 s. Override
+# them on the command line:  make test-omegac.tst TLAD_OMEGA_MDOT=1.59e-6
+#
+# Caution: mdot holds still on the plateau, the rate per unit mass does not.
+# Over 12 to 28 s the trend of mdot is -4.9 per cent and the trend of the
+# mass-weighted omega is +76.5 per cent. So read test-omegac over 12 to 28 s,
+# and read test-omegau over 18 to 22 s only. The table is in test.c.
+
+TLAD_OMEGA_MDOT = 1.53e-6
+TLAD_OMEGA_VAL  = 83.
+TLAD_OMEGA_T0   = 10.
+
+TLAD_OMEGAC = -DOMEGA_CONST=2 -DOMEGA_CONST_MDOT=$(TLAD_OMEGA_MDOT) \
+              -DOMEGA_CONST_T0=$(TLAD_OMEGA_T0)
+TLAD_OMEGAU = -DOMEGA_CONST=1 -DOMEGA_CONST_VALUE=$(TLAD_OMEGA_VAL) \
+              -DOMEGA_CONST_T0=$(TLAD_OMEGA_T0)
+
+test-omegac.s:      CFLAGS += $(TLAD_OMEGAC)
+test-omegac.tst:    CFLAGS += $(TLAD_OMEGAC)
+
+test-omegau.s:      CFLAGS += $(TLAD_OMEGAU)
+test-omegau.tst:    CFLAGS += $(TLAD_OMEGAU)
+
 TLAD_ATOL = $(TLAD_FULL) $(TLAD_PROBE)
 
 test-atol2.s:    CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_ATOL)
@@ -1107,3 +1146,59 @@ test-l12full.tst: CFLAGS += $(TLAD_FULL) $(TLAD_ROBIN) -DMAXLEVEL_VALUE=12
 TLAD_TGDBG = -DTG_PROBE -DTG_PROBE_TMIN=250. -DTG_PROBE_MAX=2000 \
              -DPROPERTIES_TRAP=0 -DPHASE_AWARE_PROPERTIES=1 \
              -DGAS_STATE_FALLBACK_DEBUG
+
+
+# ---------------------------------------------------------------------------
+# Smear of the pellet corner under shrinkage (see shrink-corner.c).
+#
+# Level 11 of fatehi-combustion.c puts solid in gas cells at the corner by
+# t = 4 s. Only the VOF advection with ubf and the adaptation change f, so
+# each case below switches ONE of the suspects of that defect. Run them serial:
+# the diagnostics are not written for MPI.
+#
+#   make shrink-corner-l11.tst shrink-corner-l10.tst ...
+#   make shrink-corner-all
+#
+# Compare column 13 (err, the L1 distance to the exact shape) of debris.dat and
+# the maps corner-<t>.txt. static is the control: no shrinkage, so any defect in
+# that case comes from the adaptation alone.
+#
+# INIT_FIX: fatehi-combustion.c calls refine() in main(), but run() calls
+# init_grid (N) again and frees that grid, so production starts at level 8.
+# Every case keeps that start (INIT_FIX=0) except init, initstatic and
+# noadapt, which refine before fraction(). Without adaptation a level 8 start
+# never refines, so noadapt needs INIT_FIX=1.
+
+SHCO_CASES = l11 l10 noshift const uniform noadapt static init initstatic
+SHCO_LINKS = $(SHCO_CASES:%=shrink-corner-%.c)
+
+shrink-corner-%.c: shrink-corner.c
+	ln -sf $< $@
+
+.PHONY: shrink-corner-links shrink-corner-all
+shrink-corner-links: $(SHCO_LINKS)
+shrink-corner-all: $(SHCO_CASES:%=shrink-corner-%.tst)
+
+shrink-corner-l10.s:       CFLAGS += -DMAXLEVEL=10
+shrink-corner-l10.tst:     CFLAGS += -DMAXLEVEL=10
+
+shrink-corner-noshift.s:   CFLAGS += -DSHIFT_PROD=0
+shrink-corner-noshift.tst: CFLAGS += -DSHIFT_PROD=0
+
+shrink-corner-const.s:     CFLAGS += -DZETA_POLICY=ZETA_CONST
+shrink-corner-const.tst:   CFLAGS += -DZETA_POLICY=ZETA_CONST
+
+shrink-corner-uniform.s:   CFLAGS += -DOMEGA_SHAPE=0
+shrink-corner-uniform.tst: CFLAGS += -DOMEGA_SHAPE=0
+
+shrink-corner-noadapt.s:   CFLAGS += -DADAPT=0 -DINIT_FIX=1
+shrink-corner-noadapt.tst: CFLAGS += -DADAPT=0 -DINIT_FIX=1
+
+shrink-corner-static.s:    CFLAGS += -DMDOT=0
+shrink-corner-static.tst:  CFLAGS += -DMDOT=0
+
+shrink-corner-init.s:      CFLAGS += -DINIT_FIX=1
+shrink-corner-init.tst:    CFLAGS += -DINIT_FIX=1
+
+shrink-corner-initstatic.s:   CFLAGS += -DINIT_FIX=1 -DMDOT=0
+shrink-corner-initstatic.tst: CFLAGS += -DINIT_FIX=1 -DMDOT=0

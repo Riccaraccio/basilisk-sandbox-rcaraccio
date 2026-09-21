@@ -386,6 +386,101 @@ after the includes. */
 #define ZETA_STR(x) ZETA_STR_(x)
 
 /**
+## A steady reaction rate
+
+`OMEGA_CONST` overwrites the field `omega` after the `chemistry` event and
+before `shrinking.h` reads it. The release of the particle then has no
+oscillation, and the run answers one question: does the temperature still
+oscillate when the release does not?
+
+Read `src/CLAUDE.md` first. `omega` is the rate per cubic metre of solid
+material, and it is the ONLY path by which the decomposition of the solid
+reaches the divergence of the velocity. Three consumers read it, all of them
+in the `phasechange` event of `shrinking.h`:
+
+  `gas_source = -omega*(f - porosity)*(1/rhoG - 1/rhoS)`   the blowing
+  `prod = omega*f*zeta*cm/rhoS`   the source of `psi`, hence `ubf`
+  `set_zeta()`   under `ZETA_REACTION`, `zeta = omega/max(omega*f)`
+
+The flag takes two modes.
+
+`OMEGA_CONST 1` gives every cell of the solid the same value,
+`OMEGA_CONST_VALUE`. The release is then uniform over the particle.
+
+`OMEGA_CONST 2` multiplies the whole field by one number, so that the
+integral `mdot` takes the value `OMEGA_CONST_MDOT` at every step. Prefer
+this mode. It keeps the shape of the reaction front, and `zeta` does not
+change at all, because the factor cancels in the ratio `omega/max(omega*f)`.
+Mode 1 makes `omega` uniform, so `ZETA_REACTION` returns 1 over the whole
+particle, and the solid shrinks as fast as it can. That is a second change
+of the model, and it confuses the answer.
+
+Caution: this build does not conserve mass, and it is a diagnostic build
+only. The ODE of the chemistry has already run when this event fires, so the
+solid loses its mass at the true rate while the gas receives the overwritten
+rate. Mode 2 breaks the balance by the few per cent of the oscillation.
+Mode 1 breaks it by much more. Never quote column 2 of `OutputData` from
+this build.
+
+Caution: the flag does not stop the release of the species. The pore gas
+takes its products from `dy[]` of the reactor (`reactors.h:248`), not from
+`omega`, so `YGList_S` still carries the true kinetics. The build therefore
+separates the blowing from the composition. It does not remove every path
+by which the reactions reach the gas.
+
+`OMEGA_CONST_T0` holds the override back until the particle ignites. The
+case ignites at about t = 6 s, so the default starts the override on the
+plateau. The step of `mdot` at `T0` makes a transient of about 2 s. Discard
+it before you read an amplitude.
+
+## Where the two numbers come from
+
+Both defaults are means of `~/test/new/test-base`. `OMEGA_CONST_MDOT` is the
+mean of column 17 over 10 to 30 s. `OMEGA_CONST_VALUE` is the mass-weighted
+mean of `omega` over the same window, which is `mdot*rhoS/Ms`, because
+`omega` is the rate per cubic metre of solid material.
+
+A window mean is only as good as the window, so the two quantities were
+tested for a trend. The result decides which mode to run:
+
+| window | mdot trend | mdot oscillation | omega trend | omega oscillation |
+|---|---|---|---|---|
+| 12-28 s | -4.9 % | 21.6 % | +76.5 % | 11.3 % |
+| 15-25 s | -0.4 % | 13.6 % | +51.7 % | 8.6 % |
+| 18-22 s | -1.0 % | 3.9 % | +20.5 % | 4.3 % |
+
+`mdot` holds still on the plateau. The rate per unit mass does not: it rises
+by 76 per cent over 12 to 28 s, because the solid which remains gets hotter
+and each kilogram reacts faster. Mode 2 therefore fixes the quantity which
+the case already holds nearly fixed, and it removes the oscillation and
+little else. Mode 1 fixes a quantity which doubles over the run, so it is
+about 40 per cent too high at the start of the window and 40 per cent too
+low at the end.
+
+Caution: read mode 2 over 12 to 28 s. The default `T0` gives a transient of
+about 2 s, and the drift over that window is 5 per cent. Read mode 1 over 18
+to 22 s only.
+
+The units of `Ms0` were verified against a run: mode 1 at 83 gave
+`mdot = 2.83047e-6` against the prediction `83*Ms0/rhoS = 2.83307e-6`. */
+
+#ifndef OMEGA_CONST
+# define OMEGA_CONST 0         // 0 off, 1 uniform value, 2 fixed mdot
+#endif
+
+#ifndef OMEGA_CONST_VALUE
+# define OMEGA_CONST_VALUE 83. // mode 1 [kg/m3/s]
+#endif
+
+#ifndef OMEGA_CONST_MDOT
+# define OMEGA_CONST_MDOT 1.53e-6 // mode 2, the target of column 17
+#endif
+
+#ifndef OMEGA_CONST_T0
+# define OMEGA_CONST_T0 10.
+#endif
+
+/**
 ## Constant properties
 
 `CONST_PROPERTIES` replaces `opensmoke-properties.h` with
@@ -543,14 +638,17 @@ int main() {
                      " SHAPE=%d DIBLASI=%d Da=%g DT=%g maxlevel=%d"
                      " CFL=%g Uin=%g PYRO=%d NOHEAT=%d NOREACT=%d"
                      " ZETA=%s CONSTP=%d NOEXP=%d VOFBC=%d PICARD=%d"
-                     " TSADV=%d NOGASR=%d NOINFLOW=%d nranks=%d\n",
+                     " TSADV=%d NOGASR=%d NOINFLOW=%d"
+                     " OMEGACONST=%d OCVAL=%g OCMDOT=%g OCT0=%g nranks=%d\n",
              MOLAR_ON, FICK_ON, MDE_ON, MOISTURE, GRAVITY, SHAPE,
              EMISSIVITY_DIBLASI, (double) DA_VALUE, (double) DT_VALUE,
              MAXLEVEL_VALUE, (double) CFLNUM, (double) UIN_VALUE,
              PYROLYSIS_ONLY, NOHEAT_ON, NOREACT_ON,
              ZETA_STR(ZETA_POLICY), CONST_PROPERTIES, NOEXP_ON,
              VOFBC_ON, PICARD_ON, TS_PORE_ADVECTION,
-             TURN_OFF_GAS_REACTIONS, NO_INFLOW, npe());
+             TURN_OFF_GAS_REACTIONS, NO_INFLOW,
+             OMEGA_CONST, (double) OMEGA_CONST_VALUE,
+             (double) OMEGA_CONST_MDOT, (double) OMEGA_CONST_T0, npe());
 
   /**
   `lambdaSmodel` comes with `solid-thermal-conductivity.h`, which
@@ -771,6 +869,75 @@ event init (i = 0) {
     }
   }
 }
+
+/**
+## The override of the reaction rate
+
+Same-name events run in reverse declaration order, so this instance of
+`phasechange` runs BEFORE the one of `shrinking.h`, which is declared
+earlier. The `chemistry` event of `chemistry.h` attaches to the slot which
+`shrinking.h` declares before its own `phasechange`, so it runs before this
+one. The order of the step is therefore:
+
+  reset_sources -> chemistry (writes omega) -> this event -> phasechange
+
+Do not move this event, and do not rename it. Under another name it runs
+after `shrinking.h` has already built `gas_source`, and the override does
+nothing.
+
+Caution: `omega` can carry a negative value, because the pair
+`H2O => MOIST` deposits water back into the solid. Mode 2 therefore tests
+the integral before it divides. */
+
+#if OMEGA_CONST
+
+/**
+The rate which the kinetics asked for, before the override replaces it.
+Column 17 of `expansion.dat` reads `omega` after this event, so in mode 2 it
+holds `OMEGA_CONST_MDOT` by construction and it measures nothing. This
+global carries the true rate to column 24, and it is the column which says
+whether the solid still oscillates under a steady blowing. */
+
+double mdot_true = 0.;
+
+event phasechange (i++) {
+
+  if (t < OMEGA_CONST_T0)
+    return 0;
+
+  mdot_true = 0.;
+  foreach (reduction(+:mdot_true))
+    mdot_true += omega[]*(f[] - porosity[])*dv();
+
+#if OMEGA_CONST == 1
+
+  foreach()
+    omega[] = (f[] > F_ERR) ? OMEGA_CONST_VALUE : 0.;
+
+#else // OMEGA_CONST == 2
+
+  /**
+  A particle which no longer reacts gives no scale. Leave the field as it
+  is, and say so once. */
+
+  if (mdot_true <= 1e-30) {
+    static bool warned = false;
+    if (pid() == 0 && !warned) {
+      fprintf (stderr, "# OMEGA_CONST: mdot = %g at t = %g, no override\n",
+               mdot_true, t);
+      warned = true;
+    }
+    return 0;
+  }
+
+  double scale = OMEGA_CONST_MDOT/mdot_true;
+  foreach()
+    omega[] *= scale;
+
+#endif
+}
+
+#endif // OMEGA_CONST
 
 /**
 The H2O-weighted path-averaged temperature of the full case: the mole
@@ -1328,19 +1495,27 @@ event probe_expansion (t += 0.01) {
                    " ur_0.5mm(8) ur_1mm(9) ur_1.5mm(10) mgp_i(11) mgp_resa(12)"
                    " mgpsf_i(13) Tcore(14) Tbulk(15) Tsurf(16)"
                    " mdot(17) ncells(18) nsolid(19)"
-                   " Qds(20) Qdivb(21) resds(22) dsmax(23)\n");
+                   " Qds(20) Qdivb(21) resds(22) dsmax(23)"
+#if OMEGA_CONST
+                   " mdot_true(24)"
+#endif
+                   "\n");
 
     /**
     The new columns go on the end. `slow_flicker.py` reads this file with
     `load(path, 16)`, so it truncates to column 16 and keeps working. */
 
     fprintf (fe, "%g %g %g %g %g %g %g %g %g %g %d %g %d %g %g %g %g %ld %g"
-                 " %g %g %g %g\n",
+                 " %g %g %g %g",
              t, dt, Qsrc, Qdiv, resmax, so.min, so.max,
              ur[0], ur[1], ur[2], mgp.i, mgp.resa, mgpsf.i,
              Tcore, Tbulk, Tsurf,
              mdot, grid->tn, nsolid,
              divb_Qds, divb_Qdiv, divb_resmax, divb_dsmax);
+#if OMEGA_CONST
+    fprintf (fe, " %g", mdot_true);
+#endif
+    fprintf (fe, "\n");
     fflush (fe);
   }
 }

@@ -770,6 +770,44 @@ the event below. It does not change the run. See `drhodt-budget.h`. */
 # include "drhodt-budget.h"
 #endif
 
+/**
+## The properties after the solves
+
+`PROPS_AFTER_SOLVES` at 1 runs the `properties` events once more at the end
+of the event below, after the temperature and species solves. Then the
+momentum, the Darcy drag and the projection of this step use the properties
+of the new state, P^{n+1}, and the volume fraction after the VOF advection.
+At 0 (the default) the code is the same as before this flag.
+
+Caution: a call of `update_properties()` alone does not change `alphav`,
+`rhov` or `mu`. The `properties` events of all the headers form one chain,
+and `events.h` tests only the condition of the head of the chain. The head
+is `event properties (i = 0)` of `multicomponent-properties.h`, because it is
+declared last. So after step 0 the chain does not run in the step. It runs
+only through `event ("properties")` in the `adapt` event of `centered.h`,
+which ignores the conditions. `qcc -events` shows this. Thus at 0:
+
+- `alphav`, `rhov` and `mu` come from the `adapt` event of the previous step.
+  That is the state at the start of the step, P^n, with `f^n`.
+- The Darcy drag reads `rhoGv_S` and `muGv_S` directly. These come from the
+  `update_properties()` call of the `tracer_diffusion` event above, thus the
+  state after the chemistry, P*.
+
+This flag calls `event ("properties")`, which runs `update_properties()`
+first and then the events that fill `alphav`, `rhov` and `mu`. The fields
+are in tracer form at that point, which is the form that
+`update_properties()` expects. The `adapt` event computes the properties
+again after the grid changes. The cost is one more evaluation of the
+properties in each step. */
+
+#ifndef PROPS_AFTER_SOLVES
+# define PROPS_AFTER_SOLVES 0
+#endif
+
+#if PROPS_AFTER_SOLVES && !defined(VARPROP)
+# error "PROPS_AFTER_SOLVES needs VARPROP"
+#endif
+
 event tracer_diffusion (i++) {
 
 #ifdef TG_PROBE
@@ -2005,6 +2043,10 @@ tracer form. */
 
 #ifdef TG_PROBE
   tg_stage_check ("C-end433");
+#endif
+
+#if PROPS_AFTER_SOLVES
+  event ("properties");
 #endif
 }
 

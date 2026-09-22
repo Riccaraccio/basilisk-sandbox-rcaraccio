@@ -1272,6 +1272,54 @@ test-sstr100.tst:   CFLAGS += $(TLAD_STRANG) -DDT_VALUE=1e-4
 test-sstrg.s:       CFLAGS += $(TLAD_STRANG) -DFROZEN_CELL_GATE=1
 test-sstrg.tst:     CFLAGS += $(TLAD_STRANG) -DFROZEN_CELL_GATE=1
 
+# --- the full runs of the base case and of the best flag set, 2026-09-22 ---
+# Both runs start at t = 0 and run to TEND_VALUE (40 s by default), with the
+# dt policy of test-base (DT_VALUE 5e-4, the CFL limit). They cover the
+# ignition and the sliver phase, which the restart rungs from t = 15 s do
+# not cover.
+#
+#   test-fbase   the current defaults. It is the reference of test-fbest and
+#                replaces test-base, which ran on older code (2e977b8).
+#   test-fbest   the best flag set of the time-level campaign:
+#     GAS_SOURCE_EXACT=1      TL-3: the exact log form of the gas expansion.
+#                             The default form expands 16 to 39 % too much.
+#     DRHODT_IMPLICIT=1       TL-2: drhodt from the solves. At dt 4.5e-4 it
+#                             gives the far field and mdot of dt 1e-4.
+#     GAS_UBF_ADVECTION=2     item 7: the ubf mask. Mode 0 makes TG of the
+#                             sliver cells 40 to 50 K deeper.
+#     GAS_CHEMISTRY_STRANG=1  TL-1: the Strang split of the gas chemistry.
+#                             Its restart ladder (test-sstr*) has not
+#                             finished. Expected gain about +28 K of Tmax.
+#     FROZEN_CELL_GATE=1      the gate lowers the cost of the two calls of
+#                             the solver for each step. At its tolerance
+#                             (1e-15) it does not change the result.
+#
+# Not in test-fbest: PROPS_AFTER_SOLVES (no effect, +4.6 % cost) and
+# FICK_CORRECTED (not tested). The fixes that are on by default stay on in
+# both runs, and shift_prod stays true.
+#
+# What to compare: Tmax and the gap of chemsplit.dat, the solid mass and the
+# drift (shrinkbudget.dat), mdot and Tsurf (expansion.dat), the clamp
+# (speciesclamp.dat), the slow band (OutputData, TemperatureProfile.dat), dt
+# and the total cost. Under Strang, read chemsplit.dat as the doc block of
+# the Strang rungs above says.
+#
+# Caution: test-fbest costs more than test-fbase. Expect about 1.6 to 1.9
+# times the gas chemistry without the gate. Do not restart these runs from
+# the t = 15 s snapshot: remove any last-snapshot from the folder before
+# the first submission.
+#
+# Regenerate Makefile.tests on the login node before qsub. Run on 8 ranks,
+# as test-base.
+TLAD_BEST = -DGAS_SOURCE_EXACT=1 -DDRHODT_IMPLICIT=1 -DGAS_UBF_ADVECTION=2 \
+            -DGAS_CHEMISTRY_STRANG=1 -DFROZEN_CELL_GATE=1
+
+test-fbase.s:       CFLAGS +=
+test-fbase.tst:     CFLAGS +=
+
+test-fbest.s:       CFLAGS += $(TLAD_BEST)
+test-fbest.tst:     CFLAGS += $(TLAD_BEST)
+
 # ---------------------------------------------------------------------------
 # Smear of the pellet corner under shrinkage (see shrink-corner.c).
 #

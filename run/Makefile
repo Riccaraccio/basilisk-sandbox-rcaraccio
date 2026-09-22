@@ -1278,9 +1278,13 @@ test-sstrg.tst:     CFLAGS += $(TLAD_STRANG) -DFROZEN_CELL_GATE=1
 # ignition and the sliver phase, which the restart rungs from t = 15 s do
 # not cover.
 #
-#   test-fbase   the current defaults. It is the reference of test-fbest and
-#                replaces test-base, which ran on older code (2e977b8).
-#   test-fbest   the best flag set of the time-level campaign:
+#   test-fbest       the best flag set of the time-level campaign, on the
+#                    base case. Compare with test-base.
+#   test-fbestfull   the same flag set on the full case (TLAD_FULL: the full
+#                    transport, Da 1e-10, moisture, gravity, the shape and
+#                    the emissivity of Di Blasi). Compare with test-full.
+#
+# The best flag set (TLAD_BEST):
 #     GAS_SOURCE_EXACT=1      TL-3: the exact log form of the gas expansion.
 #                             The default form expands 16 to 39 % too much.
 #     DRHODT_IMPLICIT=1       TL-2: drhodt from the solves. At dt 4.5e-4 it
@@ -1294,9 +1298,13 @@ test-sstrg.tst:     CFLAGS += $(TLAD_STRANG) -DFROZEN_CELL_GATE=1
 #                             the solver for each step. At its tolerance
 #                             (1e-15) it does not change the result.
 #
-# Not in test-fbest: PROPS_AFTER_SOLVES (no effect, +4.6 % cost) and
-# FICK_CORRECTED (not tested). The fixes that are on by default stay on in
-# both runs, and shift_prod stays true.
+# Not in TLAD_BEST: PROPS_AFTER_SOLVES (no effect, +4.6 % cost) and
+# FICK_CORRECTED (not tested alone). test-fbestfull gets FICK_CORRECTED from
+# TLAD_TRANSPORT. The fixes that are on by default stay on in both runs, and
+# shift_prod stays true.
+#
+# Caution: test-base and test-full ran on older code. They are not exact
+# references for the fixes that are on by default since then.
 #
 # What to compare: Tmax and the gap of chemsplit.dat, the solid mass and the
 # drift (shrinkbudget.dat), mdot and Tsurf (expansion.dat), the clamp
@@ -1304,8 +1312,9 @@ test-sstrg.tst:     CFLAGS += $(TLAD_STRANG) -DFROZEN_CELL_GATE=1
 # and the total cost. Under Strang, read chemsplit.dat as the doc block of
 # the Strang rungs above says.
 #
-# Caution: test-fbest costs more than test-fbase. Expect about 1.6 to 1.9
-# times the gas chemistry without the gate. Do not restart these runs from
+# Caution: the Strang split costs about 1.6 to 1.9 times the gas chemistry
+# without the gate. The full case is the slowest case of the ladder, so
+# give test-fbestfull the longest wall time. Do not restart these runs from
 # the t = 15 s snapshot: remove any last-snapshot from the folder before
 # the first submission.
 #
@@ -1314,11 +1323,12 @@ test-sstrg.tst:     CFLAGS += $(TLAD_STRANG) -DFROZEN_CELL_GATE=1
 TLAD_BEST = -DGAS_SOURCE_EXACT=1 -DDRHODT_IMPLICIT=1 -DGAS_UBF_ADVECTION=2 \
             -DGAS_CHEMISTRY_STRANG=1 -DFROZEN_CELL_GATE=1
 
-test-fbase.s:       CFLAGS +=
-test-fbase.tst:     CFLAGS +=
 
 test-fbest.s:       CFLAGS += $(TLAD_BEST)
 test-fbest.tst:     CFLAGS += $(TLAD_BEST)
+
+test-fbestfull.s:   CFLAGS += $(TLAD_FULL) $(TLAD_BEST)
+test-fbestfull.tst: CFLAGS += $(TLAD_FULL) $(TLAD_BEST)
 
 # ---------------------------------------------------------------------------
 # Smear of the pellet corner under shrinkage (see shrink-corner.c).

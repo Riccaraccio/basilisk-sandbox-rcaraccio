@@ -766,6 +766,87 @@ finite-difference it. */
 the explicit fluxes of `update_divergence()` against the implicit solves of
 the event below. It does not change the run. See `drhodt-budget.h`. */
 
+/**
+## The transport part of `drhodt` from the implicit solves
+
+`DRHODT_IMPLICIT` (default 0, see `multicomponent-properties.h`) makes
+`update_divergence()` skip the diffusion fluxes and the interface sources.
+The event below adds them after the solves, as the change that each solve
+really made:
+
+    theta*(X^{n+1} - X**)/dt = div (D grad X^{n+1}) + r + beta*X^{n+1}
+
+`theta` is the capacity of the solve and carries `cm`, so the term is per
+unit volume of the cell, as the flux form of `update_divergence()` is. The
+weights and the divisors are the ones of `update_divergence()`, and the
+divisors use the state before the solves, as there.
+
+For the species, the expansion reads only `sum_j dY_j/MW_j`. The species
+part therefore needs one sum for each phase, not one field for each species.
+
+Under `INT_TEMP_VOFBC` the solve puts the interface flux inside the operator
+(`plic_flux()`), with the implicit `TInt` condition. The change of the solve
+includes it, so the form holds with no special term. Under `INT_TEMP_ROBIN`
+the diagonal `betaST` is part of the solve, and the same holds. Under
+`INT_TEMP_PICARD` the last pass gives the value.
+
+The corrected `drhodt` reaches the projection of the same step:
+`project_sf()` reads `drhodt` in `advection_term` and in `projection`, and
+both events run after `tracer_diffusion`. */
+
+#if DRHODT_IMPLICIT && defined VARPROP && !defined NO_EXPANSION
+# define DRI_ON 1
+#else
+# define DRI_ON 0
+#endif
+
+#if DRHODT_IMPLICIT && !DRI_ON
+# warning "DRHODT_IMPLICIT does nothing without VARPROP or with NO_EXPANSION."
+#endif
+
+#if DRI_ON && defined TEMPERATURE_PROFILE
+# error "DRHODT_IMPLICIT needs the solve of TG. TEMPERATURE_PROFILE skips it."
+#endif
+
+#if DRI_ON
+
+/**
+`dri_YS` and `dri_YG` hold `sum_j theta*(Y_j^{n+1} - Y_j**)/MW_j`. `dri_thY`
+keeps the capacity of one species solve, because `diffusion()` overwrites
+`theta` in place. `dri_TS`, `dri_TG`, `dri_th1` and `dri_th2` keep the
+temperatures and the capacities before the temperature solves. `dri_cT` is
+the temperature part of the change of `drhodt`. */
+
+scalar dri_YS[], dri_YG[], dri_thY[];
+# ifdef SOLVE_TEMPERATURE
+scalar dri_TS[], dri_TG[], dri_th1[], dri_th2[], dri_cT[];
+# endif
+
+event defaults (i = 0) {
+  dri_YS.nodump = dri_YG.nodump = dri_thY.nodump = true;
+# ifdef SOLVE_TEMPERATURE
+  dri_TS.nodump = dri_TG.nodump = true;
+  dri_th1.nodump = dri_th2.nodump = dri_cT.nodump = true;
+# endif
+}
+
+/**
+The weights of the two phases in `drhodt`. Keep them identical to the last
+loop of `update_divergence()`. */
+
+static inline void dri_weights (double ff, double * wS, double * wG)
+{
+# if DRHODT_CELL_AVERAGE
+  *wS = ff > F_ERR ? 1. : 0.;
+  *wG = ff < 1. - F_ERR ? 1. : 0.;
+# else
+  *wS = ff;
+  *wG = 1. - ff;
+# endif
+}
+
+#endif // DRI_ON
+
 #if DRHODT_BUDGET
 # include "drhodt-budget.h"
 #endif
@@ -1475,6 +1556,13 @@ here. `TGadv` is the value before the solve. */
   set_prolongation (theta2, fraction_refine);
 #endif
 
+#if DRI_ON
+  foreach() {
+    dri_YS[] = 0.;
+    dri_YG[] = 0.;
+  }
+#endif
+
   // Internal gas diffusion
   for (int jj=0; jj<NGS; jj++) {
     face vector DmixGf[];
@@ -1500,7 +1588,19 @@ here. `TGadv` is the value before the solve. */
     scalar YG = YGList_S[jj];
     scalar sSexp = sSexpList[jj];
 
+#if DRI_ON
+    foreach() {
+      dri_thY[] = theta1[];
+      dri_YS[] -= theta1[]*YG[]/gas_MWs[jj];
+    }
+#endif
+
     diffusion (YG, dt, D=DmixGf, r=sSexp, theta=theta1);
+
+#if DRI_ON
+    foreach()
+      dri_YS[] += dri_thY[]*YG[]/gas_MWs[jj];
+#endif
   }
 
   //external diffusion
@@ -1527,8 +1627,37 @@ here. `TGadv` is the value before the solve. */
     scalar YG = YGList_G[jj];
     scalar sGexp = sGexpList[jj];
 
+#if DRI_ON
+    foreach() {
+      dri_thY[] = theta2[];
+      dri_YG[] -= theta2[]*YG[]/gas_MWs[jj];
+    }
+#endif
+
     diffusion (YG, dt, D=DmixGf, r=sGexp, theta=theta2);
+
+#if DRI_ON
+    foreach()
+      dri_YG[] += dri_thY[]*YG[]/gas_MWs[jj];
+#endif
   }
+
+#if DRI_ON
+
+  /**
+  Add the species part of the transport to `drhodt`. The factor
+  `MWmixG/rhoGv` is the one of `update_divergence()`, and the sign follows
+  its last line. */
+
+  if (dt > 0.)
+    foreach() {
+      double wS, wG;
+      dri_weights (f[], &wS, &wG);
+      double cS = (rhoGv_S[] > 0.) ? MWmixG_S[]/rhoGv_S[] : 0.;
+      double cG = (rhoGv_G[] > 0.) ? MWmixG_G[]/rhoGv_G[] : 0.;
+      drhodt[] -= (wS*cS*dri_YS[] + wG*cG*dri_YG[])/dt;
+    }
+#endif
 
 #ifdef SOLVE_TEMPERATURE
 
@@ -1656,6 +1785,21 @@ matches the fields that built the source. */
     TGadv_dbg[] = TG[];   // the value that the advection of this step left
 #endif
   }
+
+#if DRI_ON
+
+  /**
+  Keep the state and the capacities before the solves. With
+  `INT_TEMP_PICARD` each pass restores the same `T**`, so each pass writes
+  the same values here. */
+
+  foreach() {
+    dri_TS[] = TS[];
+    dri_TG[] = TG[];
+    dri_th1[] = theta1[];
+    dri_th2[] = theta2[];
+  }
+#endif
 
 #if DRHODT_BUDGET
   drhodt_budget_presolve (theta1, theta2);
@@ -1790,6 +1934,31 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     ITT_iS = mgS.i; ITT_nrelaxS = mgS.nrelax; ITT_resaS = mgS.resa;
     ITT_iG = mgG.i; ITT_nrelaxG = mgG.nrelax; ITT_resaG = mgG.resa;
 #  endif
+
+#if DRI_ON
+
+  /**
+  The temperature part of the transport, from the change of each solve. The
+  weights and the divisors are the ones of `update_divergence()`, with the
+  state before the solves. Keep it in `dri_cT` and add it to `drhodt` after
+  the loop of `INT_TEMP_PICARD`, so that only the last pass counts. */
+
+  if (dt > 0.)
+    foreach() {
+      double wS, wG;
+      dri_weights (f[], &wS, &wG);
+      double eps = f[] > F_ERR ? porosity[]/f[] : 0.;
+      double cS = (dri_TS[]*rhoGv_S[]*cpGv_S[] > 0.) ?
+        eps/(dri_TS[]*(rhoGv_S[]*cpGv_S[]*eps + rhoSv[]*cpSv[]*(1. - eps))) : 0.;
+      double cG = (dri_TG[]*rhoGv_G[]*cpGv_G[] > 0.) ?
+        1./(dri_TG[]*rhoGv_G[]*cpGv_G[]) : 0.;
+      dri_cT[] = - (wS*cS*dri_th1[]*(TS[] - dri_TS[])
+                    + wG*cG*dri_th2[]*(TG[] - dri_TG[]))/dt;
+    }
+  else
+    foreach()
+      dri_cT[] = 0.;
+#endif
 
 #if DRHODT_BUDGET
   drhodt_budget_postsolve();
@@ -1939,6 +2108,15 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
       break;
   }
 # endif // INT_TEMP_PICARD
+
+/**
+Add the temperature part of the transport to `drhodt`. Nothing reads
+`drhodt` between here and the projection except the probe. */
+
+# if DRI_ON
+  foreach()
+    drhodt[] += dri_cT[];
+# endif
 
 /**
 The debt of this step: the heat that the conductance withheld, as a rate. The

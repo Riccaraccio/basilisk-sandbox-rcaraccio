@@ -53,6 +53,29 @@ flux and interface part by `f` (or `1-f`) a second time. This is section 3 of
 #endif
 
 /**
+## The time level of the transport part of `drhodt`
+
+`update_divergence()` runs before the implicit solves of the species and of
+the temperature. By default it adds the transport part as explicit fluxes of
+the state before the solves (`T**`, `Y**`). The solves then move the heat and
+the mass with the fluxes of the new state. The projection thus enforces an
+expansion that is not the one of the solves. This is item TL-2 of
+`~/discretization-report/time-level-review.md`, section 3.2.
+
+`DRHODT_IMPLICIT` at 1 removes the diffusion fluxes and the interface sources
+from `update_divergence()`. `tracer_diffusion` in `multicomponent-varprop.h`
+then adds the transport part after the solves, as `theta*(X^{n+1} - X**)/dt`
+for `TS`, `TG` and every gas species of the two phases. The chemistry part
+and the explicit Fick correction (`FICK_CORRECTED`) stay as they are. Both
+forms are per unit volume of the cell and carry `cm`.
+
+The default is 0, which gives the previous code bit for bit. */
+
+#ifndef DRHODT_IMPLICIT
+# define DRHODT_IMPLICIT 0
+#endif
+
+/**
 ## The state of a newly uncovered gas cell
 
 `GAS_STATE_FALLBACK` at 1 gives a cell that changes from solid to gas a
@@ -426,6 +449,11 @@ void update_divergence (void) {
 //   /**
 //   We calculate the Lagrangian derivative of the temperature fields. */
 
+  /**
+  With `DRHODT_IMPLICIT` the temperature solve adds this part after the
+  solve, so skip it here. See the note on `DRHODT_IMPLICIT` above. */
+
+#if !(DRHODT_IMPLICIT && defined SOLVE_TEMPERATURE)
   face vector lambdagradTS[], lambdagradTG[];
   foreach_face() {
     lambdagradTS.x[] = face_value(lambda1v.x, 0)*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
@@ -458,12 +486,20 @@ void update_divergence (void) {
     DTDtG[] += betaGT[]*TG[];
 #endif
   }
+#endif // !(DRHODT_IMPLICIT && SOLVE_TEMPERATURE)
 
   // EXTERNAL GAS PHASE
   /**
   We calculate the Lagrangian derivative for the chemical species mass
   fractions. */ 
 
+  /**
+  With `DRHODT_IMPLICIT` the species solves add the diffusion flux and the
+  interface source after the solves, so skip them here. The Fick correction
+  below stays explicit, because the code applies it as an explicit step
+  before the solves. */
+
+#if !DRHODT_IMPLICIT
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     scalar DmixGv = DmixGList_G[jj];
@@ -484,6 +520,7 @@ void update_divergence (void) {
       DYDtGjj[] += sgexp[];
     }
   }
+#endif // !DRHODT_IMPLICIT
 
   /**
   We add diffusion correction contributions to the chemical species
@@ -543,6 +580,7 @@ void update_divergence (void) {
   We calculate the Lagrangian derivative for the chemical species mass
   fractions. */ 
 
+#if !DRHODT_IMPLICIT
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_S[jj];
     scalar DmixGv = DmixGList_S[jj];
@@ -563,6 +601,7 @@ void update_divergence (void) {
       DYDtGjj[] += ssexp[];
     }
   }
+#endif // !DRHODT_IMPLICIT
 
   face vector phicStot[];
   foreach_face() {

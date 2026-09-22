@@ -227,17 +227,32 @@ event adapt (i++,last) {
 }
 ~~~
 
-so this event runs a second time in each step, after `adapt_wavelet` changes
-the grid. `update_properties()` does not run again there. It runs in the
-`tracer_diffusion` slot, which comes earlier in the step. The cells that
-adapt creates therefore hold prolongated values of `rhoGv_G` and `rhoGv_S`,
-not computed ones.
+so this event runs after `adapt_wavelet` changes the grid.
 
-Those two fields are 0 outside their own phase, because `update_properties()`
-resets them and refills each one only where its gate passes. The default
-prolongation of a scalar is `refine_bilinear`, which interpolates across that
-step to 0 at every interface cell. `rhomix` is a sum of the two, so the two
-terms can cancel and give 0.
+CORRECTED 2026-09-22. An earlier version of this note said that
+`update_properties()` does not run again there, so that the new cells hold
+prolongated densities. That is not correct. The `properties` events of all
+the headers form one chain. `event ("properties")` runs the whole chain and
+ignores the conditions, and the first event of the chain is
+`event properties (i = 0)` of `multicomponent-properties.h`, which calls
+`update_properties()`. `qcc -events` shows the order:
+
+~~~literatec
+adapt        centered.h:453
+properties   multicomponent-properties.h:367   update_properties()
+properties   two-phase-generic.h:84
+properties   variable-properties.h:414         this event
+~~~
+
+So this event reads densities that `update_properties()` computed on the new
+grid, from the prolongated state (`f`, `TG`, `TS`, the mass fractions). A
+density of 0 in a cell means that the gate of `update_properties()` refused
+the state of that cell, for example `TG[] <= 0`. See the next section.
+
+Note: `events.h` tests only the condition of the first event of a chain.
+That event has `i = 0`, so after step 0 the chain does not run in the step.
+It runs only here, in `adapt`. Thus this event runs one time in each step,
+not two times.
 
 The block below reports the cell before the trap. It does not repair it.
 Read the report, then fix the cause. Do not add a guard here.
@@ -331,14 +346,18 @@ because `update_properties()` resets both fields and fills each one only
 where its gate passes. The cell has `f` of 0, thus it is gas, but it holds
 the 0 of the solid side.
 
-The stop is in the second call of this event, the one that `centered.h`
-makes after `adapt_wavelet`. `update_properties()` runs in the
-`tracer_diffusion` slot, thus it does not run again there. The cells that
-the adaptation makes hold prolongated values. `f` uses `fraction_refine`,
-which is geometric, and `rhoGv_G` uses `refine_bilinear`. The two rules do
-not agree on the side of the interface that a new cell is on: `f` gives 0,
-which means gas, and `rhoGv_G` gives 0, which means solid. `rhomix` is then
-0 and the division stops the run.
+The stop is in the call of this event that `centered.h` makes after
+`adapt_wavelet`.
+
+CORRECTED 2026-09-22. An earlier version of this paragraph said that
+`update_properties()` does not run again there, so that the new cells hold
+the prolongated `rhoGv_G` of `refine_bilinear`. That is not correct: the
+`properties` chain calls `update_properties()` before this event (see the
+note above). The new cells get a density computed from their prolongated
+state. The 0 of `rhoGv_G` in a cell with `f` of 0 thus means that the gate
+of `update_properties()` refused the gas state of that cell. The report of
+`GASGATE_DEBUG` above gives `TG` of -334 K in the same cell, which agrees.
+The two paragraphs below keep the old reasoning for the record.
 
 Note: `refine_bilinear` is a convex combination, thus it cannot make a
 negative value. It can carry a 0 without any difficulty. An earlier note in

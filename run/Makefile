@@ -81,8 +81,10 @@ gas-source-exact.tst:  CFLAGS += -DGAS_SOURCE_EXACT=1
 gas-source-exact0.s:   CFLAGS += -DGAS_SOURCE_EXACT=1 -DGAS_SOURCE_FILTER_PASSES=0
 gas-source-exact0.tst: CFLAGS += -DGAS_SOURCE_EXACT=1 -DGAS_SOURCE_FILTER_PASSES=0
 
-# Fixed step. CFLNUM=2 never binds at this DTMAX, so DTMAX sets every step.
-# It still caps a runaway, which an unlimited CFL would not.
+# Fixed step. The `stability` event of vof.h sets CFL to 0.5 at each step
+# when it is larger, so CFLNUM=2 runs as CFL 0.5. DTMAX sets the step only
+# where the step at CFL 0.5 is larger than DTMAX. The measured window above
+# (2.52e-4 at CFL 0.5) is larger, but check column 2 of probe.dat.
 GSAB_DTFIX_FLAGS = $(GSAB_AVG) -DDTMAX=$(GSAB_DTFIX) -DCFLNUM=2
 gas-source-dtfix.s:    CFLAGS += $(GSAB_DTFIX_FLAGS)
 gas-source-dtfix.tst:  CFLAGS += $(GSAB_DTFIX_FLAGS)
@@ -241,16 +243,22 @@ test-l11noshrink.tst: CFLAGS += -DMAXLEVEL_VALUE=11 $(TLAD_NOSHRINK)
 #
 # TLAD_DTFIX must divide 0.01 exactly, or dtnext() subdivides the step to land
 # on the four `t += 0.01` events and dt is not constant. 2e-4 = 0.01/50.
-# CFLNUM=2 stops the CFL from binding, so DT_VALUE sets every step; it still
-# caps a runaway.
+# CORRECTED 2026-09-22. CFLNUM=2 does not stop the CFL from binding. The
+# `stability` event of vof.h (line 140) sets CFL to 0.5 at each step when it
+# is larger, so CFLNUM=2 runs as CFL 0.5. DT_VALUE sets the step only where
+# the step at CFL 0.5 is larger: u < 0.5*Delta/dt, thus 0.39 m/s at
+# dt = 2e-4 on the finest level.
 #
 # Verify column 2 of expansion.dat is constant before you quote dtfix. If it
 # is not, lower TLAD_DTFIX to the next divisor of 0.01.
 #
 # TLAD_DTVAR_CFL scales the CFL-limited step to the same mean. Measure the
 # mean step of test-base over the same window and set
-#   TLAD_DTVAR_CFL = 0.8 * TLAD_DTFIX / <mean dt of test-base>
-# The value below assumes a mean of 4.55e-4:  0.8 * 2e-4 / 4.55e-4 = 0.35
+#   TLAD_DTVAR_CFL = 0.5 * TLAD_DTFIX / <mean dt of test-base>
+# Use 0.5 and not the 0.8 of CFLNUM in test-base: vof.h sets CFL to 0.5 at
+# each step, so test-base runs at 0.5. With a mean of 4.55e-4 the formula
+# gives 0.5 * 2e-4 / 4.55e-4 = 0.22. The value 0.35 below came from the old
+# formula with 0.8. It is not changed here: the user must choose the value.
 # Both are overridable:  make test-dtfix.tst TLAD_DTFIX=1e-4
 #
 # Predictions. In dtfix the single-sample Tmax spikes must disappear, and the
@@ -276,7 +284,8 @@ test-l11noshrink.tst: CFLAGS += -DMAXLEVEL_VALUE=11 $(TLAD_NOSHRINK)
 # which climbs from 3690 to 5693 in 0.11 s. Both die ON THE IGNITION RAMP.
 #
 # It is not a timestep instability either. test-dtvar runs at CFLNUM=0.35,
-# which is MORE conservative than the 0.8 of test-base, with a smaller step
+# which is MORE conservative than the 0.5 at which test-base really runs
+# (vof.h sets CFL to 0.5 when CFLNUM is larger), with a smaller step
 # (3.30e-4 against 4.09e-4) and a lower residual (2.45 against 2.73) at the
 # same instant, and it dies while test-base lives.
 #
@@ -310,9 +319,13 @@ test-dtvar.tst:     CFLAGS += -DCFLNUM=$(TLAD_DTVAR_CFL)
 
 # --- the timestep ladder, added 2026-09-16 -----------------------------------
 # The effect of the step on T at 2 mm and on the mass loss, against test-base.
-# Each rung divides BOTH limits by 2: the cap DT_VALUE and the CFL number.
+# Each rung divides the cap DT_VALUE by 2. The CFL number does not follow:
+# vof.h sets CFL to 0.5 at each step when it is larger, so test-base runs at
+# 0.5, not 0.8. From test-base to test-dt2 the CFL goes from 0.5 to 0.4, thus
+# a factor of 0.8, not 0.5. From test-dt2 to test-dt4 it goes from 0.4 to 0.2.
 # test-base runs near its cap (mean step 4.4e-4 against DT_VALUE 5e-4), so a
-# smaller CFL alone does not halve the step: test-dtvar gives only 1.4.
+# smaller CFL alone does not halve the step: test-dtvar gives only 1.4, which
+# is 0.5/0.35.
 #
 #   test-base   DT_VALUE 5e-4     CFLNUM 0.8
 #   test-dt2    DT_VALUE 2.5e-4   CFLNUM 0.4
@@ -876,7 +889,8 @@ test-picardnr.tst:  CFLAGS += -DINT_TEMP_PICARD=1 $(TLAD_PROBE)
 # which keeps the first-pass TInt, and the mass-diffusion enthalpy.
 #
 # Both values divide 0.01 exactly: 2e-4 = 0.01/50, 1e-4 = 0.01/100. CFLNUM=2
-# stops the CFL from binding, so DT_VALUE sets every step.
+# does not stop the CFL from binding: vof.h sets CFL to 0.5 at each step, so
+# DT_VALUE sets the step only where u < 0.5*Delta/dt.
 #
 # Caution: START ALL FOUR FROM THE SAME PLATEAU SNAPSHOT. A run from scratch
 # is not constant in dt, because the CFL binds through the impulsive start and

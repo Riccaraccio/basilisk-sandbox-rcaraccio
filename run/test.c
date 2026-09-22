@@ -268,8 +268,12 @@ R^2 = 0.89 in `test-shape`. `dt` itself is quantised, because `dtnext()` snaps
 the step so that the run lands on the four `t += 0.01` events, so `dt` can
 only take the values 0.01/n.
 
-`CFLNUM` makes a constant step possible. With `CFLNUM = 2` the CFL never
-binds, so `DT_VALUE` sets every step, and it still caps a runaway.
+`CFLNUM` and `DT_VALUE` together make a constant step possible, but only
+where the velocity is small. The `stability` event of `vof.h` sets `CFL` to
+0.5 at each step when it is larger. So `CFLNUM = 2` runs as 0.5, and the
+default 0.8 also runs as 0.5. `DT_VALUE` sets the step only where
+`u < 0.5*Delta/dt`, thus 0.39 m/s at `dt = 2e-4` on the finest level of
+`MAXLEVEL_VALUE = 10`.
 
 Caution: `DT_VALUE` must divide 0.01 exactly, or `dtnext()` subdivides the
 step and `dt` is not constant. Use 2e-4 = 0.01/50, not 1.75e-4.
@@ -279,8 +283,8 @@ Caution: `CFL` is assigned in the `defaults` event of
 `event init` below, never in `main()`. `TOLERANCE` has no such event and stays
 in `main()`.
 
-Caution: at ignition the peak velocity reaches about 2 m/s and the CFL binds
-even at `CFLNUM = 2`. Branch the fixed-step runs from a plateau snapshot, and
+Caution: at ignition the peak velocity reaches about 2 m/s and the CFL binds,
+with any `CFLNUM`. Branch the fixed-step runs from a plateau snapshot, and
 check that column 2 of `expansion.dat` is constant before you quote them. */
 
 #ifndef CFLNUM

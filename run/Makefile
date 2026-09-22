@@ -1162,6 +1162,64 @@ TLAD_TGDBG = -DTG_PROBE -DTG_PROBE_TMIN=250. -DTG_PROBE_MAX=2000 \
              -DGAS_STATE_FALLBACK_DEBUG
 
 
+# --- the restart pairs of the time-level fixes, added 2026-09-22 ------------
+# Each rung restores the snapshot of test-base at t = 15 s and runs to
+# t = 21 s with ONE flag changed. The dt policy is the same as test-base
+# (DT_VALUE 5e-4, CFLNUM 0.8, which vof.h clamps to 0.5).
+#
+#   test-sref     no flag: the reference. It has the same restart as the
+#                 other rungs, so the transient of the restart cancels.
+#   test-sdri     DRHODT_IMPLICIT=1     TL-2: drhodt from the solves
+#   test-sgse     GAS_SOURCE_EXACT=1    TL-3: the log form of the expansion
+#   test-sprops   PROPS_AFTER_SOLVES=1  TL-4: P^{n+1} in the momentum
+#   test-subf2    GAS_UBF_ADVECTION=2   item 7: the ubf mask
+#
+# What to read, against test-sref:
+#   - chemsplit.dat: Tmax_end, Tmid and the gap Tmax_chem - Tmax_pre.
+#   - drhodtbudget.dat: in test-sdri, L1d/L1r must fall to about 0 in
+#     region H. With the flag on, the probe compares the new drhodt against
+#     the operator of the solve, so the ratio is the residual of the fix.
+#   - shrinkbudget.dat: Cdiff (the drift of NEW-1) must not change.
+#   - speciesclamp.dat: the clamp mass on the plateau (TL-5).
+#   - OutputData and TemperatureProfile.dat: the mean Tmax and the slow band.
+#     Caution: 6 s holds only 2 periods of the slow band at 0.35 Hz. Quote
+#     only the ratios of the band against test-sref, not the absolute
+#     values. For a firm result on the band, run to t = 27 s or more.
+#
+# Procedure:
+#   1. Build every rung from the source of f50229d or later.
+#   2. For each rung:
+#        mkdir -p <rung> && cp <snapshot of t = 15 s> <rung>/last-snapshot
+#   3. Run with the rank count of test-base (8).
+#   4. Check that the log says "Restart file found!".
+#
+# restore() matches the fields by name. DRHODT_IMPLICIT adds 4 fields that
+# the snapshot does not hold. They start at 0, and the code sets them again
+# in each step, so the restart is valid.
+#
+# Caution: each rung overwrites its last-snapshot at t = 16 s. Keep the copy
+# of t = 15 s somewhere else.
+#
+# Cost: each rung costs about the same as test-base over 6 s. test-sprops
+# costs about 5 % more.
+TLAD_SRST_TEND = 21.
+TLAD_SRST      = -DTEND_VALUE=$(TLAD_SRST_TEND)
+
+test-sref.s:        CFLAGS += $(TLAD_SRST)
+test-sref.tst:      CFLAGS += $(TLAD_SRST)
+
+test-sdri.s:        CFLAGS += $(TLAD_SRST) -DDRHODT_IMPLICIT=1
+test-sdri.tst:      CFLAGS += $(TLAD_SRST) -DDRHODT_IMPLICIT=1
+
+test-sgse.s:        CFLAGS += $(TLAD_SRST) -DGAS_SOURCE_EXACT=1
+test-sgse.tst:      CFLAGS += $(TLAD_SRST) -DGAS_SOURCE_EXACT=1
+
+test-sprops.s:      CFLAGS += $(TLAD_SRST) -DPROPS_AFTER_SOLVES=1
+test-sprops.tst:    CFLAGS += $(TLAD_SRST) -DPROPS_AFTER_SOLVES=1
+
+test-subf2.s:       CFLAGS += $(TLAD_SRST) -DGAS_UBF_ADVECTION=2
+test-subf2.tst:     CFLAGS += $(TLAD_SRST) -DGAS_UBF_ADVECTION=2
+
 # ---------------------------------------------------------------------------
 # Smear of the pellet corner under shrinkage (see shrink-corner.c).
 #

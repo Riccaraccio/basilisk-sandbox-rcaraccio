@@ -1220,6 +1220,58 @@ test-sprops.tst:    CFLAGS += $(TLAD_SRST) -DPROPS_AFTER_SOLVES=1
 test-subf2.s:       CFLAGS += $(TLAD_SRST) -DGAS_UBF_ADVECTION=2
 test-subf2.tst:     CFLAGS += $(TLAD_SRST) -DGAS_UBF_ADVECTION=2
 
+# --- the Strang split of the gas chemistry (TL-1), added 2026-09-22 --------
+# GAS_CHEMISTRY_STRANG=1 integrates the gas reactor over dt/2 before the
+# transport and over dt/2 after the solves. The solid and the pore gas stay
+# on the full dt. See the doc block of the flag in src/chemistry.h.
+#
+# Each rung restores the snapshot of test-base at t = 15 s and runs to
+# t = 17 s, as the constant-dt ladder (test-sdt200/100/050).
+#
+#   test-sstr      the CFL dt (about 4e-4)    compare with test-sref
+#   test-sstr200   DT_VALUE 2e-4              compare with test-sdt200
+#   test-sstr100   DT_VALUE 1e-4              compare with test-sdt100
+#   test-sstrg     as test-sstr, with FROZEN_CELL_GATE=1. Compare its cost
+#                  with test-sstr. The gate tests each half with its own dt/2.
+#
+# CFLNUM 0.5 is the value that vof.h applies to test-sref too (it clamps 0.8
+# to 0.5), so the CFL dt of test-sstr is comparable with test-sref.
+#
+# What to read, against the Lie rung of the same dt:
+#   - chemsplit.dat: Tmax_end (col 6) is the state after the second half.
+#     Tmax_tr (col 14) is the state after the transport, Q2 (col 15) the
+#     heat of the second half. Qchem (col 13) holds only the first half.
+#     Tmid (col 7) is not a predictor under the split.
+#   - OutputData: Tmax, the gas temperatures, the solid mass.
+#   - The log: the cost of the chemistry event. Expect about 1.6 to 1.9
+#     times the gas chemistry of the Lie rung.
+# The agent estimated Tmax_end at about 2305, 2320 and 2330 K for the three
+# dt. The split stays first order in the full step, because the diffusion
+# solves are backward Euler. The rungs measure the real gain.
+#
+# Procedure:
+#   1. Build every rung from feccbb4 or later.
+#   2. For each rung: mkdir -p <rung> && cp <snapshot of t = 15 s> <rung>/last-snapshot
+#   3. Regenerate Makefile.tests on the login node before qsub.
+#   4. Run on 8 ranks. Check that the log says "Restart file found!" and
+#      that the "# ladder:" line says STRANG=1.
+#
+# Caution: each rung overwrites its last-snapshot at t = 16 s. Keep the copy
+# of t = 15 s somewhere else.
+TLAD_STRANG = -DGAS_CHEMISTRY_STRANG=1 -DCFLNUM=0.5 -DTEND_VALUE=17.
+
+test-sstr.s:        CFLAGS += $(TLAD_STRANG)
+test-sstr.tst:      CFLAGS += $(TLAD_STRANG)
+
+test-sstr200.s:     CFLAGS += $(TLAD_STRANG) -DDT_VALUE=2e-4
+test-sstr200.tst:   CFLAGS += $(TLAD_STRANG) -DDT_VALUE=2e-4
+
+test-sstr100.s:     CFLAGS += $(TLAD_STRANG) -DDT_VALUE=1e-4
+test-sstr100.tst:   CFLAGS += $(TLAD_STRANG) -DDT_VALUE=1e-4
+
+test-sstrg.s:       CFLAGS += $(TLAD_STRANG) -DFROZEN_CELL_GATE=1
+test-sstrg.tst:     CFLAGS += $(TLAD_STRANG) -DFROZEN_CELL_GATE=1
+
 # ---------------------------------------------------------------------------
 # Smear of the pellet corner under shrinkage (see shrink-corner.c).
 #

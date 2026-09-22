@@ -770,6 +770,14 @@ the event below. It does not change the run. See `drhodt-budget.h`. */
 # include "drhodt-budget.h"
 #endif
 
+/**
+`SPECIES_CLAMP_PROBE` measures item TL-5: how far the species solves of the
+event below push `Y` out of `[0,1]`, and the mass that the clamp at the end
+of the event adds or removes. It does not change the run. See
+`species-clamp-probe.h`, which sets the default of the flag to 0. */
+
+#include "species-clamp-probe.h"
+
 event tracer_diffusion (i++) {
 
 #ifdef TG_PROBE
@@ -1475,6 +1483,10 @@ here. `TGadv` is the value before the solve. */
   set_prolongation (theta2, fraction_refine);
 #endif
 
+#if SPECIES_CLAMP_PROBE
+  species_clamp_presolve();
+#endif
+
   // Internal gas diffusion
   for (int jj=0; jj<NGS; jj++) {
     face vector DmixGf[];
@@ -1999,6 +2011,10 @@ tracer form. */
     T[] = TS[] + TG[];
 #endif
   }
+
+#if SPECIES_CLAMP_PROBE
+  species_clamp_postsolve();
+#endif
 
   check_and_correct_fractions (YGList_S, NGS, false);
   check_and_correct_fractions (YGList_G, NGS, true);

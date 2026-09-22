@@ -541,7 +541,7 @@ at about 1100 K. Each one takes a `-D` of its own. */
 #endif
 
 /**
-## The three probes of the time level
+## The four probes of the time level
 
 Each probe answers one question of
 `~/discretization-report/time-level-review.md` and of
@@ -555,22 +555,27 @@ no probe changes the order of an event that writes a field.
 | `CHEM_SPLIT_PROBE` | `chem-split-probe.h` | `chemsplit.dat` | TL-1, the split of the gas chemistry from the transport |
 | `DRHODT_BUDGET` | `drhodt-budget.h` | `drhodtbudget.dat` | TL-2, the explicit fluxes of `drhodt` |
 | `SHRINK_BUDGET` | `shrink-budget.h` | `shrinkbudget.dat` | NEW-1, NEW-4 and 9d, the shrinkage that the VOF sweep removes |
+| `SPECIES_CLAMP_PROBE` | `species-clamp-probe.h` | `speciesclamp.dat` | TL-5, the clamp of the species after the implicit solves |
 
-The three flags are ON in this case, because the next base run must carry
-them. Build with `-DCHEM_SPLIT_PROBE=0`, `-DDRHODT_BUDGET=0` or
-`-DSHRINK_BUDGET=0` to turn one off. Each header holds the column layout and
+The four flags are ON in this case, because the next base run must carry
+them. Build with `-DCHEM_SPLIT_PROBE=0`, `-DDRHODT_BUDGET=0`,
+`-DSHRINK_BUDGET=0` or `-DSPECIES_CLAMP_PROBE=0` to turn one off. Each header holds the column layout and
 the way to read it.
 
-Cost, measured at level 8 over 0.5 s (1012 steps): the three probes use
+Cost, measured at level 8 over 0.5 s (1012 steps): the first three probes use
 0.14 s of CPU together, 0.2 per cent of the run. `CHEM_SPLIT_PROBE` and
 `DRHODT_BUDGET` work only on the step that starts at an output time
 (`t += 0.01`). `SHRINK_BUDGET` works at every step, because its running
 integrals need every step, and writes at the output times. Each probe
 prints its own CPU time at the end of the log.
 
-Caution: `DRHODT_BUDGET` must be set before `multicomponent-varprop.h`, which
-includes its header and calls its two functions. So the flag stays in this
-block, above the includes. */
+Cost of `SPECIES_CLAMP_PROBE`, measured on the same case: 0.018 s of CPU in
+50 steps, 0.02 per cent of the run. It works only on the step that starts at
+an output time, and it adds no field.
+
+Caution: `DRHODT_BUDGET` and `SPECIES_CLAMP_PROBE` must be set before
+`multicomponent-varprop.h`, which includes their headers and calls their
+functions. So the flags stay in this block, above the includes. */
 
 #ifndef CHEM_SPLIT_PROBE
 # define CHEM_SPLIT_PROBE 1
@@ -582,6 +587,10 @@ block, above the includes. */
 
 #ifndef SHRINK_BUDGET
 # define SHRINK_BUDGET 1
+#endif
+
+#ifndef SPECIES_CLAMP_PROBE
+# define SPECIES_CLAMP_PROBE 1
 #endif
 
 /**

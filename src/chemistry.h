@@ -202,9 +202,15 @@ end-state sensitivity.
 
 `rhoGv_G` and `cpGv_G` do not change during the chemistry event. The same
 values therefore weight the start state and the end state, and the source stays
-an exact `rhoGv_G*dY/dt` and `rhoGv_G*cpGv_G*dT/dt`. This is what `divu2` in
-`multicomponent-properties.h` needs: it divides by the same two fields, so the
-result is the mole-number change rate and the thermal expansion rate.
+an exact `rhoGv_G*dY/dt` and `rhoGv_G*cpGv_G*dT/dt`. These weights are the
+start values: the last `update_properties()` before this event is the one of
+the `adapt` event of the previous step.
+
+Caution: `divu2` in `multicomponent-properties.h` does not divide by the same
+values. `update_divergence()` runs after the second `update_properties()` of
+the step (the `tracer_diffusion` event of `multicomponent-varprop.h`), which
+reads the state after the chemistry. So the numerator has the start weights
+and the denominators have the end values. See "The exact expansion" below.
 
 ## The weight of the increment
 
@@ -251,12 +257,25 @@ instantaneous form ignores it.
 ## The exact expansion
 
 Both forms above feed `divu2` in `update_divergence()`, which divides them by
-`T`, `rho`, `cp` and `MWmixG_G`. `T` is the end value, the other three are the
-values that the last `update_properties()` wrote, so the start values.
-`test/gas-source-cell.c` measures the effect of these frozen denominators: in
-a burning cell at `dt = 2e-4` s the result sits 8 to 27 percent under the
-exact expansion. `gas_source_rho_mean` does not repair that, because the error
-is in the denominators and not in the weight.
+`TG`, `rhoGv_G` and `cpGv_G`, and multiplies the species part by `MWmixG_G`.
+All four hold values after the chemistry. `rhoGv_G`, `cpGv_G` and `MWmixG_G`
+come from the `update_properties()` call in the `tracer_diffusion` event of
+`multicomponent-varprop.h`, which reads the state after the chemistry. `TG`
+also holds the advection of the step. The numerator has the start weights
+`rhoGv_G` and `cpGv_G` of this event. So the numerator and the denominators
+come from two time levels, and the default path gives too much expansion:
+
+    code  = rho_0*cp_0*(T_end - T_0)/(dt*T_end*rho_end*cp_end)
+          + (rho_0/rho_end)*MW_end*sum_j (Y_end,j - Y_0,j)/(MW_j*dt)
+    exact = ln(rho_0/rho_end)/dt
+
+`test/gas-source-cell.c` measures `code/exact` in one cell with no flow. With
+the dummy kinetics, 13 burning states and `dt` from 2e-6 to 2e-4 s, the
+default path gives 1.16 to 1.39. `gas_source_rho_mean` does not repair that,
+because it changes the weight and not the time level of the denominators.
+An earlier version of this comment and of the test used the start values as
+denominators. That gave an expansion 8 to 27 percent under the exact value,
+which was not correct.
 
 The exact step mean of the expansion at constant pressure needs no
 denominators. The expansion rate is `-d(ln rho)/dt`, so its mean over the step
@@ -265,7 +284,9 @@ is the closed form
     ln(rho_start/rho_end)/dt
 
 and both densities follow from the ideal gas law with `1/MW = sum_j Y_j/MW_j`.
-The pressure cancels in the ratio. `GAS_SOURCE_EXACT` selects this form. The
+The pressure cancels in the ratio. `GAS_SOURCE_EXACT` selects this form, and
+it has no denominators, so it removes the error of the two time levels above.
+The default of `GAS_SOURCE_EXACT` stays 0. The
 chemistry event then writes `cm[]*ln(rho_start/rho_end)/dt` to `drhodt_chem`,
 per unit volume of gas, and `update_divergence()` adds it to `divu2` with the
 same `(1-f)` weight as the other terms. The reaction part no longer passes

@@ -83,6 +83,37 @@ the next event time. Do not read one line as a measurement of `dt`. Compare
 runs, and use the mean `dt` of a window of each run.
 
 
+## The columns under `GAS_CHEMISTRY_STRANG`
+
+With the Strang split of `chemistry.h`, the step runs the gas reactor over
+`dt/2`, then the transport, then the gas reactor over `dt/2` again. The
+columns then mean:
+
+* `Tmax_pre` the maximum before the first half. It is the state after the
+  second half of the step before, thus the same state as `Tmax_end` of that
+  step, with `adapt` between the two.
+* `Tmax_chem`, `dT_max`, `dT_mean`, `nreact`, `nzone`, `qmax` and `Qchem`
+  come from the FIRST half only. `q` still divides by the full `dt`, so
+  `Qchem` is the share of the first half in the mean heat release of the
+  step.
+* `Tmax_end` the maximum at the end of the step, after the second half. It
+  is the quantity that `OutputData` reads at the start of the next step.
+* `Tmid` keeps its formula. Under the split it is not a predictor of the
+  converged `Tmax`. Read `Tmax_end` directly.
+
+Two columns follow, only in the split build:
+
+    Tmax_tr(14) Q2(15)
+
+* `Tmax_tr` the largest intrinsic gas temperature after the transport and
+  before the second half.
+* `Q2` the heat release of the second half, in the form of `Qchem`. So
+  `Qchem + Q2` is the mean heat release of the whole step.
+
+The gap `Tmax_chem - Tmax_pre` measures the first half, and
+`Tmax_end - Tmax_tr` measures the second half. The split gives second order
+if `Tmax_end` changes with `dt^2` over a ladder of `dt`.
+
 ## Flags
 
 * `CHEM_SPLIT_PROBE` 1 turns the probe on. The default is 0.
@@ -147,6 +178,10 @@ event reset_sources (i++) {
   foreach()
     csp_TGpre[] = TG[];
   csp_snap = true;
+#if GAS_CHEMISTRY_STRANG
+  strang_probe_armed = true;
+  strang_Tmax_tr = strang_Q2 = 0.;
+#endif
   csp_cpu += (double)(clock() - c0)/CLOCKS_PER_SEC;
 }
 
@@ -227,6 +262,9 @@ event end_timestep (i++) {
   if (!csp_armed)
     return 0;
   csp_armed = false;
+#if GAS_CHEMISTRY_STRANG
+  strang_probe_armed = false;
+#endif
   if (!csp_snap)
     return 0;
   clock_t c0 = clock();
@@ -244,12 +282,20 @@ event end_timestep (i++) {
       if (!restarted)
         fprintf (fp, "#t(1) i(2) dt(3) Tmax_pre(4) Tmax_chem(5) Tmax_end(6)"
                      " Tmid(7) dT_max(8) dT_mean(9) nreact(10) nzone(11)"
-                     " qmax(12) Qchem(13)\n");
+                     " qmax(12) Qchem(13)"
+#if GAS_CHEMISTRY_STRANG
+                     " Tmax_tr(14) Q2(15)"
+#endif
+                     "\n");
     }
-    fprintf (fp, "%g %d %g %g %g %g %g %g %g %g %g %g %g\n",
+    fprintf (fp, "%g %d %g %g %g %g %g %g %g %g %g %g %g",
              t, i, dt, csp_Tmax_pre, csp_Tmax_chem, Tend,
              0.5*(csp_Tmax_chem + Tend), csp_dTmax, csp_dTmean,
              csp_nreact, csp_nzone, csp_qmax, csp_Qchem);
+#if GAS_CHEMISTRY_STRANG
+    fprintf (fp, " %g %g", strang_Tmax_tr, strang_Q2);
+#endif
+    fprintf (fp, "\n");
     fflush (fp);
   }
   csp_cpu += (double)(clock() - c0)/CLOCKS_PER_SEC;

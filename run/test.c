@@ -712,7 +712,8 @@ int main() {
                      " CFL=%g Uin=%g PYRO=%d NOHEAT=%d NOREACT=%d"
                      " ZETA=%s CONSTP=%d NOEXP=%d VOFBC=%d PICARD=%d"
                      " TSADV=%d NOGASR=%d NOINFLOW=%d"
-                     " OMEGACONST=%d OCVAL=%g OCMDOT=%g OCT0=%g nranks=%d\n",
+                     " OMEGACONST=%d OCVAL=%g OCMDOT=%g OCT0=%g STRANG=%d"
+                     " nranks=%d\n",
              MOLAR_ON, FICK_ON, MDE_ON, MOISTURE, GRAVITY, SHAPE,
              EMISSIVITY_DIBLASI, (double) DA_VALUE, (double) DT_VALUE,
              MAXLEVEL_VALUE, (double) CFLNUM, (double) UIN_VALUE,
@@ -721,7 +722,8 @@ int main() {
              VOFBC_ON, PICARD_ON, TS_PORE_ADVECTION,
              TURN_OFF_GAS_REACTIONS, NO_INFLOW,
              OMEGA_CONST, (double) OMEGA_CONST_VALUE,
-             (double) OMEGA_CONST_MDOT, (double) OMEGA_CONST_T0, npe());
+             (double) OMEGA_CONST_MDOT, (double) OMEGA_CONST_T0,
+             GAS_CHEMISTRY_STRANG, npe());
 
   /**
   `lambdaSmodel` comes with `solid-thermal-conductivity.h`, which

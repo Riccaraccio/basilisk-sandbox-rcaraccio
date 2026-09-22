@@ -93,6 +93,28 @@ Caution: the species part of `drhodt` has the same defect and the probe does
 NOT measure it. That part needs the state of every species before the
 species solves, thus `2*NGS` more fields.
 
+## The meaning under `DRHODT_IMPLICIT`
+
+With `DRHODT_IMPLICIT` the explicit form is gone from `drhodt`. The
+temperature part of `drhodt` is then the implicit form
+`theta*(T^{n+1} - T**)/dt` that `multicomponent-varprop.h` computes (the
+fields `dri_*`). The probe compares that form against the operator of the
+solve, evaluated again at the new state:
+
+    ref = div (lambdaf grad T^{n+1}) + r + beta*T^{n+1} + (interface term)
+
+`r` is the source of the solve (`sST`, `sGT`), which the probe keeps before
+the solve. `beta` is `betaST`, `betaGT` under `INT_TEMP_ROBIN`. The interface
+term is the one of `plic_flux()` under `INT_TEMP_VOFBC`, with the same sign
+as in the residual of `poisson.h`. The equation of the solve says that
+`carried = ref`, so `dd` is the residual of the solve plus any error of the
+fix: a wrong weight, a wrong divisor, or a wrong time level. `L1d/L1r` must
+then be small, of the order of the tolerance of the solve. `L1r` reads the
+`drhodt` that the projection receives, thus it includes the temperature part
+that the fix adds after the loop of `INT_TEMP_PICARD`.
+
+Without `DRHODT_IMPLICIT` the probe is the same as before, bit for bit.
+
 ## Flags
 
 * `DRHODT_BUDGET` 1 turns the probe on. The default is 0. The flag must be
@@ -140,7 +162,14 @@ step in about 20 at `DT = 5e-4`. On the other steps it tests one flag. */
 `theta` in place. `dbg_exS` and `dbg_exG` hold the explicit transport form of
 `update_divergence()`. */
 
+#if DRI_ON
+scalar dbg_exS[], dbg_exG[];
+# if INT_TEMP_ROBIN
+scalar dbg_bS[], dbg_bG[];
+# endif
+#else
 scalar dbg_TSpre[], dbg_TGpre[], dbg_th1[], dbg_th2[], dbg_exS[], dbg_exG[];
+#endif
 
 #include <time.h>
 
@@ -159,9 +188,16 @@ event drhodt_budget_arm (t += 0.01) {
 }
 
 event defaults (i = 0) {
+#if DRI_ON
+  dbg_exS.nodump = true; dbg_exG.nodump = true;
+# if INT_TEMP_ROBIN
+  dbg_bS.nodump = true; dbg_bG.nodump = true;
+# endif
+#else
   dbg_TSpre.nodump = true; dbg_TGpre.nodump = true;
   dbg_th1.nodump = true; dbg_th2.nodump = true;
   dbg_exS.nodump = true; dbg_exG.nodump = true;
+#endif
 }
 
 /**
@@ -176,6 +212,20 @@ static void drhodt_budget_presolve (scalar theta1, scalar theta2)
     return;
   clock_t c0 = clock();
 
+#if DRI_ON
+
+  /**
+  Keep the sources of the solves: `diffusion()` overwrites them. */
+
+  foreach() {
+    dbg_exS[] = sST[];
+    dbg_exG[] = sGT[];
+# if INT_TEMP_ROBIN
+    dbg_bS[] = betaST[];
+    dbg_bG[] = betaGT[];
+# endif
+  }
+#else
   face vector qS[], qG[];
   foreach_face() {
     qS.x[] = lambda1f.x[]*face_gradient_x (TS, 0);
@@ -199,6 +249,7 @@ static void drhodt_budget_presolve (scalar theta1, scalar theta2)
     dbg_th1[] = theta1[];
     dbg_th2[] = theta2[];
   }
+#endif
   dbg_cpu += (double)(clock() - c0)/CLOCKS_PER_SEC;
 }
 
@@ -252,7 +303,51 @@ static void drhodt_budget_postsolve (void)
   The scale of `drhodt` of this step. It gives the floor of the denominator of
   `maxq`. */
 
+#if DRI_ON
+
+  /**
+  The operator of the solve at the new state. It goes into `dbg_exS` and
+  `dbg_exG`, on top of the sources. */
+
+  face vector gS[], gG[];
+  foreach_face() {
+    gS.x[] = lambda1f.x[]*face_gradient_x (TS, 0);
+    gG.x[] = lambda2f.x[]*face_gradient_x (TG, 0);
+  }
+  foreach() {
+    foreach_dimension() {
+      dbg_exS[] += (gS.x[1] - gS.x[])/Delta;
+      dbg_exG[] += (gG.x[1] - gG.x[])/Delta;
+    }
+# if INT_TEMP_ROBIN
+    dbg_exS[] += dbg_bS[]*TS[];
+    dbg_exG[] += dbg_bG[]*TG[];
+# endif
+  }
+# if INT_TEMP_VOFBC
+  plicbc_phase (fS, fsS);
+  foreach() {
+    double c, e = plic_flux (point, TS, lambda1f, &c);
+    dbg_exS[] += e*TS[] - c;
+  }
+  plicbc_phase (fG, fsG);
+  foreach() {
+    double c, e = plic_flux (point, TG, lambda2f, &c);
+    dbg_exG[] += e*TG[] - c;
+  }
+# endif
+
+  /**
+  The `drhodt` that the projection receives. The temperature part `dri_cT`
+  goes into `drhodt` only after the loop of `INT_TEMP_PICARD`. */
+
+  scalar drfin[];
+  foreach()
+    drfin[] = drhodt[] + dri_cT[];
+  stats sdr = statsf (drfin);
+#else
   stats sdr = statsf (drhodt);
+#endif
   double qfloor = DRHODT_BUDGET_QFLOOR*max (fabs (sdr.min), fabs (sdr.max));
 
   double L1d = 0., L1r = 0., maxd = 0., maxr = 0.;
@@ -269,16 +364,23 @@ static void drhodt_budget_postsolve (void)
            reduction(+:nI) reduction(+:L1dI) reduction(+:L1rI)
            reduction(max:maxdI) reduction(max:maxqI)) {
 
+#if DRI_ON
+    double implS = dri_th1[]*(TS[] - dri_TS[])/dt;
+    double implG = dri_th2[]*(TG[] - dri_TG[])/dt;
+    double TSpre = dri_TS[], TGpre = dri_TG[], drf = drfin[];
+#else
     double implS = dbg_th1[]*(TS[] - dbg_TSpre[])/dt;
     double implG = dbg_th2[]*(TG[] - dbg_TGpre[])/dt;
+    double TSpre = dbg_TSpre[], TGpre = dbg_TGpre[], drf = drhodt[];
+#endif
     double difS = implS - dbg_exS[], difG = implG - dbg_exG[];
 
     double eps = f[] > F_ERR ? porosity[]/f[] : 0.;
-    double dens = dbg_TSpre[]*(rhoGv_S[]*cpGv_S[]*eps
+    double dens = TSpre*(rhoGv_S[]*cpGv_S[]*eps
                                + rhoSv[]*cpSv[]*(1. - eps));
-    double cS = (dbg_TSpre[]*rhoGv_S[]*cpGv_S[] > 0. && dens > 0.) ?
+    double cS = (TSpre*rhoGv_S[]*cpGv_S[] > 0. && dens > 0.) ?
       eps/dens : 0.;
-    double dG = dbg_TGpre[]*rhoGv_G[]*cpGv_G[];
+    double dG = TGpre*rhoGv_G[]*cpGv_G[];
     double cG = (dG > 0.) ? 1./dG : 0.;
 
 #if DRHODT_CELL_AVERAGE
@@ -288,7 +390,7 @@ static void drhodt_budget_postsolve (void)
 #endif
 
     double dd = -(wS*cS*difS + wG*cG*difG);
-    double ad = fabs (dd), ar = fabs (drhodt[]);
+    double ad = fabs (dd), ar = fabs (drf);
     double q = (ar > qfloor) ? ad/ar : 0.;
 
     L1d += ad*dv();
@@ -296,7 +398,7 @@ static void drhodt_budget_postsolve (void)
     maxd = max (maxd, ad);
     maxr = max (maxr, ar);
 
-    if (1. - f[] > F_ERR && dbg_TGpre[] > DRHODT_BUDGET_THOT) {
+    if (1. - f[] > F_ERR && TGpre > DRHODT_BUDGET_THOT) {
       nH += 1.; L1dH += ad*dv(); L1rH += ar*dv();
       maxdH = max (maxdH, ad); maxqH = max (maxqH, q);
     }

@@ -1330,6 +1330,76 @@ test-fbest.tst:     CFLAGS += $(TLAD_BEST)
 test-fbestfull.s:   CFLAGS += $(TLAD_FULL) $(TLAD_BEST)
 test-fbestfull.tst: CFLAGS += $(TLAD_FULL) $(TLAD_BEST)
 
+# --- the projection spikes, added 2026-09-23 --------------------------------
+# The point probes show one-sample spikes of the velocity, of up to 8 % of
+# the local speed. At a spike the residual of the projection (mgp.resa) is
+# 2 to 20 times its median, and the grid often changes by more cells. The
+# residual stays under TOLERANCE/dt^2, so the solver accepts the step. See
+# the section "The projection spikes" in test.c.
+#
+# Each run restores the snapshot of test-base at t = 15 s and runs to
+# t = 21 s, as the restart rungs above. Each run writes projstep.dat, one
+# line for each step (PROJECTION_PROBE=1).
+#
+#   test-sprobe   the reference: test-sref with the probe
+#   test-sptol    TOLERANCE 1e-7 instead of 1e-5. Tests the residual.
+#   test-snit4    NITERMIN 4 instead of 2. A cheaper candidate fix.
+#   test-fixgrid  run/test-fixgrid.c: no adapt. It refines a box around the
+#                 particle (x -12 to +24 mm, y 0 to 12 mm) to level 10 one
+#                 time, after the restore. Tests the adapt.
+#
+# What to read, against test-sprobe:
+#   - probes.dat: the count of the one-sample spikes at the probes 0 and 2.
+#   - projstep.dat: mgp_tol (col 6) against PROJ_TOLERANCE, dumax (col 14)
+#     and its position, and nf + nc (col 12 + col 13) of the adapt.
+#     A line normally holds the adapt of step i - 1 (adapt_i = i - 1).
+#   - The cost: the cycles mgp_i (col 4) and the wall time.
+#   - OutputData and expansion.dat: the slow band must not change. If it
+#     changes, the spikes feed the slow band too.
+# Decision:
+#   - The spikes stop in test-sptol or test-snit4: the residual of the
+#     projection is the cause. The cheaper of the two is the fix.
+#   - The spikes stop in test-fixgrid only: the adapt is the cause, through the
+#     prolongation of u and not through the residual.
+#   - The spikes stay in all runs: neither is the cause.
+#
+# Procedure:
+#   1. Build every run from the commit of this section or later.
+#   2. For each run:
+#        mkdir -p <run> && cp <snapshot of t = 15 s> <run>/last-snapshot
+#   3. Regenerate Makefile.tests on the login node before qsub.
+#   4. Run on 8 ranks, as test-sref. Check that the log says "Restart file
+#      found!" and that the "# ladder:" line gives the PROJTOL, NITERMIN,
+#      PROJPROBE and FIXEDGRID values of the run. The log of test-fixgrid
+#      must also say "# fixed grid".
+#
+# Add projstep.dat to the list of files of sync-solid.sh.
+#
+# Cost: test-sprobe about test-sref. test-sptol and test-snit4 add projection
+# cycles: expect a few per cent more. test-fixgrid about 2 to 2.5
+# times test-sref.
+# projstep.dat grows by about 300 bytes for each step (about 5 MB for 6 s).
+TLAD_SPIKE = $(TLAD_SRST) -DPROJECTION_PROBE=1
+
+test-sprobe.s:      CFLAGS += $(TLAD_SPIKE)
+test-sprobe.tst:    CFLAGS += $(TLAD_SPIKE)
+
+test-sptol.s:       CFLAGS += $(TLAD_SPIKE) -DPROJ_TOLERANCE=1e-7
+test-sptol.tst:     CFLAGS += $(TLAD_SPIKE) -DPROJ_TOLERANCE=1e-7
+
+test-snit4.s:       CFLAGS += $(TLAD_SPIKE) -DPROJ_NITERMIN=4
+test-snit4.tst:     CFLAGS += $(TLAD_SPIKE) -DPROJ_NITERMIN=4
+
+# test-fixgrid.c is a real source, not a link to test.c. This explicit rule
+# with an empty recipe stops the pattern rule "test-%.c: test.c" from
+# replacing the file with a link. Do not remove it, and do not add
+# test-fixgrid to TLAD_CASES: "make test-unlink" removes those files.
+# .gitignore has an exception for this file. The pattern rules give the pin.
+test-fixgrid.c: ;
+
+test-fixgrid.s:     CFLAGS += $(TLAD_SPIKE)
+test-fixgrid.tst:   CFLAGS += $(TLAD_SPIKE)
+
 # ---------------------------------------------------------------------------
 # Smear of the pellet corner under shrinkage (see shrink-corner.c).
 #

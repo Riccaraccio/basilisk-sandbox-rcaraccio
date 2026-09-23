@@ -485,6 +485,47 @@ The units of `Ms0` were verified against a run: mode 1 at 83 gave
 #endif
 
 /**
+## The projection spikes
+
+The point probes of `test-fbest` show one-sample spikes of the velocity, of
+up to 8 per cent of the local speed. Probes 0 and 2 spike on the same
+samples, and the release does not change at these samples. At a spike the
+residual `mgp.resa` of the projection is 10 to 20 times its median, the grid
+changes by about 3 times more cells, and `mgp.i` stays at `NITERMIN`. The
+residual stays under `TOLERANCE/sq(dt)`, so the solver accepts the step.
+
+Three flags test this:
+
+* `PROJ_TOLERANCE` and `PROJ_NITERMIN` set `TOLERANCE` and `NITERMIN`. The
+  defaults are the values of every run since 2026-09-02, so a build without
+  the flags does not change.
+* `PROJECTION_PROBE 1` writes `projstep.dat`, one line for each step. It
+  holds the statistics of the two projections, the counts of the last adapt
+  and the change of the velocity in one step. See the event
+  `projection_probe`.
+* `FIXED_GRID 1` removes the adapt event of this case.
+  `run/test-fixgrid.c` sets it and gives the region that it refines once.
+  See that file.
+
+The probe reads only. It writes no field that another module reads. */
+
+#ifndef PROJ_TOLERANCE
+# define PROJ_TOLERANCE 1e-5
+#endif
+
+#ifndef PROJ_NITERMIN
+# define PROJ_NITERMIN 2
+#endif
+
+#ifndef PROJECTION_PROBE
+# define PROJECTION_PROBE 0
+#endif
+
+#ifndef FIXED_GRID
+# define FIXED_GRID 0
+#endif
+
+/**
 ## Constant properties
 
 `CONST_PROPERTIES` replaces `opensmoke-properties.h` with
@@ -698,6 +739,15 @@ int maxlevel = MAXLEVEL_VALUE, minlevel = 2;
 double solid_mass0 = 0.;
 double D0 = 8e-3, H0 = 8e-3;
 
+#if TREE
+/**
+The counts of the last adapt and its step. The event `adapt` sets them and
+`projection_probe` reads them. */
+
+astats adapt_last = {0, 0};
+int adapt_last_i = -1;
+#endif
+
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
 int main() {
@@ -713,6 +763,7 @@ int main() {
                      " ZETA=%s CONSTP=%d NOEXP=%d VOFBC=%d PICARD=%d"
                      " TSADV=%d NOGASR=%d NOINFLOW=%d"
                      " OMEGACONST=%d OCVAL=%g OCMDOT=%g OCT0=%g STRANG=%d"
+                     " PROJTOL=%g NITERMIN=%d PROJPROBE=%d FIXEDGRID=%d"
                      " nranks=%d\n",
              MOLAR_ON, FICK_ON, MDE_ON, MOISTURE, GRAVITY, SHAPE,
              EMISSIVITY_DIBLASI, (double) DA_VALUE, (double) DT_VALUE,
@@ -723,7 +774,8 @@ int main() {
              TURN_OFF_GAS_REACTIONS, NO_INFLOW,
              OMEGA_CONST, (double) OMEGA_CONST_VALUE,
              (double) OMEGA_CONST_MDOT, (double) OMEGA_CONST_T0,
-             GAS_CHEMISTRY_STRANG, npe());
+             GAS_CHEMISTRY_STRANG, (double) PROJ_TOLERANCE, PROJ_NITERMIN,
+             PROJECTION_PROBE, FIXED_GRID, npe());
 
   /**
   `lambdaSmodel` comes with `solid-thermal-conductivity.h`, which
@@ -815,8 +867,8 @@ int main() {
 
   init_grid(1 << min (maxlevel, 8));
 
-  TOLERANCE = 1e-5;
-  NITERMIN = 2;
+  TOLERANCE = PROJ_TOLERANCE;
+  NITERMIN = PROJ_NITERMIN;
 
   run();
 }
@@ -943,6 +995,17 @@ event init (i = 0) {
       porosity[] = eps0*f[];
     }
   }
+
+#if FIXED_GRID
+  /**
+  The refinement comes after `restore()`, because `restore()` builds the grid
+  of the snapshot again. `run/test-fixgrid.c` gives `FIXED_GRID_REGION`.
+  Outside the region the grid of the snapshot stays as it is. */
+
+  refine ((FIXED_GRID_REGION) && level < maxlevel);
+  if (pid() == 0)
+    fprintf (stderr, "# fixed grid: the region is at level %d\n", maxlevel);
+#endif
 }
 
 /**
@@ -1403,8 +1466,11 @@ probe with its column 2. */
 
 #define NPROBE 9
 
-event probe_points (t += 0.01) {
+/**
+The position of probe `k`. `projection_probe` uses the same positions. */
 
+static coord probe_coord (int k)
+{
   const double R = 0.5*D0;
   const double c45 = cos (pi/4.);
   coord probes[NPROBE] = {
@@ -1418,6 +1484,14 @@ event probe_points (t += 0.01) {
     {R + 4e-3, 0.},
     {R + 8e-3, 0.}
   };
+  return probes[k];
+}
+
+event probe_points (t += 0.01) {
+
+  coord probes[NPROBE];
+  for (int k = 0; k < NPROBE; k++)
+    probes[k] = probe_coord (k);
 
 #ifdef MOLAR_DIFFUSION
   scalar YH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
@@ -1465,6 +1539,127 @@ event probe_points (t += 0.01) {
     fflush (fpp);
   }
 }
+
+#if PROJECTION_PROBE
+/**
+## The probe of the projection, for each step
+
+`projstep.dat` holds one line for each step. The columns are:
+
+  t, i, dt                 the time, the step and the timestep
+  mgp_i, mgp_resa          the cycles and the residual of the projection of
+                           `centered-phasechange.h`
+  mgp_tol                  `mgp_resa*dt^2`. The solver stops when this value
+                           is less than `TOLERANCE`, so compare this column
+                           with `PROJ_TOLERANCE`, not `mgp_resa`.
+  mgp_nrelax               the relaxation sweeps of the last cycle
+  mgpsf_i, mgpsf_resa      the cycles and the residual of `project_sv`
+  ncells                   the leaf cells of the grid
+  adapt_i, nf, nc          the step of the last adapt, the cells that it
+                           refined and the cells that it coarsened. Without
+                           adapt (`FIXED_GRID`) these columns stay -1, 0, 0.
+  dumax                    the largest change of |u| in one step, over the
+                           whole domain
+  x_du, y_du, lev_du, f_du the position, the level and `f` of that cell
+  ux0 uy0 ... ux6 uy6      the velocity at the point probes 0, 2, 3 and 6
+                           (see `probe_coord`)
+
+The counts of the adapt of step `k` are on the lines with `adapt_i = k`. The
+projection of step `k + 1` ran on the grid of that adapt. The `adapt` event
+of this case comes after this event in the file, and `centered.h` declares
+its own `adapt` as `last`, so the adapt group runs at the position of this
+case's `adapt`. This event therefore runs before the adapt of its step, and
+a line normally holds `adapt_i = i - 1`. Check this on the first lines of a
+run. A spike from a change of the grid then shows as a large `mgp_tol` and
+`dumax` on the same line as a large `nf + nc`.
+
+`dumax` compares `u` with a copy from the end of the last step. The copy is
+a field, so the adapt restricts and prolongs it with `u`. In a new cell the
+change therefore includes the change of the prolongation. The copy starts
+equal to `u` at the first step of the run, also after a restart.
+
+Cost: two loops over the cells and four point probes for each step. That is
+small against the chemistry. The file grows by about 300 bytes for each step. */
+
+vector uprev_pp[];
+
+event projection_probe (i++) {
+
+  static bool first = true;
+  const int kp[4] = {0, 2, 3, 6};
+
+  if (first)
+    foreach()
+      foreach_dimension()
+        uprev_pp.x[] = u.x[];
+
+  int ncells = 0;
+  double dumax = 0.;
+  foreach (reduction(+:ncells) reduction(max:dumax)) {
+    ncells++;
+    double du = sqrt (sq(u.x[] - uprev_pp.x[]) + sq(u.y[] - uprev_pp.y[]));
+    if (du > dumax)
+      dumax = du;
+  }
+
+  double xm = -1e30, ym = -1e30, lm = -1., fm = -1.;
+  foreach (reduction(max:xm) reduction(max:ym) reduction(max:lm)
+           reduction(max:fm)) {
+    double du = sqrt (sq(u.x[] - uprev_pp.x[]) + sq(u.y[] - uprev_pp.y[]));
+    if (dumax > 0. && du == dumax) {
+      xm = x; ym = y; lm = level; fm = f[];
+    }
+  }
+
+  double up[4][2];
+  for (int j = 0; j < 4; j++) {
+    coord pc = probe_coord (kp[j]);
+    double xp = pc.x, yp = pc.y;
+    double vx = nodata, vy = nodata;
+    foreach_point (xp, yp, 0., reduction(min:vx) reduction(min:vy)) {
+      vx = interpolate_biquadratic (point, u.x, xp, yp);
+      vy = interpolate_biquadratic (point, u.y, xp, yp);
+    }
+    up[j][0] = vx; up[j][1] = vy;
+  }
+
+#if TREE
+  int ai = adapt_last_i, anf = adapt_last.nf, anc = adapt_last.nc;
+#else
+  int ai = -1, anf = 0, anc = 0;
+#endif
+
+  if (pid() == 0) {
+    static FILE * fq = NULL;
+    if (!fq) {
+      fq = fopen ("projstep.dat", "a");
+      if (fq == NULL) {
+        fprintf (stderr, "Error opening projstep.dat\n");
+        exit (1);
+      }
+      if (ftell (fq) == 0)
+        fprintf (fq, "#t(1) i(2) dt(3) mgp_i(4) mgp_resa(5) mgp_tol(6)"
+                     " mgp_nrelax(7) mgpsf_i(8) mgpsf_resa(9) ncells(10)"
+                     " adapt_i(11) nf(12) nc(13) dumax(14) x_du(15) y_du(16)"
+                     " lev_du(17) f_du(18) ux0(19) uy0(20) ux2(21) uy2(22)"
+                     " ux3(23) uy3(24) ux6(25) uy6(26)\n");
+    }
+    fprintf (fq, "%.9g %d %g %d %g %g %d %d %g %d %d %d %d %g %g %g %g %g"
+                 " %g %g %g %g %g %g %g %g\n",
+             t, i, dt, mgp.i, mgp.resa, mgp.resa*sq(dt), mgp.nrelax,
+             mgpsf.i, mgpsf.resa, ncells, ai, anf, anc,
+             dumax, xm, ym, lm, fm,
+             up[0][0], up[0][1], up[1][0], up[1][1],
+             up[2][0], up[2][1], up[3][0], up[3][1]);
+    fflush (fq);
+  }
+
+  foreach()
+    foreach_dimension()
+      uprev_pp.x[] = u.x[];
+  first = false;
+}
+#endif // PROJECTION_PROBE
 
 /**
 Diagnostics for the phase-change expansion field, sampled every timestep.
@@ -1742,13 +1937,18 @@ event angular_profile (t += 0.01) {
   }
 }
 
-#if TREE
+/**
+`FIXED_GRID` removes this event. The same-name event of
+`variable-properties.h` stays, and it only updates the properties. */
+
+#if TREE && !FIXED_GRID
 event adapt (i++) {
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
 
-  adapt_wavelet_leave_interface ({T, oxidiser}, {f},
+  adapt_last = adapt_wavelet_leave_interface ({T, oxidiser}, {f},
     (double[]){ADAPT_T_TOL, ADAPT_O_TOL}, maxlevel, minlevel, 2);
-  
+  adapt_last_i = i;
+
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);

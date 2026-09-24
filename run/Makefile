@@ -746,6 +746,9 @@ test-omegac.tst:    CFLAGS += $(TLAD_OMEGAC)
 test-omegau.s:      CFLAGS += $(TLAD_OMEGAU)
 test-omegau.tst:    CFLAGS += $(TLAD_OMEGAU)
 
+test-omegaunoshrink.s:      CFLAGS += $(TLAD_OMEGAU) $(TLAD_NOSHRINK)
+test-omegaunoshrink.tst:    CFLAGS += $(TLAD_OMEGAU) $(TLAD_NOSHRINK)
+
 TLAD_ATOL = $(TLAD_FULL) $(TLAD_PROBE)
 
 test-atol2.s:    CFLAGS += -DADAPT_T_TOL=2.5 -DADAPT_O_TOL=5.e-3 $(TLAD_ATOL)
@@ -1399,6 +1402,73 @@ test-fixgrid.c: ;
 
 test-fixgrid.s:     CFLAGS += $(TLAD_SPIKE)
 test-fixgrid.tst:   CFLAGS += $(TLAD_SPIKE)
+
+# --- the pulses next to the interface, added 2026-09-24 ---------------------
+# Result of the runs above: the residual does not cause the spikes.
+# test-sptol and test-snit4 keep them. The spikes are pulses of about 4 ms,
+# and each one starts in a gas cell next to the interface. The first
+# test-fixgrid found no snapshot and ran from t = 0, so it did not test the
+# adapt on 15 to 21 s.
+#
+# projstep.dat now has columns 27 to 49 (see the doc of projection_probe in
+# test.c):
+#   27-39  the cell of the largest |du| in the zone next to the interface,
+#          with f, the change of f, gas_source, drhodt, the change of
+#          div_source, porosity and the f of its 3x3 block
+#   40-44  the cell of the largest change of div_source in that zone
+#   45-49  the outlet cell (75, 15) mm: u and its change, with the sign
+# Columns 1 to 26 do not change.
+#
+#   test-sprobe2         as test-sprobe, with the new columns. Restart at
+#                        t = 15 s. Does a cut cell that toggles start the
+#                        pulses? Is the outlet cell a mode of the solver?
+#   test-sfixgrid        test-fixgrid from the snapshot of t = 15 s. Its
+#                        source is a link to test-fixgrid.c. It stops at once
+#                        if it finds no last-snapshot
+#                        (FIXED_GRID_NEED_RESTART=1). Compare with
+#                        test-sprobe2. Does the adapt cause the pulses?
+#   test-omegaunoshrinkp test-omegaunoshrink with the probe, from t = 0 to
+#                        t = 21 s. No snapshot of t = 18 s exists, because
+#                        the dump overwrites last-snapshot every second. It
+#                        looks for the source of the burst at 18.6 to 19.6 s.
+#                        Caution: identical builds do not give identical
+#                        trajectories, so the burst can come at another time
+#                        or not come at all.
+#
+# What to read:
+#   - A pulse: du_ni (col 27) large for about 10 steps. On its first line,
+#     is |df_ni| (col 32) or |dds_ni| (col 35) large? Is the cell a cut cell
+#     or the neighbour of one (ncut_ni, col 39)?
+#   - The outlet: the sign of dux_out (col 47) from step to step.
+#   - test-sfixgrid against test-sprobe2: the count of pulses on 15 to 21 s.
+#
+# Procedure:
+#   1. Build from the commit of this section or later.
+#   2. For test-sprobe2 and test-sfixgrid:
+#        mkdir -p <run> && cp <snapshot of t = 15 s of test-base> <run>/last-snapshot
+#      Do not reuse the folder test-fixgrid: its files hold t = 0 to 11 and
+#      the new run would add to them.
+#   3. For test-omegaunoshrinkp: an empty folder, no last-snapshot.
+#   4. Regenerate Makefile.tests on the login node before qsub. Run on 8
+#      ranks. Check "Restart file found!" in the log of the two restarts.
+#
+# Cost: test-sprobe2 about test-sref. test-sfixgrid about 2 times
+# test-sprobe (3.1 s per step in test-fixgrid). test-omegaunoshrinkp about
+# test-base to t = 21 s. projstep.dat grows by about 550 bytes for each step.
+
+test-sfixgrid.c: test-fixgrid.c
+	ln -sf $< $@
+
+test-sprobe2.s:          CFLAGS += $(TLAD_SPIKE)
+test-sprobe2.tst:        CFLAGS += $(TLAD_SPIKE)
+
+test-sfixgrid.s:         CFLAGS += $(TLAD_SPIKE) -DFIXED_GRID_NEED_RESTART=1
+test-sfixgrid.tst:       CFLAGS += $(TLAD_SPIKE) -DFIXED_GRID_NEED_RESTART=1
+
+test-omegaunoshrinkp.s:   CFLAGS += $(TLAD_OMEGAU) $(TLAD_NOSHRINK) \
+                                    -DPROJECTION_PROBE=1 -DTEND_VALUE=21.
+test-omegaunoshrinkp.tst: CFLAGS += $(TLAD_OMEGAU) $(TLAD_NOSHRINK) \
+                                    -DPROJECTION_PROBE=1 -DTEND_VALUE=21.
 
 # ---------------------------------------------------------------------------
 # Smear of the pellet corner under shrinkage (see shrink-corner.c).

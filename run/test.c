@@ -526,6 +526,14 @@ The probe reads only. It writes no field that another module reads. */
 #endif
 
 /**
+`FIXED_GRID_NEED_RESTART 1` stops a `FIXED_GRID` run at the start if it
+finds no `last-snapshot`. */
+
+#ifndef FIXED_GRID_NEED_RESTART
+# define FIXED_GRID_NEED_RESTART 0
+#endif
+
+/**
 ## Constant properties
 
 `CONST_PROPERTIES` replaces `opensmoke-properties.h` with
@@ -988,6 +996,17 @@ event init (i = 0) {
     fprintf (stderr, "Restart file found!\n");
     restarted = true;
   } else {
+#if FIXED_GRID && FIXED_GRID_NEED_RESTART
+    /**
+    The fixed grid must start from the snapshot, because it tests the
+    window of the restart rungs. The first `test-fixgrid` found no
+    snapshot and ran from t = 0, so this guard stops such a run at once. */
+
+    if (pid() == 0)
+      fprintf (stderr, "# fixed grid: no last-snapshot. Copy the snapshot "
+                       "of t = 15 s into the folder. Stop.\n");
+    exit (1);
+#endif
     fprintf (stderr, "No restart file found, starting from scratch!\n");
 
     foreach() {
@@ -1578,10 +1597,59 @@ a field, so the adapt restricts and prolongs it with `u`. In a new cell the
 change therefore includes the change of the prolongation. The copy starts
 equal to `u` at the first step of the run, also after a restart.
 
-Cost: two loops over the cells and four point probes for each step. That is
-small against the chemistry. The file grows by about 300 bytes for each step. */
+### The zone next to the interface (columns 27 to 44)
+
+The runs of 2026-09-23 showed that the spikes are pulses of about 4 ms. Each
+one starts in a gas cell next to the interface, and the residual follows the
+pulse. These columns find the cell and tell if its `f` or its source jumps.
+The zone holds the cells with `f < 1 - F_ERR` (gas and cut cells) and a
+distance from the origin of less than `PP_NEAR_R` (default `D0/2 + 1 mm`).
+
+  du_ni                    the largest change of |u| in one step in the zone
+  x_ni, y_ni, lev_ni       the position and the level of that cell
+  f_ni, df_ni              its `f`, and the change of `f` in the step
+  gs_ni, dr_ni             its `gas_source` and its `drhodt`
+  dds_ni                   the change of `div_source` in the step
+  eps_ni                   its `porosity`
+  fnmin_ni, fnmax_ni       the lowest and the highest `f` of the 3x3 block
+  ncut_ni                  the cut cells (`F_ERR < f < 1 - F_ERR`) of the block
+  dds_max                  the largest |change of `div_source`| in the zone
+  x_ds, y_ds, f_ds, df_ds  the position, `f` and the change of `f` of that cell
+
+`div_source` is `gas_source + drhodt`, the source that the projection of
+this step used. A cut cell that toggles shows as a large `df_ni` or a large
+`dds_ni` on the line of the pulse. A pulse with small `df_ni` and `dds_ni`
+does not come from the source of the cell.
+
+### The outlet cell (columns 45 to 49)
+
+  ux_out, uy_out           u in the cell at (`PP_OUT_X`, `PP_OUT_Y`), default
+                           (75, 15) mm. The value of the cell, not an
+                           interpolation.
+  dux_out, duy_out         the change of u in the step, with its sign
+  lev_out                  the level of the cell
+
+In the runs of 2026-09-23 this cell held `dumax` on 86 per cent of the
+steps. A sign that alternates from step to step is a mode of the solver. A
+change that does not alternate is a real motion of the flow.
+
+Cost: four loops over the cells and five point probes for each step. That is
+small against the chemistry. The file grows by about 550 bytes for each step. */
+
+#ifndef PP_NEAR_R
+# define PP_NEAR_R (0.5*D0 + 1e-3)
+#endif
+
+#ifndef PP_OUT_X
+# define PP_OUT_X 0.075
+#endif
+
+#ifndef PP_OUT_Y
+# define PP_OUT_Y 0.015
+#endif
 
 vector uprev_pp[];
+scalar fprev_pp[], dsprev_pp[];
 
 event projection_probe (i++) {
 
@@ -1589,27 +1657,71 @@ event projection_probe (i++) {
   const int kp[4] = {0, 2, 3, 6};
 
   if (first)
-    foreach()
+    foreach() {
       foreach_dimension()
         uprev_pp.x[] = u.x[];
+      fprev_pp[] = f[];
+      dsprev_pp[] = div_source[];
+    }
 
   int ncells = 0;
-  double dumax = 0.;
-  foreach (reduction(+:ncells) reduction(max:dumax)) {
+  double dumax = 0., duni = 0., dsmax = 0.;
+  foreach (reduction(+:ncells) reduction(max:dumax) reduction(max:duni)
+           reduction(max:dsmax)) {
     ncells++;
     double du = sqrt (sq(u.x[] - uprev_pp.x[]) + sq(u.y[] - uprev_pp.y[]));
     if (du > dumax)
       dumax = du;
+    if (f[] < 1. - F_ERR && sqrt (sq(x) + sq(y)) < PP_NEAR_R) {
+      if (du > duni)
+        duni = du;
+      double dds = fabs (div_source[] - dsprev_pp[]);
+      if (dds > dsmax)
+        dsmax = dds;
+    }
   }
 
+  /**
+  The second loop finds the cells of the three maxima. Only the cell of a
+  maximum sets the values, so a `max` reduction returns them. The sentinel
+  is -1e30, because some of the values can be negative. */
+
   double xm = -1e30, ym = -1e30, lm = -1., fm = -1.;
+  double xn = -1e30, yn = -1e30, ln = -1., fn = -1e30, dfn = -1e30;
+  double gsn = -1e30, drn = -1e30, ddsn = -1e30, epsn = -1e30;
+  double fnmin = -1e30, fnmax = -1e30, ncutn = -1.;
+  double xs = -1e30, ys = -1e30, fs = -1e30, dfs = -1e30;
   foreach (reduction(max:xm) reduction(max:ym) reduction(max:lm)
-           reduction(max:fm)) {
+           reduction(max:fm) reduction(max:xn) reduction(max:yn)
+           reduction(max:ln) reduction(max:fn) reduction(max:dfn)
+           reduction(max:gsn) reduction(max:drn) reduction(max:ddsn)
+           reduction(max:epsn) reduction(max:fnmin) reduction(max:fnmax)
+           reduction(max:ncutn) reduction(max:xs) reduction(max:ys)
+           reduction(max:fs) reduction(max:dfs)) {
     double du = sqrt (sq(u.x[] - uprev_pp.x[]) + sq(u.y[] - uprev_pp.y[]));
     if (dumax > 0. && du == dumax) {
       xm = x; ym = y; lm = level; fm = f[];
     }
+    if (f[] < 1. - F_ERR && sqrt (sq(x) + sq(y)) < PP_NEAR_R) {
+      if (duni > 0. && du == duni) {
+        xn = x; yn = y; ln = level; fn = f[]; dfn = f[] - fprev_pp[];
+        gsn = gas_source[]; drn = drhodt[];
+        ddsn = div_source[] - dsprev_pp[]; epsn = porosity[];
+        double lo = 1e30, hi = -1e30;
+        int nc = 0;
+        foreach_neighbor (1) {
+          if (f[] < lo) lo = f[];
+          if (f[] > hi) hi = f[];
+          if (f[] > F_ERR && f[] < 1. - F_ERR) nc++;
+        }
+        fnmin = -lo; fnmax = hi; ncutn = nc;
+      }
+      if (dsmax > 0. && fabs (div_source[] - dsprev_pp[]) == dsmax) {
+        xs = x; ys = y; fs = f[]; dfs = f[] - fprev_pp[];
+      }
+    }
   }
+  fnmin = -fnmin;
 
   double up[4][2];
   for (int j = 0; j < 4; j++) {
@@ -1621,6 +1733,15 @@ event projection_probe (i++) {
       vy = interpolate_biquadratic (point, u.y, xp, yp);
     }
     up[j][0] = vx; up[j][1] = vy;
+  }
+
+  double uxo = -1e30, uyo = -1e30, duxo = -1e30, duyo = -1e30, levo = -1.;
+  foreach_point (PP_OUT_X, PP_OUT_Y, 0., reduction(max:uxo)
+                 reduction(max:uyo) reduction(max:duxo) reduction(max:duyo)
+                 reduction(max:levo)) {
+    uxo = u.x[]; uyo = u.y[];
+    duxo = u.x[] - uprev_pp.x[]; duyo = u.y[] - uprev_pp.y[];
+    levo = level;
   }
 
 #if TREE
@@ -1642,21 +1763,37 @@ event projection_probe (i++) {
                      " mgp_nrelax(7) mgpsf_i(8) mgpsf_resa(9) ncells(10)"
                      " adapt_i(11) nf(12) nc(13) dumax(14) x_du(15) y_du(16)"
                      " lev_du(17) f_du(18) ux0(19) uy0(20) ux2(21) uy2(22)"
-                     " ux3(23) uy3(24) ux6(25) uy6(26)\n");
+                     " ux3(23) uy3(24) ux6(25) uy6(26)"
+                     " du_ni(27) x_ni(28) y_ni(29) lev_ni(30) f_ni(31)"
+                     " df_ni(32) gs_ni(33) dr_ni(34) dds_ni(35) eps_ni(36)"
+                     " fnmin_ni(37) fnmax_ni(38) ncut_ni(39)"
+                     " dds_max(40) x_ds(41) y_ds(42) f_ds(43) df_ds(44)"
+                     " ux_out(45) uy_out(46) dux_out(47) duy_out(48)"
+                     " lev_out(49)\n");
     }
     fprintf (fq, "%.9g %d %g %d %g %g %d %d %g %d %d %d %d %g %g %g %g %g"
-                 " %g %g %g %g %g %g %g %g\n",
+                 " %g %g %g %g %g %g %g %g"
+                 " %g %g %g %g %g %g %g %g %g %g %g %g %g"
+                 " %g %g %g %g %g"
+                 " %g %g %g %g %g\n",
              t, i, dt, mgp.i, mgp.resa, mgp.resa*sq(dt), mgp.nrelax,
              mgpsf.i, mgpsf.resa, ncells, ai, anf, anc,
              dumax, xm, ym, lm, fm,
              up[0][0], up[0][1], up[1][0], up[1][1],
-             up[2][0], up[2][1], up[3][0], up[3][1]);
+             up[2][0], up[2][1], up[3][0], up[3][1],
+             duni, xn, yn, ln, fn, dfn, gsn, drn, ddsn, epsn,
+             fnmin, fnmax, ncutn,
+             dsmax, xs, ys, fs, dfs,
+             uxo, uyo, duxo, duyo, levo);
     fflush (fq);
   }
 
-  foreach()
+  foreach() {
     foreach_dimension()
       uprev_pp.x[] = u.x[];
+    fprev_pp[] = f[];
+    dsprev_pp[] = div_source[];
+  }
   first = false;
 }
 #endif // PROJECTION_PROBE

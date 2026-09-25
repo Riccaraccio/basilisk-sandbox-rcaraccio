@@ -113,6 +113,11 @@ survives. */
 #endif
 
 const double Uin = 0.6; //inlet velocity
+/**
+Caution: give `pf` the same conditions as `p`. Basilisk does not copy them,
+so without these lines every boundary of `pf` is Neumann, and the projection
+of `uf` has no solution. See the comment in `fatehi-combustion.c`. */
+
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
@@ -125,7 +130,7 @@ psi[top]     = dirichlet (0.);
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
 p[right]      = dirichlet (0.);
-pf[right]     = neumann (0.);
+pf[right]     = dirichlet (0.);
 psi[right]    = neumann (0.);
 
 const double tend = TEND; //simulation time

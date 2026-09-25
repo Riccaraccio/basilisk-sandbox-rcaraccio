@@ -17,123 +17,84 @@ sensor-equivalent value that the plots use.
 
 ## The configuration
 
-The oscillation campaign of 2026-08-31 to 2026-09-10 measured every knob that
-this case can turn. The block below carries what that campaign settled. Read
-`run/test.c` for the solid ladder and `run/gas-source.c` for the gas ladder.
-Do not change a value here without the run that supports it.
+The configuration is the one of `test-fbestl11full` in `run/Makefile`:
+`run/test.c` with `TLAD_FULL`, `TLAD_BEST` and level 11. The user chose it on
+2026-09-25, because `test-fbestfull` (level 10) and `test-fbestl11full` gave
+the best results of the campaign in the full case. The comparison of the two
+sources is in `~/publication-review/production-flags.md`. Do not change a
+value here without a run that supports it.
 
-Applied, each one a removal of an artifact:
+The numerical flags, in the order of the code below:
+
+| flag | value | reason |
+|---|---|---|
+| `INT_TEMP_VOFBC`, `INT_TEMP_PICARD` | 0 | the evidence runs had 0; VOFBC makes `dt` smaller |
+| `CORRECTIVE_CFL` | 0.5 | the default of `src/`, as in the evidence runs |
+| `GAS_SOURCE_EXACT` | 1 | TL-3, with the filter of 4 passes |
+| `DRHODT_IMPLICIT` | 1 | TL-2 |
+| `GAS_UBF_ADVECTION` | 2 | item 7 |
+| `GAS_CHEMISTRY_STRANG` | 1 | TL-1 |
+| `FROZEN_CELL_GATE` | 1 | 1.28x faster, same answer at 1e-15 |
+| `PIN_SOLID_INTERIOR` | 0 | the user chose 0; the evidence runs had 1 |
+| `OUTLET_BC` | 0 | the outlet of `run/test.c` |
+| adapt | `{T, O2}` | the criterion of `run/test.c`, no `zdiff` |
+| `MAXLEVEL`, `DT_VALUE`, `CFL_VALUE` | 11, 5e-4, 0.5 | as in the evidence runs |
+| `PROJ_TOLERANCE`, `PROJ_NITERMIN` | 1e-5, 2 | as in the evidence runs |
+
+Other settings that the campaign settled:
 
 - `TOLERANCE = 1e-5` and `NITERMIN = 2`. Basilisk scales the tolerance of the
   projection as `TOLERANCE/dt^2`, so the default 1e-3 stops the solve after
-  one multigrid cycle at every step. A refinement near the flame then left a
-  residual 100 times larger and a spike of 30 K that lasted 0.3 s.
+  one multigrid cycle at every step.
 - `init_grid (1 << min (maxlevel, 8))` in `main()`, and a `refine()` of a disc
   of 0.75 D0 in `event init`, before `fraction()`. One cell of this case holds
   1104 fields, which is 8.8 kB, so `init_grid (1 << 10)` allocates 9.3 GB
-  before the first adapt, and the chemistry event of `i = 0` runs on all of
-  it. A `refine()` in `main()` does nothing: read `event init`.
+  before the first adapt. A `refine()` in `main()` does nothing: read
+  `event init`.
 - `event output (t += 0.01)`. At 0.1 s the Nyquist limit is 5 Hz, and the
-  flame flickers near 17 Hz, so the jitter folds into the band below 1 Hz and
-  the run appears to wander. The profile events stay at 0.1 s, because they
-  write 1025 samples per line and per file.
-- `FROZEN_CELL_GATE`. `biomass/Solid-gas-88` costs about 100 evaluations of
-  the right-hand side in a cell that does not react. The gate spends one
-  evaluation to find that out. At the default tolerance of 1e-15 it gives the
-  same answer in every column of every row, and it reaches 1.28 times more
-  simulated time for the same wall clock.
-- `CORRECTIVE_CFL = 0.8`. The corrective velocity of `MOLAR_DIFFUSION` and
-  `FICK_CORRECTED` reaches 0.333 m/s against an inflow of 0.13 m/s, and no
-  event limited the step by it, so the scheme ran above a Courant number of 1
-  at the front. The limit at 0.5 costs 2.1 times the step; at 0.8, which
-  matches the flow CFL, it costs 1.3 times.
+  flame flickers near 17 Hz, so the jitter folds into the band below 1 Hz.
+  The profile events stay at 0.1 s, because they write 1025 samples per line
+  and per file.
 - `zeta_policy = ZETA_REACTION`. The shrinkage follows the local rate of
-  reaction. `ZETA_CONST` splits the released volume in half everywhere; the
-  A/B from one ignition snapshot gives it a worse probe temperature (50.8 K
-  against 35.4 K peak to peak) and a worse peak reaction rate (34.7 % against
-  18.5 %), and it does not remove the slow band.
+  reaction. The A/B from one ignition snapshot gave `ZETA_CONST` a worse
+  probe temperature (50.8 K against 35.4 K peak to peak) and a worse peak
+  reaction rate.
 - A guard on `nodata` in `print_profile()`. `interpolate()` gives 1e30 when no
-  rank holds the point. Two rows of the archived run carried that value, and
-  `WMS.py` read it as a temperature.
+  rank holds the point.
+- The defaults of `src/` that the campaign moved: `GAS_SOURCE_AVERAGED = 1`,
+  `CORRECTIVE_LIMITER = 1`, `MDE_INTERFACE = 1`, `INT_TEMP_TOL = 1`,
+  `TS_PORE_ADVECTION = 1`, `GAS_STATE_FALLBACK = 1` and
+  `DARCY_PRESSURE_COUPLING = 1`. `PROPS_AFTER_SOLVES` and
+  `PHASE_AWARE_PROPERTIES` stay at 0.
 
-OPEN, and switched off here for one reason only. Read this before you decide:
+Known limits of this configuration:
 
-- `INT_TEMP_VOFBC` is the intended replacement for `INT_TEMP_ROBIN`, and
-  `multicomponent-varprop.h:78` makes the two an `#error` against each other.
-  It puts the interface temperature inside the operator of the Poisson solve,
-  so `plic_flux()` rebuilds the interface gradient on every relaxation sweep
-  instead of freezing it at step n. It removes both sliver crashes. It is NOT
-  refuted, and it is not the default of `src/`: `INT_TEMP_VOFBC` has no
-  `#ifndef` block anywhere, so an undefined name reads as 0.
-
-  Two of the three ladders run to the end with it, and neither one warns:
-
-  | run | flags beyond the reduced case | reached | `pf` warnings |
-  |---|---|---|---|
-  | `test-vofbcfl` | none | t = 40 | 0 |
-  | `test-vofbcm` | `MOISTURE` | t = 39.74 | 0 |
-  | `test-fullvofbc` | the full set | **t = 10.34** | **84** |
-
-  Only the full set fails, and this case carries the full set. It fails as a
-  collapse of the timestep, which is the signature that `INT_TEMP_ROBIN`
-  gave: over 0.05 s the step falls 3.4e-4 -> 1.7e-5 and the residual of the
-  projection climbs 2.3 -> 113. The `pf` warnings start at line 5 of the log,
-  which is the first step, so the projection is unhappy from the beginning.
-  The build is current: `stat -c %y test-fullvofbc/warn` gives 2026-09-09
-  16:38, after the fix of `src/plicbc.h` at 11:13.
-
-  The difference between `test-vofbcm`, which passes, and `test-fullvofbc`,
-  which fails, is five ingredients: `Da`, gravity, the shape, the emissivity
-  of Di Blasi, and the three transport flags. The transport flags are the
-  suspect, because `INT_TEMP_VOFBC` and they act on the same diffusion solves
-  of `multicomponent-varprop.h`, and no other VOFBC run carries them.
-
-  So: switch it on with `-DINT_TEMP_VOFBC=1 -DINT_TEMP_PICARD=1` when the
-  interaction is understood, and repeat `test-fullvofbc` first. Do not run a
-  comparison against the experiment on a build that stops at t = 10.34 s.
-
-- `INT_TEMP_PICARD` belongs with `INT_TEMP_VOFBC`, and the rung `TLAD_VOFBC`
-  carries both. On its own it is open, not refuted. The measurement that
-  reads badly for it, a slow band of 23.5 % against 10.4 %, comes from a
-  build that also carried the conductance at `INT_TEMP_ROBIN_SMAX = 1`, and
-  that setting alone moves the surface temperature by 2 K where the loop
-  moves it by 0.07 K. Every Picard run of the archive inherits that artefact
-  and has to be repeated.
-
-- `INT_TEMP_ROBIN`. The conductance biases the surface temperature by 20 to
-  25 K at `SMAX = 1`, and `SMAX = 20` is a mitigation, not a cure. Prefer
-  `INT_TEMP_VOFBC`, which supersedes it.
-
-Refuted, and switched OFF. Do not switch one on without a new run:
-
-- `GAS_SOURCE_EXACT`. The exact logarithmic form of the expansion is a no-op
-  on this two-dimensional flame: it matches the averaged form to three digits.
-- `PHASE_AWARE_PROPERTIES`. The zero mixture density comes from a runaway of
-  the gas temperature in a thin cell, not from the prolongation after adapt.
-- `PIN_SOLID_INTERIOR`. Leave it at 0 for a production run. Set it to 1 only
-  for a campaign that compares two cases, so that the interior of the pellet
-  coarsens the same way in both.
-- `maxlevel = 11`. The slow band falls 1.4 to 1.9 times from level 10 to
-  level 11, but level 11 and level 12 both meet the runaway of the gas
-  temperature in a thin cell.
-
-Taken from the defaults of `src/`, which the campaign moved:
-
-- `GAS_SOURCE_AVERAGED = 1`. The expansion source of the gas is the step
-  average, not the rate at the end state. The end-state form has the wrong
-  sign in a cell that burns out inside one step.
-- `CORRECTIVE_LIMITER = 1` and `MDE_INTERFACE = 1`, the other two fixes of the
-  transport flags.
-- `INT_TEMP_TOL = 1`. It scales the tolerance of each temperature solve to
-  `theta/dt`, which halves the multigrid cycles of the gas and leaves every
-  column equal to printed precision.
-- `GAS_STATE_FALLBACK = 1`, which repairs a cell whose gas state is bad.
+- `INT_TEMP_VOFBC` is off, so no term bounds `TG` in a sliver cell. The
+  output writes `TGmin_gas` and `nTGneg` as an early warning. If a runaway
+  starts, restart from the last numbered snapshot with `-DINT_TEMP_VOFBC=1`.
+  Caution: that rescue has no test with this set. With the full set, VOFBC
+  died at t = 10.34 s (`test-fullvofbc`, a build from before the `pf`
+  conditions), and at level 11 in this case it made `dt` fall from 2.4e-4 to
+  6e-5 at t = 5.55 s. `test-vofbcm` (moisture only) reached t = 39.74 s.
+- `GAS_SOURCE_EXACT` carries a spatial filter of the expansion source
+  (`centered-phasechange.h`). The paper must state it, with its width
+  `sigma = Delta_min`. The restart rung `test-sgsenf` tells if the filter or
+  the log form gives the effect.
+- The solid drift of NEW-1 (`shift_field()`) is not fixed. It is about
+  -0.4 per cent of `solid_mass0` at level 11. `shrinkbudget.dat` measures it.
+- `PIN_SOLID_INTERIOR = 0` has no evidence run with this set.
+- The outlet 0 has no run of this case with `biomass/Solid-gas-88`. See the
+  caution in the section on the outlet.
 
 `GAS_PHASE_REACTIONS` is NOT set here. No file in `src/` tests it, so it is a
 dead flag: the mechanism of the pore gas runs whatever its value is. */
 
-#define INT_TEMP_VOFBC 1
-#define INT_TEMP_PICARD 1
+#ifndef INT_TEMP_VOFBC
+# define INT_TEMP_VOFBC 0
+#endif
+#ifndef INT_TEMP_PICARD
+# define INT_TEMP_PICARD 0
+#endif
 
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
@@ -153,7 +114,119 @@ floating constant in an `#if`, so test it at run time, never with `#if`. */
 #endif
 
 #ifndef CORRECTIVE_CFL
-# define CORRECTIVE_CFL 0.8
+# define CORRECTIVE_CFL 0.5
+#endif
+
+/**
+The four flags of `TLAD_BEST` in `run/Makefile`. `test-fbestfull` (level 10)
+and `test-fbestl11full` (level 11) carry them. Those two runs are the evidence
+for this configuration.
+
+- `GAS_SOURCE_EXACT = 1` selects the exact form `ln(rho_start/rho_end)/dt`
+  of the chemistry part of `drhodt` (TL-3). It also selects a filter on
+  `gas_source + drhodt` before the projection: `GAS_SOURCE_FILTER_PASSES`
+  passes, 4 by default, width `sigma = Delta_min`. The evidence runs had the
+  filter. `test-sgsenf` tells which of the two changes gives the effect.
+- `DRHODT_IMPLICIT = 1` builds the transport part of `drhodt` from the
+  implicit solves (TL-2).
+- `GAS_UBF_ADVECTION = 2` masks `ubf` in the advection of the gas tracers
+  (item 7). Mode 0 makes `TG` of the sliver cells 40 to 50 K colder.
+- `GAS_CHEMISTRY_STRANG = 1` integrates the gas reactor over `dt/2` before
+  the transport and over `dt/2` after it (TL-1). It costs about 1.1 times the
+  gas chemistry in a burning cell and about 2 times in a cell that does not
+  react and that the gate does not skip (`chemistry.h`). */
+
+#ifndef GAS_SOURCE_EXACT
+# define GAS_SOURCE_EXACT 1
+#endif
+
+#ifndef DRHODT_IMPLICIT
+# define DRHODT_IMPLICIT 1
+#endif
+
+#ifndef GAS_UBF_ADVECTION
+# define GAS_UBF_ADVECTION 2
+#endif
+
+#ifndef GAS_CHEMISTRY_STRANG
+# define GAS_CHEMISTRY_STRANG 1
+#endif
+
+/**
+`PIN_SOLID_INTERIOR = 0` lets the interior of the pellet coarsen. It is also
+the default of `src/`, and it is set here to show the choice. Caution: the
+evidence runs had 1, because `run/Makefile` adds `TLAD_PIN` to every `test-*`
+target. This is the only numerical difference between this case and
+`test-fbestl11full`. It can change the cost, the solid drift of NEW-1 and the
+band of the solid side. */
+
+#ifndef PIN_SOLID_INTERIOR
+# define PIN_SOLID_INTERIOR 0
+#endif
+
+/**
+The tolerance of the projection. Basilisk scales it as `TOLERANCE/dt^2`, so
+the default 1e-3 stops the solve after one multigrid cycle at every step. The
+values are the ones of `run/test.c`. */
+
+#ifndef PROJ_TOLERANCE
+# define PROJ_TOLERANCE 1e-5
+#endif
+
+#ifndef PROJ_NITERMIN
+# define PROJ_NITERMIN 2
+#endif
+
+/**
+The mechanism. `FATEHI_DUMMY = 1` selects `biomass/dummy-solid-gas` and the
+initial solid of `run/test.c` (BIOMASS, MOIST and ASH). Use it only for the
+check run of this build against `test-fbestfull`. That mechanism has no OH,
+so the OH outputs are off with it. */
+
+#ifndef FATEHI_DUMMY
+# define FATEHI_DUMMY 0
+#endif
+
+#if FATEHI_DUMMY
+# define FATEHI_KINFOLDER "biomass/dummy-solid-gas"
+#else
+# define FATEHI_KINFOLDER "biomass/Solid-gas-88"
+#endif
+
+/**
+The diagnostics. Each one only reads the solution, so the run is the same
+bit for bit with or without it.
+
+- `SHRINK_BUDGET` writes `shrinkbudget.dat`, the budget of the solid volume
+  that the VOF sweep removes (NEW-1). Divide `Cshift` by `solid_mass0`, which
+  the file header gives. Do not divide by `Ctgt`: `Ctgt` is only the part of
+  the sink that goes to the shrinkage.
+- `SPECIES_CLAMP_PROBE` writes `speciesclamp.dat`, the mass that the clamp of
+  the gas species adds or removes (TL-5). It costs 0.02 per cent.
+
+Caution: `SPECIES_CLAMP_PROBE` must be set before `multicomponent-varprop.h`,
+which includes its header. */
+
+#ifndef SHRINK_BUDGET
+# define SHRINK_BUDGET 1
+#endif
+
+#ifndef SPECIES_CLAMP_PROBE
+# define SPECIES_CLAMP_PROBE 1
+#endif
+
+/**
+`SNAPSHOT_EVERY` writes a numbered snapshot `snapshot-<t>` every that many
+seconds of physical time, beside `last-snapshot`. A failure then costs a
+restart from the last numbered snapshot, not a new run. It is an integer, so
+that the preprocessor can test it. Set it to 0 to turn the snapshots off.
+
+Caution: one cell holds 1104 fields with `biomass/Solid-gas-88`, so a
+snapshot at level 11 is large. Check the free space of the scratch disk
+before a run of 150 s. */
+
+#ifndef SNAPSHOT_EVERY
+# define SNAPSHOT_EVERY 5
 #endif
 
 #ifndef MAXLEVEL
@@ -204,6 +277,7 @@ runs after every `defaults` event, so a value set there survives. */
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
+#include "shrink-budget.h"
 #include "view.h"
 #include "flame.h"
 
@@ -237,20 +311,32 @@ domain. A plain Neumann outlet lets the backflow grow without limit: in the
 runs of 2026-09-16/17 the axis cell of the outlet flowed back at -0.35 m/s at
 t = 10 and at -58 m/s at t = 10.227, and `dt` collapsed.
 
-- `OUTLET_BC = 0`: the old outlet. Neumann for `u`, `TG` and `YG`.
-- `OUTLET_BC = 1`: strict block (default). Where the gas flows in (`u.x < 0`
+- `OUTLET_BC = 0` (default): Neumann for `u`, `TG` and `YG`, Dirichlet for
+  `p` and `pf`. This is the outlet of `run/test.c`, and so of the evidence
+  runs `test-fbestfull` and `test-fbestl11full`.
+- `OUTLET_BC = 1`: strict block. Where the gas flows in (`u.x < 0`
   in the cell next to the outlet), `u.n` and `u.t` are 0. The outlet is a
   wall for that flow.
 - `OUTLET_BC = 2`: controlled inflow. The gas can flow in. `u.n` stays
   Neumann, `u.t` is 0, and the gas that enters is ambient gas: `TG0` and air.
   Where the gas flows out, all fields stay Neumann.
 
-The two runs from t = 0 of 2026-09-17/18 decided the default. With 2, the
-inflow at the outlet started at t = 6 and grew by about 2 times every 0.5 s,
-to -0.76 m/s at t = 8 and -159 m/s at t = 8.17, where the run crashed before
-ignition. With 1, `uf` on the outlet stayed at or above 0, the centred `u.x`
-next to the outlet stayed above -0.035 m/s, and the run went through ignition
-(Tmax 1718 K at t = 11.16) at a normal `dt`.
+The two runs from t = 0 of 2026-09-17/18 made 1 the default until
+2026-09-25. With 2, the inflow at the outlet started at t = 6 and grew by
+about 2 times every 0.5 s, to -0.76 m/s at t = 8 and -159 m/s at t = 8.17,
+where the run crashed before ignition. With 1, `uf` on the outlet stayed at
+or above 0, the centred `u.x` next to the outlet stayed above -0.035 m/s, and
+the run went through ignition (Tmax 1718 K at t = 11.16) at a normal `dt`.
+
+On 2026-09-25 the default became 0, the outlet of the evidence runs. With it
+and the `pf` conditions, `test-fbestfull` reached t = 35.8 s and
+`test-fbestl11full` passed ignition at level 11, with no backflow. The crash
+with 2 had `INT_TEMP_VOFBC`, `INT_TEMP_PICARD`, `CORRECTIVE_CFL = 0.8` and the
+`zdiff` adapt, and this configuration has none of them.
+
+Caution: no run of this case has checked 0 with `biomass/Solid-gas-88`. In
+the first runs, watch the columns `umin` and `Qin` of `dtlimits.dat` over
+t = 5 to 10 s. If `Qin` grows by a constant factor, stop the run and use 1.
 
 Caution: `-DOUTLET_BC` without a value defines the flag as 1. Always give the
 value.
@@ -268,7 +354,7 @@ boundary face of `uf` with the gradient of `pf`, so `uf` can still flow in.
 Read the outlet columns of `dtlimits.dat` to see it. */
 
 #ifndef OUTLET_BC
-# define OUTLET_BC 1
+# define OUTLET_BC 0
 #endif
 
 #if OUTLET_BC == 1
@@ -303,13 +389,25 @@ int main() {
   not what the directory name promises. */
 
   if (pid() == 0)
-    fprintf (stderr, "# fatehi: maxlevel=%d DT=%g CFL=%g Uin=%g tend=%g"
-                     " zeta=REACTION frozen=%d corrCFL=%g"
-                     " averaged=%d exact=%d outlet=%d nranks=%d\n",
-             MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, Uin,
-             (double) TEND, FROZEN_CELL_GATE, (double) CORRECTIVE_CFL,
-             (int) gas_source_averaged, (int) GAS_SOURCE_EXACT, OUTLET_BC,
-             npe());
+    fprintf (stderr, "# fatehi: kin=%s maxlevel=%d DT=%g CFL=%g Uin=%g"
+                     " tend=%g zeta=REACTION frozen=%d corrCFL=%g"
+                     " averaged=%d exact=%d filter=%d dri=%d ubf=%d"
+                     " strang=%d vofbc=%d picard=%d pin=%d outlet=%d"
+                     " tol=%g nitermin=%d shrinkbudget=%d yclamp=%d"
+                     " snapevery=%d nranks=%d\n",
+             FATEHI_KINFOLDER, MAXLEVEL, (double) DT_VALUE,
+             (double) CFL_VALUE, Uin, (double) TEND, FROZEN_CELL_GATE,
+             (double) CORRECTIVE_CFL, (int) gas_source_averaged,
+             GAS_SOURCE_EXACT,
+#if GAS_SOURCE_EXACT
+             gas_source_filter_passes,
+#else
+             0,
+#endif
+             DRHODT_IMPLICIT, GAS_UBF_ADVECTION, GAS_CHEMISTRY_STRANG,
+             INT_TEMP_VOFBC, INT_TEMP_PICARD, PIN_SOLID_INTERIOR, OUTLET_BC,
+             PROJ_TOLERANCE, PROJ_NITERMIN, SHRINK_BUDGET,
+             SPECIES_CLAMP_PROBE, SNAPSHOT_EVERY, npe());
 
   lambdaSmodel = L_TENWOLDE;
   TS0 = 300.; TG0 = 1123.;
@@ -326,7 +424,7 @@ int main() {
 
   G.x = -9.81;
 
-  kinfolder = "biomass/Solid-gas-88";
+  kinfolder = FATEHI_KINFOLDER;
   shift_prod = true;
 
   L0 = 20*D0;
@@ -353,8 +451,8 @@ int main() {
   Caution: do not read `mgp.resa` against `TOLERANCE`. The quantity that
   Basilisk controls is `resa*dt^2`. */
 
-  TOLERANCE = 1e-5;
-  NITERMIN = 2;
+  TOLERANCE = PROJ_TOLERANCE;
+  NITERMIN = PROJ_NITERMIN;
 
   run();
 }
@@ -419,6 +517,11 @@ event init (i = 0) {
   gas_start[OpenSMOKE_IndexOfSpecies ("N2")] = 0.765;
   gas_start[OpenSMOKE_IndexOfSpecies ("O2")] = 0.235;
 
+#if FATEHI_DUMMY
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("BIOMASS")] = 0.935;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")]   = 0.061;
+  sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]     = 0.004;
+#else
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("CELL")]  = 0.4344;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("GMSW")]  = 0.2108;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("LIGO")]  = 0.1347;
@@ -428,6 +531,7 @@ event init (i = 0) {
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("TGL")]   = 0.0419;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("ASH")]   = 0.0041;
   sol_start[OpenSMOKE_IndexOfSolidSpecies ("MOIST")] = 0.0610;
+#endif
 
   /**
   Caution: the porosity follows `f0`, not `f`. The solver has not assigned
@@ -583,7 +687,6 @@ the sampling rate instead. */
 
 event print_profile (t += 0.1; t <= PROFILE_TEND) {
   scalar XH2O = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
-  scalar XOH = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
 
   // Temperature profiles
   print_profile (T, H0/2 + 2e-3, fTprofile_2mm, t);
@@ -593,8 +696,11 @@ event print_profile (t += 0.1; t <= PROFILE_TEND) {
   print_profile (XH2O, H0/2 + 2e-3, fxH2Oprofile_2mm, t);
   print_profile (XH2O, H0/2 + 11e-3, fxH2Oprofile_11mm, t);
 
+#if !FATEHI_DUMMY
+  scalar XOH = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
   print_profile (XOH, H0/2 + 2e-3, fxOHprofile_2mm, t);
   print_profile (XOH, H0/2 + 11e-3, fxOHprofile_11mm, t);
+#endif
 
   if (pid() == 0) {
     fflush (fTprofile_2mm);
@@ -636,6 +742,30 @@ event output (t += 0.01) {
     solid_mass += (f[]-porosity[])*rhoS*dv();
 
   /**
+  The early warning of a runaway of the gas temperature in a thin cell.
+  `INT_TEMP_VOFBC` is off, so no term bounds `TG` in a sliver cell. The value
+  of `TG` is `TG*(1-f)` or `TG` itself, which depends on the position within
+  the step. So the event writes two quantities that do not depend on it:
+
+  - `TGmin_gas`, the smallest `TG` over the cells with `f < F_ERR`, where the
+    two forms are equal,
+  - `nTGneg`, the number of cells with `TG < 0`, because both forms have the
+    same sign.
+
+  A runaway starts as a negative `TG` in a cell with a gas fraction of about
+  1e-4, and it reaches the pure gas cells after a few steps. If `nTGneg` is
+  not 0, or `TGmin_gas` falls below about 250 K, stop the run and restart it
+  from the last numbered snapshot with `-DINT_TEMP_VOFBC=1`. */
+
+  double TGmin_gas = HUGE, nTGneg = 0.;
+  foreach (reduction(min:TGmin_gas) reduction(+:nTGneg)) {
+    if (f[] < F_ERR)
+      TGmin_gas = min (TGmin_gas, TG[]);
+    if (TG[] < 0.)
+      nTGneg += 1.;
+  }
+
+  /**
   `statsf` is collective, so it runs on every rank, outside the guard. */
 
   stats sT = statsf (T);
@@ -658,7 +788,13 @@ event output (t += 0.01) {
            Tavg[4]);
   fflush (fpT);
 
-  fprintf (fp, "%g %g %g\n", t, solid_mass/solid_mass0, sT.max);
+  /**
+  Columns of `OutputData-<maxlevel>`: t(1) Ms/Ms0(2) Tmax(3) TGmin_gas(4)
+  nTGneg(5) dt(6). Columns 4 to 6 are new on 2026-09-25, so a reader of the
+  first three columns does not change. */
+
+  fprintf (fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, sT.max,
+           TGmin_gas, nTGneg, dt);
   fflush (fp);
 }
 
@@ -689,7 +825,15 @@ loop instead.
 
 This `stability` event is declared after the headers, so it runs before
 their `stability` events. The fields are thus the ones that set `dt`. The
-`vof` event writes the line, because `dt` is final at that point.
+event `dtprobe_write` writes the line later in the same step, when `dt` is
+final.
+
+Caution: do not name the writer `vof`. An event of that name in this file
+joins the `vof` chain of the headers and changes its place in the order of
+the events. Then `shrink_budget_arm` of `shrink-budget.h` came after the
+`vof` event of its own step, and `shrinkbudget.dat` lost most of its lines
+(2026-09-25, level 7: lines at t = 0 and 0.04 only, against one line each
+0.01 s without the probe).
 
 ### The neighbourhood of the fastest `uf` face
 
@@ -878,7 +1022,7 @@ static void dtp_print_face (FILE * fp, const double * d)
     fprintf (fp, " %g", d[k]);
 }
 
-event vof (i++) {
+event dtprobe_write (i++) {
   if (pid() != 0)
     return 0;
 
@@ -945,7 +1089,13 @@ event vof (i++) {
 /**
 Caution: an event at a fixed time makes `dtnext()` shorten the step before
 it. After a restart, the run thus follows a slightly different path than a
-run without these events. */
+run without these events. So the two dumps at fixed times are off by
+default: set `DTP_DUMP_FIXED = 1` to turn them on. The dump at a small `dt`
+adds no event time, so it stays on. */
+
+#ifndef DTP_DUMP_FIXED
+# define DTP_DUMP_FIXED 0
+#endif
 
 /**
 `centered.h` sets `nodump` on `p` and `pf`, so a normal `dump()` does not write
@@ -959,11 +1109,13 @@ static void dtp_dump (const char * name)
   p.nodump = pf.nodump = true;
 }
 
+#if DTP_DUMP_FIXED
 event dtprobe_dump (t = {DTP_DUMP_T1, DTP_DUMP_T2}) {
   char name[80];
   sprintf (name, "dtprobe-t%g", t);
   dtp_dump (name);
 }
+#endif
 
 event dtprobe_dump_dt (i++) {
   static bool done = false;
@@ -974,16 +1126,18 @@ event dtprobe_dump_dt (i++) {
 }
 #endif // DT_PROBE
 
+/**
+The adapt criterion is the one of `run/test.c`: `T` and the oxidiser. The
+field `zmix - zsto` is not a criterion any more. `flame.h` updates `zmix` and
+`zsto` only every `FLAME_PRINT_TIME`, so the grid followed a stale field
+between two updates. No evidence run adapted on it. */
+
 #if TREE
 event adapt (i++) {
   scalar oxidiser = YGList_G[OpenSMOKE_IndexOfSpecies ("O2")];
 
-  scalar zdiff[];
-  foreach()
-    zdiff[] = zmix[] - zsto[];
-
-  adapt_wavelet_leave_interface ({T, oxidiser, zdiff}, {f},
-    (double[]){5e0, 1e-2, 1e-2}, maxlevel, minlevel, 2);
+  adapt_wavelet_leave_interface ({T, oxidiser}, {f},
+    (double[]){5e0, 1e-2}, maxlevel, minlevel, 2);
 
   // Unrefine for outflow condition
   unrefine (x > L0*0.4);
@@ -1036,12 +1190,17 @@ event vtk (t += 5; t <= 80) {
   foreach()
     XCO2[] = XCO2_S[]*f[] + XCO2_G[]*(1. - f[]);
 
-  // OH
+  // OH. The dummy mechanism has no OH, so the column is then 0.
+  scalar XOH[];
+#if FATEHI_DUMMY
+  foreach()
+    XOH[] = 0.;
+#else
   scalar XOH_G = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
   scalar XOH_S = XGList_S[OpenSMOKE_IndexOfSpecies ("OH")];
-  scalar XOH[];
   foreach()
     XOH[] = XOH_S[]*f[] + XOH_G[]*(1. - f[]);
+#endif
 
   output_vtk ({f, T, XH2O, XCO2, XOH, u.x, u.y, zdiff}, n=(1<<maxlevel), fp=fvtk, linear=true);
 }
@@ -1097,6 +1256,19 @@ event dump (t = 1; t += 1) {
 }
 
 /**
+The numbered snapshots, see `SNAPSHOT_EVERY`. A restart reads
+`last-snapshot`, so copy the chosen `snapshot-<t>` to `last-snapshot` before
+the restart. */
+
+#if SNAPSHOT_EVERY > 0
+event snapshot (t = SNAPSHOT_EVERY; t += SNAPSHOT_EVERY) {
+  char name[80];
+  sprintf (name, "snapshot-%g", t);
+  dump (name);
+}
+#endif
+
+/**
 Caution: `return 1` is what ends the run, not the time of the event.
 
 `events()` in `$BASILISK/grid/events.h` keeps the loop alive while any event
@@ -1116,6 +1288,7 @@ event stop (t = tend) {
     fclose (fxOHprofile_2mm);
     fclose (fxOHprofile_11mm);
   }
+  return 1;
 }
 
 /** 

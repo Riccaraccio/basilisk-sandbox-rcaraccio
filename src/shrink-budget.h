@@ -28,8 +28,10 @@ assigned:
   = 1e-5 in the units of `prod`. The residual of that solve enters the
   removed volume of every cell with `f > 0.5`.
 
-The measured drift of the solid mass is -1.5 per cent at t = 10 s. This probe
-says which of the three defects carries it.
+This probe says which of the three defects carries the drift of the solid
+mass. The audit of 2026-09-25 (`~/publication-review/new1-audit/`) found that
+NEW-1 carries the whole drift: -1.1 per cent of `solid_mass0` for the base
+case at level 10, +0.05 per cent at level 11.
 
 ## The discrete identity
 
@@ -65,8 +67,10 @@ that the sweep really removes. Both are in kg per radian, as
 
       Mshift = dt*rhoS*sum_donors prod0*(s_donor - mean s_receiver)*sq(Delta)
 
-  with `s = 1 - eps`. It is positive when the donors hold less solid material
-  than the ring of full cells that receives from them.
+  with `s = 1 - eps`. It is positive when the donors hold more solid
+  material than the ring of full cells that receives from them, and
+  negative when they hold less. At the front the cut cells are more porous
+  than the full cells behind them, so `Mshift` is mostly negative.
 * `Mnorecv` the cut cells with no pure receiver and `f <= 0.5` (KNOWN 9d).
   Those cells keep their `prod` and remove nothing. The part is always
   positive: the solid stays too heavy. With `shift_prod = false` every cut
@@ -96,13 +100,16 @@ every step, also the steps that the file does not show. Column 18 gives the numb
 cut cells, column 19 the number of cut cells with no pure receiver, and
 column 20 the number of those that also have `f <= 0.5`.
 
-`Cdiff` is the quantity to read first. Divide it by `solid_mass0` and compare
-it with the drift of the mass balance. `Cdiff > 0` means that the sweep
+`Cdiff` is the quantity to read first. Divide it by `solid_mass0`, which the
+file header gives, and compare it with the drift of the mass balance. Do not
+divide by `Ctgt`: `Ctgt` is only the part of the sink that goes to the
+shrinkage, so that ratio is about ten times the error of the solid mass. `Cdiff > 0` means that the sweep
 removes less than the chemistry assigned, so the solid of the field is too
 heavy. Then read which of `Cshift`, `Cnorecv` and `Cres` carries `Cdiff`.
 
-Caution: a restart sets every running integral back to zero. Compare the
-integrals of one continuous run only.
+Caution: a restart sets every running integral back to zero. The file then
+holds a line that starts with `# restart`. Compare the integrals of one
+continuous run only, or add the last values before the marker.
 
 Caution: `zeta` lags `omega` by one step, and `set_zeta()` runs at the end of
 the `phasechange` event of `shrinking.h`. The probe reads `zeta` before that
@@ -147,6 +154,14 @@ that the loop of `phasechange` computes in local variables. */
 scalar sb_prod0[];
 
 static bool sb_want = false;
+
+/**
+The case defines `solid_mass0`, the initial solid mass in kg per radian. The
+file header writes it, so that a reader does not compute it again from the
+geometry. The analytic mass of the pellet is 1 per cent too large at level
+10, because `fraction()` gives less solid than the exact shape. */
+
+extern double solid_mass0;
 static double sb_cpu = 0.;
 static int sb_ncall = 0;
 
@@ -286,11 +301,16 @@ event vof (i++) {
         fprintf (stderr, "Error opening %s\n", SHRINK_BUDGET_FILE);
         exit (1);
       }
-      if (!restarted)
+      if (!restarted) {
+        fprintf (fp, "# solid_mass0 = %.10g kg/rad\n", solid_mass0);
         fprintf (fp, "#t(1) i(2) dt(3) Mtgt(4) Mact(5) Mdiff(6) Mshift(7)"
                      " Mnorecv(8) Mres(9) Mclose(10) Ctgt(11) Cact(12)"
                      " Cdiff(13) Cshift(14) Cnorecv(15) Cres(16) Cclose(17)"
                      " ncut(18) nnorecv(19) nlow(20)\n");
+      }
+      else
+        fprintf (fp, "# restart at t = %g: the running integrals start again"
+                     " at 0. solid_mass0 = %.10g kg/rad\n", t, solid_mass0);
     }
     fprintf (fp, "%g %d %g %g %g %g %g %g %g %g %g %g %g %g %g %g %g"
                  " %g %g %g\n",

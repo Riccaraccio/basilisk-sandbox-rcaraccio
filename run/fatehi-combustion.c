@@ -212,16 +212,77 @@ runs after every `defaults` event, so a value set there survives. */
 #endif
 
 const double Uin = 0.13; //inlet velocity
+/**
+Caution: give `pf` the same conditions as `p`. Basilisk does not copy the
+conditions of `p` to `pf`. Without the lines for `pf`, every boundary of `pf`
+is Neumann. The projection of `uf` then has no solution when the expansion
+term `drhodt` is not zero, because the outflow flux is fixed. `pf` drifts
+without limit, the divergence error grows, and at ignition `dt` collapses. The
+production runs of 2026-09-16/17 crashed in this way (`pf` near -6e5, `sum`
+2e10 in the log of the solver). */
+
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
 p[left]      = neumann (0.);
+pf[left]     = neumann (0.);
 psi[left]    = dirichlet (0.);
 
 psi[top]     = dirichlet (0.);
 
+/**
+## The conditions at the outlet
+
+`OUTLET_BC` selects how the outlet (right) treats gas that flows back into the
+domain. A plain Neumann outlet lets the backflow grow without limit: in the
+runs of 2026-09-16/17 the axis cell of the outlet flowed back at -0.35 m/s at
+t = 10 and at -58 m/s at t = 10.227, and `dt` collapsed.
+
+- `OUTLET_BC = 0`: the old outlet. Neumann for `u`, `TG` and `YG`.
+- `OUTLET_BC = 1`: strict block (default). Where the gas flows in (`u.x < 0`
+  in the cell next to the outlet), `u.n` and `u.t` are 0. The outlet is a
+  wall for that flow.
+- `OUTLET_BC = 2`: controlled inflow. The gas can flow in. `u.n` stays
+  Neumann, `u.t` is 0, and the gas that enters is ambient gas: `TG0` and air.
+  Where the gas flows out, all fields stay Neumann.
+
+The two runs from t = 0 of 2026-09-17/18 decided the default. With 2, the
+inflow at the outlet started at t = 6 and grew by about 2 times every 0.5 s,
+to -0.76 m/s at t = 8 and -159 m/s at t = 8.17, where the run crashed before
+ignition. With 1, `uf` on the outlet stayed at or above 0, the centred `u.x`
+next to the outlet stayed above -0.035 m/s, and the run went through ignition
+(Tmax 1718 K at t = 11.16) at a normal `dt`.
+
+Caution: `-DOUTLET_BC` without a value defines the flag as 1. Always give the
+value.
+
+With 1 and 2, the gas that enters is ambient gas in both cases (see
+`event init`). Only the velocity differs.
+
+Caution: the physics of the heating phase needs an inflow at the outlet. While
+the moisture evaporates, a cold plume sinks from the particle toward the inlet,
+and gas from above must replace it. `OUTLET_BC = 1` makes the outlet a wall
+for that gas, so it changes the flow of the heating phase.
+
+Caution: these conditions act on the centred `u`. The projection corrects the
+boundary face of `uf` with the gradient of `pf`, so `uf` can still flow in.
+Read the outlet columns of `dtlimits.dat` to see it. */
+
+#ifndef OUTLET_BC
+# define OUTLET_BC 1
+#endif
+
+#if OUTLET_BC == 1
+u.n[right]    = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
+u.t[right]    = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
+#elif OUTLET_BC == 2
+u.n[right]    = neumann (0.);
+u.t[right]    = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
+#else
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
+#endif
 p[right]      = dirichlet (0.);
+pf[right]     = dirichlet (0.);
 psi[right]    = neumann (0.);
 
 const double tend = TEND; //simulation time
@@ -244,10 +305,11 @@ int main() {
   if (pid() == 0)
     fprintf (stderr, "# fatehi: maxlevel=%d DT=%g CFL=%g Uin=%g tend=%g"
                      " zeta=REACTION frozen=%d corrCFL=%g"
-                     " averaged=%d exact=%d nranks=%d\n",
+                     " averaged=%d exact=%d outlet=%d nranks=%d\n",
              MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, Uin,
              (double) TEND, FROZEN_CELL_GATE, (double) CORRECTIVE_CFL,
-             (int) gas_source_averaged, (int) GAS_SOURCE_EXACT, npe());
+             (int) gas_source_averaged, (int) GAS_SOURCE_EXACT, OUTLET_BC,
+             npe());
 
   lambdaSmodel = L_TENWOLDE;
   TS0 = 300.; TG0 = 1123.;
@@ -380,21 +442,39 @@ event init (i = 0) {
 
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
+#if OUTLET_BC
+  TG[right] = u.x[] < 0. ? dirichlet (TG0) : neumann (0.);
+#else
   TG[right] = neumann (0.);
+#endif
   TG[bottom] = neumann (0.);
+
+  /**
+  With `OUTLET_BC` set, the gas that enters through the outlet is air. The
+  values must be constants in each branch: a boundary condition cannot read
+  a local variable of this loop. */
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
       YG[left] = dirichlet (0.765);
       YG[top] = dirichlet (0.765);
+#if OUTLET_BC
+      YG[right] = u.x[] < 0. ? dirichlet (0.765) : neumann (0.);
+#endif
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
       YG[left] = dirichlet (0.235);
       YG[top] = dirichlet (0.235);
+#if OUTLET_BC
+      YG[right] = u.x[] < 0. ? dirichlet (0.235) : neumann (0.);
+#endif
     }
     else {
       YG[left] = dirichlet (0.);
       YG[top] = dirichlet (0.);
+#if OUTLET_BC
+      YG[right] = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
+#endif
     }
   }
 
@@ -581,6 +661,318 @@ event output (t += 0.01) {
   fprintf (fp, "%g %g %g\n", t, solid_mass/solid_mass0, sT.max);
   fflush (fp);
 }
+
+/**
+## The probe of the timestep limits
+
+`DT_PROBE` writes `dtlimits.dat` at every step. Use it to find which velocity
+makes the timestep collapse at ignition. Three limits set `dt`:
+
+- `dt_uf`, the CFL limit of the flow velocity `uf` (`centered-phasechange.h`),
+- `dt_ubf`, the CFL limit of the shrinkage velocity `ubf` (`shrinking.h`),
+- `dt_corr`, the limit of the corrective velocity (`multicomponent-varprop.h`).
+
+`bind` gives the smallest of them: 0 is `DT`, 1 is `uf`, 2 is `ubf` and 3 is
+the corrective velocity. `dt` can be smaller than all four, because
+`timestep()` lets the step grow only slowly.
+
+For `uf` and `ubf`, the file also gives the face with the largest
+`|u|/(fm*Delta)`. It gives the position, the level, and `f`, `T`, `TG`,
+`omega` and `gas_source` of the two cells on each side of that face. `L` is
+the cell on the left or bottom side, `R` is the cell on the right or top side.
+`TG` is the raw field, not the gas temperature. `omega` is the value of the
+previous step, because the `chemistry` event comes after `stability`.
+
+Caution: do not call `timestep()` here. It keeps a static `previous` value,
+and a second call changes the step of the solver. This probe repeats its
+loop instead.
+
+This `stability` event is declared after the headers, so it runs before
+their `stability` events. The fields are thus the ones that set `dt`. The
+`vof` event writes the line, because `dt` is final at that point.
+
+### The neighbourhood of the fastest `uf` face
+
+Columns 37 to 56 describe the neighbourhood of the fastest `uf` face. Use them
+to tell a checkerboard mode from a smooth jet.
+
+- `dir` is 0 for a face normal to x (axial) and 1 for a face normal to y.
+- `u0` is the signed velocity on the face. `um1` and `up1` are the velocities
+  on the previous and the next face along the normal. `ub` and `ut` are the
+  velocities on the two faces beside it, below and above for an x face. All
+  five are `uf/fm`, thus physical velocities in m/s. In a checkerboard mode
+  the signs alternate. In a jet they do not.
+- `rho` is `rhov/cm`, the density that the flow solver uses.
+- `drhodt` and `divsrc` are the expansion term and the full source of the
+  projection (`div_source`), per unit volume. `divuf` is the divergence of
+  `uf` per unit volume. After the projection `divuf + divsrc` is close to 0.
+  Caution: this probe reads them in `stability`, thus after the projection of
+  the previous step, and `drhodt` and `divsrc` belong to that step.
+- `p` and `pf` are the two pressures of the solver.
+
+All cell values come as a pair: `L` first, `R` second.
+
+### Snapshots
+
+`DTP_DUMP_T1` and `DTP_DUMP_T2` give two times for a `dump()`. The files are
+`dtprobe-t<time>`. A third `dump()`, `dtprobe-dt`, happens once when `dt`
+falls below `DTP_DUMP_DT`. It catches the late stage of the collapse, because
+the time of the crash changes from one restart to the next. These files also
+contain `p` and `pf`. They do not replace `last-snapshot`. To look at one,
+restore it in a short program and write a VTK file. */
+
+#ifndef DT_PROBE
+# define DT_PROBE 1
+#endif
+
+#if DT_PROBE
+#define DTP_NCELL 5  // f, T, TG, omega, gas_source
+#define DTP_NFACE (4 + 2*DTP_NCELL) // rate, x, y, level, L cells, R cells
+
+#define DTP_NNEAR 20 // dir, 5 velocities, 7 cell pairs
+#define DTP_NOUT 5    // outlet: min u.x, min uf/fm, inflow, outflow, inlet
+
+static double dtp_out[DTP_NOUT];
+
+/**
+The outlet columns. `umin` is the smallest `u.x` in the cells next to the
+outlet. `ufmin` is the smallest `uf.x/fm.x` on the faces of the outlet. `Qin`
+and `Qout` are the sums of `uf.x*Delta` over the faces of the outlet where
+the gas flows in and out: `uf` carries the metric, so this is the volume flux
+per radian. `Qinlet` is the same sum on the inlet, for reference. A value of
+`Qin` that grows toward `Qinlet` or beyond is the backflow. */
+
+static void dtp_outlet (double * out)
+{
+  double umin = HUGE, ufmin = HUGE;
+  double flux_in = 0., flux_out = 0., flux_inlet = 0.;
+  double xr = X0 + L0, xl = X0;
+  foreach_face (x, reduction(min:umin) reduction(min:ufmin)
+                reduction(+:flux_in) reduction(+:flux_out)
+                reduction(+:flux_inlet)) {
+    if (x > xr - 1e-6*L0) {
+      umin = min (umin, u.x[-1]);
+      if (fm.x[] > 0.)
+        ufmin = min (ufmin, uf.x[]/fm.x[]);
+      if (uf.x[] < 0.)
+        flux_in += uf.x[]*Delta;
+      else
+        flux_out += uf.x[]*Delta;
+    }
+    else if (x < xl + 1e-6*L0)
+      flux_inlet += uf.x[]*Delta;
+  }
+  double v[DTP_NOUT] = {umin, ufmin, flux_in, flux_out, flux_inlet};
+  for (int k = 0; k < DTP_NOUT; k++)
+    out[k] = v[k];
+}
+
+static double dtp_uf[DTP_NFACE], dtp_ubf[DTP_NFACE];
+static double dtp_near[DTP_NNEAR];
+static double dtp_corr = HUGE, dtp_DT = HUGE;
+
+/**
+Find the face with the largest `|u|/(fm*Delta)`, and fill `out` with the
+data of that face. Every rank calls it, because the loops are collective. */
+
+static void dtp_scan (face vector u, double * out)
+{
+  double rate = 0.;
+  foreach_face (reduction(max:rate))
+    if (u.x[] != 0. && fm.x[] > 0.)
+      rate = max (rate, fabs (u.x[])/(fm.x[]*Delta));
+
+  /**
+  Every rank sets a value only at the face that has the maximum rate. The
+  others keep `-HUGE`, so the `max` reduction returns the value of that
+  face. */
+
+  double xf = -HUGE, yf = -HUGE, lev = -HUGE;
+  double fL = -HUGE, fR = -HUGE, TL = -HUGE, TR = -HUGE;
+  double TGL = -HUGE, TGR = -HUGE, oL = -HUGE, oR = -HUGE;
+  double sL = -HUGE, sR = -HUGE;
+  if (rate > 0.)
+    foreach_face (reduction(max:xf) reduction(max:yf) reduction(max:lev)
+                  reduction(max:fL) reduction(max:fR)
+                  reduction(max:TL) reduction(max:TR)
+                  reduction(max:TGL) reduction(max:TGR)
+                  reduction(max:oL) reduction(max:oR)
+                  reduction(max:sL) reduction(max:sR))
+      if (u.x[] != 0. && fm.x[] > 0. &&
+          fabs (u.x[])/(fm.x[]*Delta) >= rate) {
+        xf = x; yf = y; lev = level;
+        fL = f[-1];           fR = f[];
+        TL = T[-1];           TR = T[];
+        TGL = TG[-1];         TGR = TG[];
+        oL = omega[-1];       oR = omega[];
+        sL = gas_source[-1];  sR = gas_source[];
+      }
+
+  double v[DTP_NFACE] = {rate, xf, yf, lev,
+                         fL, TL, TGL, oL, sL,
+                         fR, TR, TGR, oR, sR};
+  for (int k = 0; k < DTP_NFACE; k++)
+    out[k] = v[k];
+}
+
+/**
+Fill `out` with the neighbourhood of the face of `u` that has the rate `rate`.
+The array reduction uses the same `-HUGE` method as `dtp_scan()`. */
+
+static inline double dtp_vel (double uff, double fmf)
+{
+  return fmf > 0. ? uff/fmf : 0.;
+}
+
+static void dtp_neighbourhood (face vector u, double rate, double * out)
+{
+  double nb[DTP_NNEAR];
+  for (int k = 0; k < DTP_NNEAR; k++)
+    nb[k] = -HUGE;
+  int uxi = u.x.i; // not rotated: the loop compares it with the rotated u.x
+
+  if (rate > 0.)
+    foreach_face (reduction(max:nb[:DTP_NNEAR]))
+      if (u.x[] != 0. && fm.x[] > 0. &&
+          fabs (u.x[])/(fm.x[]*Delta) >= rate) {
+        nb[0] = (u.x.i == uxi) ? 0. : 1.;
+        nb[1] = dtp_vel (u.x[-1], fm.x[-1]);
+        nb[2] = dtp_vel (u.x[], fm.x[]);
+        nb[3] = dtp_vel (u.x[1], fm.x[1]);
+        nb[4] = dtp_vel (u.x[0,-1], fm.x[0,-1]);
+        nb[5] = dtp_vel (u.x[0,1], fm.x[0,1]);
+        nb[6] = cm[-1] > 0. ? rhov[-1]/cm[-1] : 0.;
+        nb[7] = cm[] > 0. ? rhov[]/cm[] : 0.;
+        nb[8] = cm[-1] > 0. ? drhodt[-1]/cm[-1] : 0.;
+        nb[9] = cm[] > 0. ? drhodt[]/cm[] : 0.;
+        nb[10] = cm[-1] > 0. ? div_source[-1]/cm[-1] : 0.;
+        nb[11] = cm[] > 0. ? div_source[]/cm[] : 0.;
+        nb[12] = cm[-1] > 0. ?
+          (u.x[] - u.x[-1] + u.y[-1,1] - u.y[-1])/(Delta*cm[-1]) : 0.;
+        nb[13] = cm[] > 0. ?
+          (u.x[1] - u.x[] + u.y[0,1] - u.y[])/(Delta*cm[]) : 0.;
+        nb[14] = p[-1];   nb[15] = p[];
+        nb[16] = pf[-1];  nb[17] = pf[];
+        nb[18] = porosity[-1]; nb[19] = porosity[];
+      }
+
+  for (int k = 0; k < DTP_NNEAR; k++)
+    out[k] = nb[k];
+}
+
+event stability (i++) {
+  dtp_DT = dtmax;
+  dtp_scan (uf, dtp_uf);
+  dtp_neighbourhood (uf, dtp_uf[0], dtp_near);
+  dtp_outlet (dtp_out);
+  dtp_scan (ubf, dtp_ubf);
+#ifdef FICK_CORRECTED
+  dtp_corr = (CORRECTIVE_CFL > 0. && corrective_uodx > 0.) ?
+    CORRECTIVE_CFL/corrective_uodx : HUGE;
+#endif
+}
+
+static void dtp_print_face (FILE * fp, const double * d)
+{
+  for (int k = 0; k < DTP_NFACE; k++)
+    fprintf (fp, " %g", d[k]);
+}
+
+event vof (i++) {
+  if (pid() != 0)
+    return 0;
+
+  static FILE * fp = NULL;
+  if (!fp) {
+    fp = open_profile ("dtlimits.dat");
+
+    /**
+    A restart appends to the file. The file can be new all the same, for
+    example after a restart in a new folder. So write the header when the
+    file is empty, not when `restarted` is 0. */
+
+    fseek (fp, 0, SEEK_END);
+    if (ftell (fp) == 0)
+      fprintf (fp, "#t(1) i(2) dt(3) DT(4) dt_uf(5) dt_ubf(6) dt_corr(7)"
+               " bind(8)"
+               " uf: rate(9) x(10) y(11) level(12)"
+               " fL(13) TL(14) TGL(15) omegaL(16) gsL(17)"
+               " fR(18) TR(19) TGR(20) omegaR(21) gsR(22)"
+               " ubf: rate(23) x(24) y(25) level(26)"
+               " fL(27) TL(28) TGL(29) omegaL(30) gsL(31)"
+               " fR(32) TR(33) TGR(34) omegaR(35) gsR(36)"
+               " ufnear: dir(37) um1(38) u0(39) up1(40) ub(41) ut(42)"
+               " rhoL(43) rhoR(44) drhodtL(45) drhodtR(46)"
+               " divsrcL(47) divsrcR(48) divufL(49) divufR(50)"
+               " pL(51) pR(52) pfL(53) pfR(54) porL(55) porR(56)"
+               " outlet: umin(57) ufmin(58) Qin(59) Qout(60) Qinlet(61)\n");
+  }
+
+  double lim[4] = {
+    dtp_DT,
+    dtp_uf[0] > 0. ? CFL/dtp_uf[0] : HUGE,
+    dtp_ubf[0] > 0. ? CFL/dtp_ubf[0] : HUGE,
+    dtp_corr
+  };
+  int bind = 0;
+  for (int k = 1; k < 4; k++)
+    if (lim[k] < lim[bind])
+      bind = k;
+
+  fprintf (fp, "%g %d %g %g %g %g %g %d", t, i, dt,
+           lim[0], lim[1], lim[2], lim[3], bind);
+  dtp_print_face (fp, dtp_uf);
+  dtp_print_face (fp, dtp_ubf);
+  for (int k = 0; k < DTP_NNEAR; k++)
+    fprintf (fp, " %g", dtp_near[k]);
+  for (int k = 0; k < DTP_NOUT; k++)
+    fprintf (fp, " %g", dtp_out[k]);
+  fputc ('\n', fp);
+  fflush (fp);
+  return 0;
+}
+
+#ifndef DTP_DUMP_T1
+# define DTP_DUMP_T1 10.235
+#endif
+#ifndef DTP_DUMP_T2
+# define DTP_DUMP_T2 10.244
+#endif
+#ifndef DTP_DUMP_DT
+# define DTP_DUMP_DT 1e-5
+#endif
+
+/**
+Caution: an event at a fixed time makes `dtnext()` shorten the step before
+it. After a restart, the run thus follows a slightly different path than a
+run without these events. */
+
+/**
+`centered.h` sets `nodump` on `p` and `pf`, so a normal `dump()` does not write
+them. `dtp_dump()` writes them in the probe files only. It sets the flag again
+after the dump, so `last-snapshot` does not change. */
+
+static void dtp_dump (const char * name)
+{
+  p.nodump = pf.nodump = false;
+  dump (name);
+  p.nodump = pf.nodump = true;
+}
+
+event dtprobe_dump (t = {DTP_DUMP_T1, DTP_DUMP_T2}) {
+  char name[80];
+  sprintf (name, "dtprobe-t%g", t);
+  dtp_dump (name);
+}
+
+event dtprobe_dump_dt (i++) {
+  static bool done = false;
+  if (!done && i > 0 && dt < DTP_DUMP_DT) {
+    dtp_dump ("dtprobe-dt");
+    done = true;
+  }
+}
+#endif // DT_PROBE
 
 #if TREE
 event adapt (i++) {

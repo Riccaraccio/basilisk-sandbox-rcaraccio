@@ -1176,6 +1176,8 @@ TLAD_TGDBG = -DTG_PROBE -DTG_PROBE_TMIN=250. -DTG_PROBE_MAX=2000 \
 #   test-sgse     GAS_SOURCE_EXACT=1    TL-3: the log form of the expansion
 #   test-sprops   PROPS_AFTER_SOLVES=1  TL-4: P^{n+1} in the momentum
 #   test-subf2    GAS_UBF_ADVECTION=2   item 7: the ubf mask
+#   test-sgsenf   GAS_SOURCE_EXACT=1 GAS_SOURCE_FILTER_PASSES=0
+#                 TL-3 without the filter (added 2026-09-25, see below)
 #
 # What to read, against test-sref:
 #   - chemsplit.dat: Tmax_end, Tmid and the gap Tmax_chem - Tmax_pre.
@@ -1222,6 +1224,28 @@ test-sprops.tst:    CFLAGS += $(TLAD_SRST) -DPROPS_AFTER_SOLVES=1
 
 test-subf2.s:       CFLAGS += $(TLAD_SRST) -DGAS_UBF_ADVECTION=2
 test-subf2.tst:     CFLAGS += $(TLAD_SRST) -DGAS_UBF_ADVECTION=2
+
+# test-sgsenf, added 2026-09-25. GAS_SOURCE_EXACT=1 makes two changes: the
+# exact log form of the expansion in chemistry.h, and a filter of 4 passes
+# (sigma = Delta_min) on gas_source + drhodt before the projection
+# (centered-phasechange.h). test-sgse has both. This rung keeps the log form
+# and turns the filter off, so the pair tells which change gives the effect
+# of test-sgse (dt +17 %, lower peak velocity) and of TLAD_BEST at L11 (gas
+# probes 2-3x quieter, dt +20 %).
+#
+# What to read, against test-sgse and test-sref (the same window):
+#   - dt and its history (OutputData): the step that the CFL allows.
+#   - the band of the gas probes (probes.dat, TemperatureProfile.dat) and of
+#     ur_1mm and mdot (expansion.dat). Quote ratios, not absolute values.
+#   - Tmax, Tsurf and mdot on the plateau.
+# If test-sgsenf matches test-sgse, the log form gives the effect and the
+# production set can drop the filter. If it matches test-sref, the filter
+# gives the effect, and the paper must state the filter and its width.
+#
+# Procedure: as the other rungs of this block (the snapshot of test-base at
+# t = 15 s, 8 ranks, "Restart file found!" in the log).
+test-sgsenf.s:      CFLAGS += $(TLAD_SRST) -DGAS_SOURCE_EXACT=1 -DGAS_SOURCE_FILTER_PASSES=0
+test-sgsenf.tst:    CFLAGS += $(TLAD_SRST) -DGAS_SOURCE_EXACT=1 -DGAS_SOURCE_FILTER_PASSES=0
 
 # --- the Strang split of the gas chemistry (TL-1), added 2026-09-22 --------
 # GAS_CHEMISTRY_STRANG=1 integrates the gas reactor over dt/2 before the

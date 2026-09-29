@@ -112,13 +112,8 @@ is a transfer, not a measurement on this case.
 - `DRHODT_IMPLICIT = 1` (TL-2), `GAS_UBF_ADVECTION = 2` (item 7) and
   `GAS_CHEMISTRY_STRANG = 1` (TL-1).
 - `PIN_SOLID_INTERIOR = 0`. The evidence runs had 1.
-- `SHRINK_BUDGET` and `SPECIES_CLAMP_PROBE` only read the solution. Divide
-  `Cshift` of `shrinkbudget.dat` by `solid_mass0`, not by `Ctgt`.
 - `SNAPSHOT_EVERY` writes `snapshot-<t>` every that many seconds beside
-  `last-snapshot`. Set it to 0 to turn the snapshots off.
-
-Caution: `SPECIES_CLAMP_PROBE` must be set before `multicomponent-varprop.h`,
-which includes its header. */
+  `last-snapshot`. Set it to 0 to turn the snapshots off. */
 
 #ifndef INT_TEMP_VOFBC
 # define INT_TEMP_VOFBC 0
@@ -147,12 +142,6 @@ which includes its header. */
 #ifndef PROJ_NITERMIN
 # define PROJ_NITERMIN 2
 #endif
-#ifndef SHRINK_BUDGET
-# define SHRINK_BUDGET 1
-#endif
-#ifndef SPECIES_CLAMP_PROBE
-# define SPECIES_CLAMP_PROBE 1
-#endif
 #ifndef SNAPSHOT_EVERY
 # define SNAPSHOT_EVERY 5
 #endif
@@ -165,7 +154,6 @@ which includes its header. */
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
-#include "shrink-budget.h"
 #include "view.h"
 #include "flame.h"
 
@@ -216,7 +204,7 @@ int main() {
                      " zeta=%d"
                      " frozen=%d corrCFL=%g exact=%d filter=%d dri=%d"
                      " ubf=%d strang=%d vofbc=%d picard=%d pin=%d tol=%g"
-                     " nitermin=%d shrinkbudget=%d yclamp=%d snapevery=%d"
+                     " nitermin=%d snapevery=%d"
                      " nranks=%d\n",
              MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, Uin,
              (double) TEND, (int) ZETA_POLICY, FROZEN_CELL_GATE, (double) CORRECTIVE_CFL,
@@ -228,8 +216,7 @@ int main() {
 #endif
              DRHODT_IMPLICIT, GAS_UBF_ADVECTION, GAS_CHEMISTRY_STRANG,
              INT_TEMP_VOFBC, INT_TEMP_PICARD, PIN_SOLID_INTERIOR,
-             PROJ_TOLERANCE, PROJ_NITERMIN, SHRINK_BUDGET,
-             SPECIES_CLAMP_PROBE, SNAPSHOT_EVERY, npe());
+             PROJ_TOLERANCE, PROJ_NITERMIN, SNAPSHOT_EVERY, npe());
 
   lambdaSmodel = L_LU;
   TS0 = 300.; TG0 = 1050.;

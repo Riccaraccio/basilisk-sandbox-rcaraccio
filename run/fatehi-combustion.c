@@ -81,7 +81,7 @@ Known limits of this configuration:
   `sigma = Delta_min`. The restart rung `test-sgsenf` tells if the filter or
   the log form gives the effect.
 - The solid drift of NEW-1 (`shift_field()`) is not fixed. It is about
-  -0.4 per cent of `solid_mass0` at level 11. `shrinkbudget.dat` measures it.
+  -0.4 per cent of `solid_mass0` at level 11.
 - `PIN_SOLID_INTERIOR = 0` has no evidence run with this set.
 - The outlet 0 has no run of this case with `biomass/Solid-gas-88`. See the
   caution in the section on the outlet.
@@ -194,28 +194,6 @@ so the OH outputs are off with it. */
 #endif
 
 /**
-The diagnostics. Each one only reads the solution, so the run is the same
-bit for bit with or without it.
-
-- `SHRINK_BUDGET` writes `shrinkbudget.dat`, the budget of the solid volume
-  that the VOF sweep removes (NEW-1). Divide `Cshift` by `solid_mass0`, which
-  the file header gives. Do not divide by `Ctgt`: `Ctgt` is only the part of
-  the sink that goes to the shrinkage.
-- `SPECIES_CLAMP_PROBE` writes `speciesclamp.dat`, the mass that the clamp of
-  the gas species adds or removes (TL-5). It costs 0.02 per cent.
-
-Caution: `SPECIES_CLAMP_PROBE` must be set before `multicomponent-varprop.h`,
-which includes its header. */
-
-#ifndef SHRINK_BUDGET
-# define SHRINK_BUDGET 1
-#endif
-
-#ifndef SPECIES_CLAMP_PROBE
-# define SPECIES_CLAMP_PROBE 1
-#endif
-
-/**
 `SNAPSHOT_EVERY` writes a numbered snapshot `snapshot-<t>` every that many
 seconds of physical time, beside `last-snapshot`. A failure then costs a
 restart from the last numbered snapshot, not a new run. It is an integer, so
@@ -277,7 +255,6 @@ runs after every `defaults` event, so a value set there survives. */
 #include "shrinking.h"
 #include "multicomponent-varprop.h"
 #include "darcy.h"
-#include "shrink-budget.h"
 #include "view.h"
 #include "flame.h"
 
@@ -393,7 +370,7 @@ int main() {
                      " tend=%g zeta=REACTION frozen=%d corrCFL=%g"
                      " exact=%d filter=%d dri=%d ubf=%d"
                      " strang=%d vofbc=%d picard=%d pin=%d outlet=%d"
-                     " tol=%g nitermin=%d shrinkbudget=%d yclamp=%d"
+                     " tol=%g nitermin=%d"
                      " snapevery=%d nranks=%d\n",
              FATEHI_KINFOLDER, MAXLEVEL, (double) DT_VALUE,
              (double) CFL_VALUE, Uin, (double) TEND, FROZEN_CELL_GATE,
@@ -406,8 +383,7 @@ int main() {
 #endif
              DRHODT_IMPLICIT, GAS_UBF_ADVECTION, GAS_CHEMISTRY_STRANG,
              INT_TEMP_VOFBC, INT_TEMP_PICARD, PIN_SOLID_INTERIOR, OUTLET_BC,
-             PROJ_TOLERANCE, PROJ_NITERMIN, SHRINK_BUDGET,
-             SPECIES_CLAMP_PROBE, SNAPSHOT_EVERY, npe());
+             PROJ_TOLERANCE, PROJ_NITERMIN, SNAPSHOT_EVERY, npe());
 
   lambdaSmodel = L_TENWOLDE;
   TS0 = 300.; TG0 = 1123.;

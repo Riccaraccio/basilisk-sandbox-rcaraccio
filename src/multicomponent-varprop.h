@@ -336,13 +336,6 @@ static inline void dri_weights (double ff, double * wS, double * wG)
 #endif // DRI_ON
 
 
-/**
-`SPECIES_CLAMP_PROBE` measures item TL-5: how far the species solves of the
-event below push `Y` out of `[0,1]`, and the mass that the clamp at the end
-of the event adds or removes. It does not change the run. See
-`species-clamp-probe.h`, which sets the default of the flag to 0. */
-
-#include "species-clamp-probe.h"
 
 /**
 ## The time level of the properties
@@ -1002,9 +995,6 @@ event tracer_diffusion (i++) {
     dri_YG[] = 0.;
   }
 #endif
-#if SPECIES_CLAMP_PROBE
-  species_clamp_presolve();
-#endif
 
   // Internal gas diffusion
   for (int jj=0; jj<NGS; jj++) {
@@ -1267,9 +1257,6 @@ tracer form. */
 #endif
   }
 
-#if SPECIES_CLAMP_PROBE
-  species_clamp_postsolve();
-#endif
 
   check_and_correct_fractions (YGList_S, NGS, false);
   check_and_correct_fractions (YGList_G, NGS, true);

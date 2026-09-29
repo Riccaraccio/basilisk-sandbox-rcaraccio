@@ -29,18 +29,6 @@ user. */
 #include "multicomponent-properties.h"
 #include "chemistry.h"
 
-/**
-The probe of the interface temperature balance. It changes no field. It is
-compiled out unless the case sets `INT_TEMP_PROBE`. */
-
-#if INT_TEMP_PROBE
-# include "int-temperature-probe.h"
-#endif
-
-/**
-The record of the interface conductance, and the reason it must give back the
-heat that it holds. It changes no field either. */
-
 
 /**
 ## The transport of heat by the pore gas
@@ -292,11 +280,6 @@ static void interface_temperature_sources (void)
 #endif
 
 /**
-`DRHODT_BUDGET` measures the time level of the transport part of `drhodt`:
-the explicit fluxes of `update_divergence()` against the implicit solves of
-the event below. It does not change the run. See `drhodt-budget.h`. */
-
-/**
 ## The transport part of `drhodt` from the implicit solves
 
 When `DRI_ON` is 1 (see `multicomponent-properties.h`),
@@ -352,9 +335,6 @@ static inline void dri_weights (double ff, double * wS, double * wG)
 
 #endif // DRI_ON
 
-#if DRHODT_BUDGET
-# include "drhodt-budget.h"
-#endif
 
 /**
 `SPECIES_CLAMP_PROBE` measures item TL-5: how far the species solves of the
@@ -1176,9 +1156,6 @@ matches the fields that built the source. */
   }
 #endif
 
-#if DRHODT_BUDGET
-  drhodt_budget_presolve (theta1, theta2);
-#endif
 
 
 /**
@@ -1255,9 +1232,6 @@ pure scatter; eleven proper runs gave 0.6 per cent. */
       dri_cT[] = 0.;
 #endif
 
-#if DRHODT_BUDGET
-  drhodt_budget_postsolve();
-#endif
 
 
 
@@ -1276,9 +1250,6 @@ Measure the interface balance again, now with the new fields. `TS` and `TG`
 still hold the value of one phase here; the block below puts them back into
 tracer form. */
 
-# if INT_TEMP_PROBE
-  int_temperature_probe();
-# endif
 #endif
 
   //recover tracer form

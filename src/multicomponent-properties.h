@@ -80,10 +80,7 @@ gas branch below for the mechanism and for the reason why the repair touches
 no conserved field.
 
 `GAS_STATE_FALLBACK_FMIN` is the least gas fraction of a donor cell. A donor
-below it is too close to the interface to carry a clean gas state.
-
-Define `GAS_STATE_FALLBACK_DEBUG` to write `gasfallback-<pid>.dat`, which
-gives every cell that the repair examined and whether the repair succeeded. */
+below it is too close to the interface to carry a clean gas state. */
 
 
 #ifndef GAS_STATE_FALLBACK_FMIN
@@ -179,23 +176,6 @@ void update_properties (void) {
       } // internal solid filled
     }
 
-#ifdef GASGATE_DEBUG
-    if (f[] < 1. - F_ERR && !(TG[] > 0.)) {
-      static FILE * fpg = NULL;
-      static int ng = 0;
-      if (ng < 200) {
-        if (!fpg) {
-          fpg = fopen ("gasgate-dbg.dat", "w");
-          fprintf (fpg, "#t x y level f TG TS porosity rhoGv_G rhoGv_S\n");
-        }
-        fprintf (fpg, "%g %g %g %d %.17g %.17g %.17g %.17g %.17g %.17g\n",
-                 t, x, y, level, f[], TG[], TS[], porosity[],
-                 rhoGv_G[], rhoGv_S[]);
-        fflush (fpg);
-        ng++;
-      }
-    }
-#endif
 
     if (f[] < 1. - F_ERR) {
       // Update external gas properties
@@ -273,25 +253,6 @@ void update_properties (void) {
           }
         }
 
-#ifdef GAS_STATE_FALLBACK_DEBUG
-        {
-          static FILE * fpf = NULL;
-          static int nf = 0;
-          if (nf < 200) {
-            if (!fpf) {
-              char nm[80];
-              snprintf (nm, sizeof(nm), "gasfallback-%d.dat", pid());
-              fpf = fopen (nm, "w");
-              fprintf (fpf, "#t x y level f TG TS ytot TGh wbest repaired\n");
-            }
-            fprintf (fpf, "%g %g %g %d %.17g %.17g %.17g %.17g %.17g %.17g %d\n",
-                     t, x, y, level, f[], TG[], TS[], ytot, TGh, wbest,
-                     (TGh > 0. && ytot > 0.) ? 1 : 0);
-            fflush (fpf);
-            nf++;
-          }
-        }
-#endif
       }
 
       // empty external gas: skip the fill (fields stay at reset 0, guarded downstream).

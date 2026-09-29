@@ -38,14 +38,6 @@ compiled out unless the case sets `INT_TEMP_PROBE`. */
 #endif
 
 /**
-The record of the Picard loop on the interface temperature. It changes no
-field either. The loop itself is in the `tracer_diffusion` event below. */
-
-#if INT_TEMP_PICARD
-# include "int-temperature-picard.h"
-#endif
-
-/**
 The record of the interface conductance, and the reason it must give back the
 heat that it holds. It changes no field either. */
 
@@ -400,13 +392,10 @@ void update_mole_fields() {
 ## The interface heat source
 
 This assembles the two interface heat sources `sST` and `sGT`, and, under
-`INT_TEMP_ROBIN`, the two conductances `betaST` and `betaGT`. It was part of
-the species source loop. It is a function of its own so that the Picard loop
-of `INT_TEMP_PICARD` can call it again with an updated `TInt`.
+`INT_TEMP_ROBIN`, the two conductances `betaST` and `betaGT`.
 
 The function adds to the four fields. The caller must set them to a known
-value first. `event reset_sources` does that once per step; the Picard loop
-does it again on each pass.
+value first. `event reset_sources` does that once per step.
 
 Caution: `TS` and `TG` must hold the value of one phase here, not the tracer
 form. The event divides them at its start and multiplies them back at its
@@ -450,11 +439,7 @@ static void interface_temperature_sources (void)
 
       /**
       The interface heat flux. `update_divergence()` also reads `sST` and
-      `sGT`, as the interface heat of the thermal expansion.
-
-      The Picard snapshot `sST_base` is taken just before this function, so
-      the solve restores from it and sees the volumetric terms only. Miss that
-      restore and the flux is counted twice. */
+      `sGT`, as the interface heat of the thermal expansion. */
 
       sST[] += Sheatflux*aov;
       if (!gasdrop)
@@ -574,10 +559,7 @@ finite-difference it. */
       conductance is a heat sink: the cell keeps only `SMAX/S` of what the
       interface gave it, and the rest is destroyed. With it, the steady
       heating rate is exact, because `(theta/dt + K) dT = q + K dT` reduces
-      to `(theta/dt) dT = q`. See `int-temperature-robin.h`.
-
-      `debtST` and `debtGT` are constant over a step, so a `INT_TEMP_PICARD`
-      pass that rebuilds the source adds them again, which is correct. */
+      to `(theta/dt) dT = q`. See `int-temperature-robin.h`. */
 
 # ifndef INT_TEMP_ROBIN_DEBT
 #  define INT_TEMP_ROBIN_DEBT 1
@@ -627,8 +609,7 @@ For the species, the expansion reads only `sum_j dY_j/MW_j`. The species
 part therefore needs one sum for each phase, not one field for each species.
 
 Under `INT_TEMP_ROBIN` the diagonal `betaST` is part of the solve, and the
-change of the solve includes it, so the form holds with no special term. Under
-`INT_TEMP_PICARD` the last pass gives the value.
+change of the solve includes it, so the form holds with no special term.
 
 The corrected `drhodt` reaches the projection of the same step:
 `project_sf()` reads `drhodt` in `advection_term` and in `projection`, and
@@ -1137,18 +1118,8 @@ event tracer_diffusion (i++) {
   Assemble the interface heat source. This used to sit inside the species
   loop above. The move is exact: `sST` and `sGT` are accumulators, the
   enthalpy block writes only bulk cells, and this writes only interface
-  cells.
+  cells. */
 
-  `INT_TEMP_PICARD` keeps a copy of everything that does not depend on
-  `TInt` — the spark of `spark.h` and the enthalpy of mass diffusion — so
-  that each pass of the loop can rebuild the interface part alone. */
-
-# if INT_TEMP_PICARD
-  foreach() {
-    sST_base[] = sST[];
-    sGT_base[] = sGT[];
-  }
-# endif
 
   interface_temperature_sources();
 #endif
@@ -1506,30 +1477,15 @@ here. `TGadv` is the value before the solve. */
 #ifdef SOLVE_TEMPERATURE
 
 /**
-## The Picard loop on the interface temperature
+## The time level of the interface condition
 
-The scheme above is partitioned and does no iteration: it builds `TInt` from
-the fields of step `n`, freezes the two interface fluxes into `sST` and `sGT`,
+The scheme is partitioned and does no iteration: it builds `TInt` from the
+fields of step `n`, freezes the two interface fluxes into `sST` and `sGT`,
 then solves each phase alone. The interface condition is therefore explicit
 while the interior is implicit, and the lag of `TInt` is first order in `dt`.
-
-`INT_TEMP_PICARD` repeats the pair of solves. Each pass restarts from the
-fields of step `n`, rebuilds the interface source with the newest `TInt`, and
-solves again. At the fixed point the flux balance holds with the new fields on
-both sides, which is the fully implicit interface condition.
-
-Each pass must rebuild the source, the conductance and the heat capacity,
-because `diffusion()` destroys all three of its `r`, `beta` and `theta`
-arguments (`$BASILISK/diffusion.h`). That is why the whole block is inside the
-loop and not only the two solves.
-
-`INT_TEMP_PICARD_MAXITER = 0` gives the present code exactly. Use it as the
-inertness control.
-
-Caution: `ijc_CoupledTemperature()` skips a cell whose `TS` or `TG` is not
-positive, and a skipped cell keeps its old `TInt`. Such a cell adds nothing to
-`dTInt_max` and so it looks converged when it is not. `picard.dat` reports the
-count. Do not trust `dTInt_max` on a step whose count is not zero. */
+A Picard loop over the pair of solves removed the lag to round-off, but the
+median lag was 0.35 K and the loop cost 12.7 per cent more, so the code does
+not iterate. */
 
 /**
 Keep the temperature before the solve. The debt update below needs it to
@@ -1544,51 +1500,6 @@ matches the fields that built the source. */
   }
 # endif
 
-# if INT_TEMP_PICARD
-#  ifndef INT_TEMP_PICARD_MAXITER
-#   define INT_TEMP_PICARD_MAXITER 5
-#  endif
-#  ifndef INT_TEMP_PICARD_TOL
-#   define INT_TEMP_PICARD_TOL 1e-2
-#  endif
-#  ifndef INT_TEMP_PICARD_OMEGA
-#   define INT_TEMP_PICARD_OMEGA 1.
-#  endif
-#  if defined FIXED_INT_TEMP || defined TEMPERATURE_PROFILE
-#   error "INT_TEMP_PICARD needs a solved TInt. FIXED_INT_TEMP and TEMPERATURE_PROFILE force it."
-#  endif
-
-  foreach() {
-    TS_n[] = TS[];
-    TG_n[] = TG[];
-  }
-
-  ITP_niter = 0.;
-  ITP_dTInt = 0.;
-  ITP_dTInt0 = 0.;
-  ITP_nskip = 0.;
-
-  for (int picard_m = 0; picard_m <= INT_TEMP_PICARD_MAXITER; picard_m++) {
-
-  /**
-  Undo the previous pass. `diffusion()` consumed `sST`, `sGT`, `betaST` and
-  `betaGT`, so restore the part that does not depend on `TInt` and add the
-  interface part again with the new `TInt`. */
-
-    if (picard_m > 0) {
-      foreach() {
-        TS[] = TS_n[];
-        TG[] = TG_n[];
-        sST[] = sST_base[];
-        sGT[] = sGT_base[];
-#  if INT_TEMP_ROBIN
-        betaST[] = 0.;
-        betaGT[] = 0.;
-#  endif
-      }
-      interface_temperature_sources();
-    }
-# endif // INT_TEMP_PICARD
 
 
   foreach_face() {
@@ -1616,9 +1527,7 @@ matches the fields that built the source. */
 #if DRI_ON
 
   /**
-  Keep the state and the capacities before the solves. With
-  `INT_TEMP_PICARD` each pass restores the same `T**`, so each pass writes
-  the same values here. */
+  Keep the state and the capacities before the solves. */
 
   foreach() {
     dri_TS[] = TS[];
@@ -1650,11 +1559,7 @@ and it left the gas solve, which is the one that fails, untouched.
 
 Caution: measure any change here with several alternating runs, normalised by
 CPU time. A single pair on a loaded machine once gave 43 per cent, which was
-pure scatter; eleven proper runs gave 0.6 per cent.
-
-Caution: with `INT_TEMP_PICARD` the outer loop cannot converge below what the
-linear solve delivers. Keep `INT_TEMP_TOL_K` well under
-`INT_TEMP_PICARD_TOL`, and re-measure `rel_max` after any change. */
+pure scatter; eleven proper runs gave 0.6 per cent. */
 
 #ifdef TG_PROBE
   tg_stage_check ("B-presolve");
@@ -1703,8 +1608,8 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
   /**
   The temperature part of the transport, from the change of each solve. The
   weights and the divisors are the ones of `update_divergence()`, with the
-  state before the solves. Keep it in `dri_cT` and add it to `drhodt` after
-  the loop of `INT_TEMP_PICARD`, so that only the last pass counts. */
+  state before the solves. Keep it in `dri_cT` and add it to `drhodt`
+  below. */
 
   if (dt > 0.)
     foreach() {
@@ -1810,67 +1715,6 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
   }
 #endif
 
-# if INT_TEMP_PICARD
-
-  /**
-  The last pass is the answer. Do not rebuild `TInt` after it: nothing would
-  use the new value, and `update_divergence()` already ran with the first one. */
-
-    if (picard_m == INT_TEMP_PICARD_MAXITER)
-      break;
-
-    foreach()
-      TInt_prev[] = TInt[];
-
-    ijc_CoupledTemperature();
-
-  /**
-  Under-relaxation. The default weight is 1, which is no relaxation at all,
-  so the branch costs one comparison per step. Lower the weight if
-  `picard.dat` shows that `dTInt` does not fall from pass to pass. */
-
-    if (INT_TEMP_PICARD_OMEGA != 1.) {
-      double w = INT_TEMP_PICARD_OMEGA;
-      foreach()
-        if (f[] > F_ERR && f[] < 1. - F_ERR)
-          TInt[] = w*TInt[] + (1. - w)*TInt_prev[];
-    }
-
-  /**
-  The change of this pass, and the cells that `ijc_CoupledTemperature()` did
-  not solve. Its guard is `f[] > F_ERR && f[] < 1.-F_ERR && TS[] > 0. &&
-  TG[] > 0.`, so a cell that fails the last two keeps its old `TInt` and does
-  not appear in `dTInt_max`. Count it, or the loop reports convergence in a
-  cell it never touched. */
-
-    double dTInt_max = 0.;
-    double nint = 0., nskip = 0.;
-    foreach (reduction(max:dTInt_max) reduction(+:nint) reduction(+:nskip))
-      if (f[] > F_ERR && f[] < 1. - F_ERR) {
-        nint += 1.;
-        if (TS[] > 0. && TG[] > 0.)
-          dTInt_max = max (dTInt_max, fabs (TInt[] - TInt_prev[]));
-        else
-          nskip += 1.;
-      }
-
-  /**
-  Keep the change of the first pass as well. The contraction rate of the map
-  is the ratio of the last change to the first, over the passes between them.
-  A ratio taken between two steps measures nothing. */
-
-    if (picard_m == 0)
-      ITP_dTInt0 = dTInt_max;
-
-    ITP_niter = picard_m + 1.;
-    ITP_dTInt = dTInt_max;
-    ITP_nint  = nint;
-    ITP_nskip = nskip;
-
-    if (dTInt_max < INT_TEMP_PICARD_TOL)
-      break;
-  }
-# endif // INT_TEMP_PICARD
 
 /**
 Add the temperature part of the transport to `drhodt`. Nothing reads

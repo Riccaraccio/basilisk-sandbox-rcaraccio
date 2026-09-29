@@ -36,8 +36,8 @@ whenever the residual is still above the tolerance, so a tolerance that can
 never be met drives `nrelax` from 4 up to 50 and beyond, and the solver then
 runs the full `NITERMAX` of 100 iterations. One such solve costs about a
 thousand normal ones. It happens exactly when `dt` has already collapsed,
-which turns a slow patch of a run into a dead one. `test-fullrobin` and
-`test-fullpicard` both died that way.
+which turns a slow patch of a run into a dead one. Two runs died that
+way.
 
 ## The repair
 
@@ -63,10 +63,6 @@ Two properties matter.
 Caution: read `max(theta1)` and `max(theta2)` BEFORE the first `diffusion()`
 call. `diffusion()` overwrites `theta` in place with `theta*(-1/dt)`.
 
-Caution: with `INT_TEMP_PICARD` the outer loop cannot converge below what the
-linear solve delivers. Keep `INT_TEMP_TOL_K` well under `INT_TEMP_PICARD_TOL`,
-which is 1e-2 K by default, and check `rel_max` after any change.
-
 ## How to read `tsolve.dat`
 
     #t(1) dt(2) tolS(3) iS(4) nrelaxS(5) resaS(6) tolG(7) iG(8) nrelaxG(9) resaG(10)
@@ -78,10 +74,7 @@ which is 1e-2 K by default, and check `rel_max` after any change.
   It starts at 4 and `poisson.h` raises it while the residual stays above the
   tolerance. Anything above about 10 means the solve is struggling.
 - `resaS`, `resaG` the largest cell residual left. Compare it against the
-  tolerance of the same line, not against 1e-5.
-
-With `INT_TEMP_PICARD` the line holds the LAST pass of the step.
-*/
+  tolerance of the same line, not against 1e-5. */
 
 #ifndef INT_TEMP_TOL_K
 # define INT_TEMP_TOL_K 1e-6

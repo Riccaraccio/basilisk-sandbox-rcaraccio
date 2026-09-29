@@ -71,29 +71,6 @@ scalar TS_rn[], TG_rn[];
 scalar debtST[], debtGT[];
 #endif
 
-/**
-The work fields of the Picard loop on the interface temperature.
-`INT_TEMP_PICARD` turns it on. See `multicomponent-varprop.h`.
-
-- `sST_base`, `sGT_base` hold the part of the heat source that does not
-  depend on `TInt`, so that each pass rebuilds only the interface part.
-- `TS_n`, `TG_n` hold the two fields at the start of the step. Every pass
-  restarts from them, or the loop becomes a sequence of timesteps.
-- `TInt_prev` holds the previous iterate, for the convergence test. */
-
-#if INT_TEMP_PICARD
-
-/**
-`sST_base` and `sGT_base` hold the source WITHOUT the interface flux.
-`INT_TEMP_PICARD` restores from them on each pass. */
-
-scalar sST_base[], sGT_base[];
-#endif
-
-#if INT_TEMP_PICARD
-scalar TS_n[], TG_n[];
-scalar TInt_prev[];
-#endif
 face vector lambda1f[], lambda2f[]; // face vector thermal conductivities for porous and gas phases
 vector lambda1v[], lambda2v[]; // thermal conductivities for porous and gas phases
 
@@ -379,16 +356,7 @@ for (int jj=0; jj<NGS; jj++) {
   debtGT.nodump = true;
 #endif
 
-#if INT_TEMP_PICARD
-  sST_base.nodump = true;
-  sGT_base.nodump = true;
-#endif
 
-#if INT_TEMP_PICARD
-  TS_n.nodump = true;
-  TG_n.nodump = true;
-  TInt_prev.nodump = true;
-#endif
 
   f.tracers = list_append (f.tracers, TS);
   f.tracers = list_append (f.tracers, TG);

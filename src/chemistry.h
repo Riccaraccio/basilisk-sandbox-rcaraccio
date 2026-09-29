@@ -467,9 +467,6 @@ The state that the second half reads:
   then computes the properties from the state after the second half, so the
   next step starts with consistent properties.
 
-Caution: with `PROPS_AFTER_SOLVES` the properties of the momentum come from
-the state before the second half.
-
 Caution: `drhodt-budget.h` reads `drhodt` before the second half, so its
 reference `|drhodt|` does not hold the expansion of the second half.
 

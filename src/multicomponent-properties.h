@@ -441,9 +441,7 @@ void update_divergence (void) {
   }
 
   /**
-  The interface heat source. `INT_TEMP_ROBIN` adds `+KS*TS[]` to `sST` and
-  `-KS` to `betaST`, and the two cancel at `TS = TS^n`, so `sST` alone is the
-  whole term. */
+  The interface heat source. `sST` and `sGT` hold the whole term. */
 
   foreach() {
     foreach_dimension()

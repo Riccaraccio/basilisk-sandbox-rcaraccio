@@ -41,9 +41,6 @@ compiled out unless the case sets `INT_TEMP_PROBE`. */
 The record of the interface conductance, and the reason it must give back the
 heat that it holds. It changes no field either. */
 
-#if INT_TEMP_ROBIN
-# include "int-temperature-robin.h"
-#endif
 
 /**
 ## The transport of heat by the pore gas
@@ -116,91 +113,6 @@ plain centred stencil. */
 
 
 
-/**
-## The threshold of the gas energy equation
-
-`TG_FGMIN` is the smallest gas fraction that the gas energy equation solves
-for. Set it to 0 to get the behaviour of before.
-
-The gas heat capacity of a cell is `theta2 = cm*fG*rhoGv_G*cpGv_G`, which
-scales with the gas VOLUME. The interface heat flux is `Gheatflux*aov`, which
-scales with the interface AREA. The two do not carry the same factor, so the
-ratio of the source to the heat capacity has no bound as `fG` falls. The only
-threshold that admitted such a cell was `F_ERR = 1e-10`, which is a tolerance
-for a volume fraction and not a limit for the conditioning of an equation.
-
-A measurement at level 12 shows what this costs. In a cell with
-`fG = 9.13e-6` the interface flux is `qint = -6.28e+06` and the Robin cap
-gives back only `qrob = +6.75e+05`. The mass diffusion enthalpy is
-`qmde = -1.3e-03`, nine orders smaller, and it is not part of this. One solve
-takes `TG` from 307 K to -42 K. The next two solves give -754 K and -2127 K,
-because `qint` doubles at each step. `update_properties()` then leaves
-`rhoGv_G` at 0, `rhomix` becomes 0, and `1./rhomix` stops the run with SIGFPE.
-
-`INT_TEMP_ROBIN_SMAX` does not repair this. When the cap fires, the diagonal
-of the solve is `A/SMAX`, so the step in `TG` is proportional to `SMAX`. A
-larger `SMAX` makes the excursion larger. A `SMAX` of 1 removes the overshoot
-but gives the 20 K to 25 K bias of the surface temperature that the ladder
-measured.
-
-A cell below the threshold is not a gas cell. Its gas is in thermal
-equilibrium with the solid, so this module gives it the solid temperature and
-keeps the gas out of the interface source. At `fG = 1e-3` the gas layer is
-1e-3 of a cell wide, which no grid of this kind resolves, and it holds 0.1 per
-cent of the gas of a cell.
-
-Caution: the pin is not exactly conservative. It discards the enthalpy
-difference `fG*rhoGv_G*cpGv_G*(TG - TS)` of the cells that it freezes. Read
-`TG_fgmin_ncells` to see how many cells that is. If the count is more than a
-few per cent of the interface cells, the threshold is too high for the grid.
-
-Caution: the solid energy equation has the same weakness when `fS` is small.
-This module does NOT guard that side. No run has failed there yet. */
-
-#ifndef TG_FGMIN
-# define TG_FGMIN 1e-3
-#endif
-
-/**
-### The two treatments of a cell below the threshold
-
-`TG_FGMIN_MODE` selects what such a cell gets.
-
-`1`, the pin. The cell loses the gas side of the interface source, and it
-takes the solid temperature after the solve. This is simple and it stops the
-runaway, but it DISCARDS the heat transfer between the phases in that cell.
-The neighbours read the pinned value through `ebmgrad`, so the gas gradient
-at the wall changes. Measure `Tsurf` against `TG_FGMIN = 0` before you trust
-it.
-
-`2`, the steady limit. The cell keeps the full interface source, and the
-FULL conductance `A = |lambda2vh*hG|*aov` goes on the diagonal with no cap.
-The time derivative is what the cell loses, not the source, because `th2/dt`
-is 1e-6 of `A` at this gas fraction. The equation becomes
-
-    (A + sum lambda_f) TG = A TInt + sum lambda_f TG_neighbour
-
-which obeys a maximum principle: `TG` lands between `TInt` and its
-neighbours, for any `fG` and any `dt`. It cannot go negative, and the flux
-`A*(TInt - TG)` stays. This keeps the heat transfer that mode 1 throws away.
-
-Do not raise `INT_TEMP_ROBIN_SMAX` to get the same effect. The cap puts
-`A/SMAX` on the diagonal, which is LESS than `A`, and that deficit is what
-breaks the bound. `SMAX = 1` gives the full conductance everywhere, and the
-ladder measured that as a 20 K to 25 K bias of `Tsurf` and a collapse of the
-timestep at t = 8.48. Mode 2 applies the same limit ONLY to the cells whose
-heat capacity is truly negligible, so the well resolved cells keep the
-`SMAX = 20` path and the ladder results do not move. */
-
-#ifndef TG_FGMIN_MODE
-# define TG_FGMIN_MODE 2
-#endif
-
-double TG_fgmin_ncells = 0.;   // frozen cells of the last step
-
-#ifdef TG_PROBE
-FILE * tgf_fp = NULL;          // the count report of `TG_FGMIN`
-#endif
 
 /**
 The term feeds the two temperature solves, and the cut cell branch reads
@@ -339,10 +251,6 @@ event reset_sources (i++) {
     qmde_dbg[] = 0.;
     qrob_dbg[] = 0.;
 #endif
-#if INT_TEMP_ROBIN
-    betaST[] = 0.;
-    betaGT[] = 0.;
-#endif
   }
 #endif
 
@@ -391,10 +299,9 @@ void update_mole_fields() {
 /**
 ## The interface heat source
 
-This assembles the two interface heat sources `sST` and `sGT`, and, under
-`INT_TEMP_ROBIN`, the two conductances `betaST` and `betaGT`.
+This assembles the two interface heat sources `sST` and `sGT`.
 
-The function adds to the four fields. The caller must set them to a known
+The function adds to the two fields. The caller must set them to a known
 value first. `event reset_sources` does that once per step.
 
 Caution: `TS` and `TG` must hold the value of one phase here, not the tracer
@@ -430,154 +337,28 @@ static void interface_temperature_sources (void)
 # endif
 
       /**
-      A cell whose gas fraction is below `TG_FGMIN` keeps its gas out of the
-      interface source. The solid side is not changed, so the particle still
-      receives the full surface heat. */
-
-      bool gasfrozen = (TG_FGMIN > 0. && fG[] < TG_FGMIN);
-      bool gasdrop   = (gasfrozen && TG_FGMIN_MODE == 1);
-
-      /**
       The interface heat flux. `update_divergence()` also reads `sST` and
-      `sGT`, as the interface heat of the thermal expansion. */
+      `sGT`, as the interface heat of the thermal expansion.
+
+      Caution: `ebmgrad` builds the gradient from the NEIGHBOURS of the cell
+      along the normal, so the source that heats a cut cell does not answer
+      to the temperature of that cell. In a gas sliver the heat capacity
+      `theta2 = cm*fG*rhoG*cpG` goes to zero with the gas fraction, and the
+      exchange number `S = dt*lambda*h*aov/theta2` has no bound. A measured
+      run reached `S` of order 100, and `TG` of one cell went through zero
+      and then grew by a factor 2.8 per step. Nothing in this scheme bounds
+      `TG` there, and the solid side has the same weakness when `fS` is
+      small. The production cases write `TGmin_gas` and `nTGneg` as the
+      early warning. The tag `oscillation-campaign-2026-09` keeps two
+      remedies: a conductance on the diagonal (`INT_TEMP_ROBIN`) and a
+      Dirichlet condition inside the operator (`INT_TEMP_VOFBC`). */
 
       sST[] += Sheatflux*aov;
-      if (!gasdrop)
-        sGT[] += Gheatflux*aov;
+      sGT[] += Gheatflux*aov;
 #ifdef TG_PROBE
-      qint_dbg[] = gasdrop ? 0. : Gheatflux*aov;
+      qint_dbg[] = Gheatflux*aov;
 #endif
 
-/**
-## The interface conductance on the diagonal
-
-`ebmgrad` builds the gradient from the NEIGHBOURS of this cell along the
-normal. The cell value `TG[]` is not in it. So the source that heats a cut
-cell does not answer to the temperature of that cell: the only restoring
-term is the internal diffusion, and the face fractions of a sliver make it
-weak. The heat that one step delivers is then large against the heat
-capacity `theta2 = cm*fG*rhoG*cpG`, which goes to zero with the gas
-fraction. The probe of `int-temperature-probe.h` measures the ratio
-
-    S = dt*lambda*h*aov/theta
-
-and a measured run stopped at S of order 100: the gas temperature of one cut
-cell went through zero and grew by a factor 2.8 per step for five steps.
-
-Add a conductance `K` to the diagonal and give the same `K*T^n` back to the
-source. The step then reads
-
-    (theta/dt + K)(T^{n+1} - T^n) = div(D grad T^{n+1}) + src
-
-so the change per step falls by `1/(1 + K*dt/theta)`, and the effective
-exchange number becomes `dt*A/(theta + K*dt)`. This is the deferred
-correction of a Dirichlet cut-cell condition: it keeps the accurate gradient
-stencil and damps the path to it.
-
-Caution: the two added terms cancel only when the field stops changing. On
-its own this scheme therefore DESTROYS heat while the field moves. When `K`
-fires the diagonal is exactly `A/SMAX`, so the cell keeps `SMAX/S` of the
-heat that the interface gave it — one per cent at `SMAX = 1` and `S = 100`.
-A measured run lost 20 to 25 K of surface temperature and 25 per cent of the
-mass loss rate. `INT_TEMP_ROBIN_DEBT`, which is on by default, carries the
-withheld heat to the next step and removes that loss. Read
-`int-temperature-robin.h` before you change any of this.
-
-Choose `K` to bring the effective exchange number down to
-`INT_TEMP_ROBIN_SMAX` and no further:
-
-    K = max (0, A/SMAX - theta/dt)
-
-A cell already under the limit gets `K = 0` and is untouched, bit for bit.
-Only the cells that the probe reports as unstable change.
-
-**The value of `SMAX` decides whether that last sentence is true.** The first
-version used `SMAX = 1`, which fired on 63 interface cells of about 90 and
-rewrote the answer: `Tsurf` fell 2.1 K by t = 0.3 s and 25 K by t = 8 s, the
-radial velocity at 1.5 mm changed sign, and the `full` ladder died at
-t = 8.48. The default is now 20. It fires on 2 cells, it clamps only the
-outliers that the probe reports, and it reproduces the run without the flag
-to every printed digit over the first 0.3 s.
-
-Caution: 20 is five times below the `S` of 100 that crashed a measured run,
-but the crash case must be repeated at this value. Run `test-robinm` from the
-t = 5 s dump and check that it passes t = 5.94 s before you trust the number.
-
-`ebmgrad` is affine in the interface value, so `A` is exact. Do not
-finite-difference it. */
-
-# if INT_TEMP_ROBIN
-#  ifndef INT_TEMP_ROBIN_SMAX
-#   define INT_TEMP_ROBIN_SMAX 20.
-#  endif
-      double hS = ebmgrad (point, TS, fS, fG, fsS, fsG, false, 1., &success)
-                - ebmgrad (point, TS, fS, fG, fsS, fsG, false, 0., &success);
-      double hG = ebmgrad (point, TG, fS, fG, fsS, fsG, true,  1., &success)
-                - ebmgrad (point, TG, fS, fG, fsS, fsG, true,  0., &success);
-
-      /**
-      The heat capacity of each phase, exactly as the `diffusion()` call
-      builds `theta1` and `theta2`. Keep the two sites identical. */
-
-      double theta1vh, theta2vh;
-#  ifdef VARPROP
-      theta1vh = fS[] > F_ERR ?
-        porosity[]/fS[]*rhoGv_S[]*cpGv_S[] + (1. - porosity[]/fS[])*rhoSv[]*cpSv[] : 0.;
-      theta2vh = rhoGv_G[]*cpGv_G[];
-#  else
-      theta1vh = fS[] > F_ERR ?
-        porosity[]/fS[]*rhoG*cpG + (1. - porosity[]/fS[])*rhoS*cpS : 0.;
-      theta2vh = rhoG*cpG;
-#  endif
-      double th1 = cm[]*max(fS[]*theta1vh, F_ERR);
-      double th2 = cm[]*max(fG[]*theta2vh, F_ERR);
-
-      double smax = INT_TEMP_ROBIN_SMAX;
-      double KS = max (0., fabs(lambda1vh*hS)*aov/smax - th1/dt);
-      /**
-      The full interface conductance. Mode 2 puts all of it on the diagonal
-      of a cell below the threshold, which is what bounds the solve. */
-
-      double Acond = fabs(lambda2vh*hG)*aov;
-      double KG = gasfrozen ?
-        (TG_FGMIN_MODE == 1 ? 0. : Acond) : max (0., Acond/smax - th2/dt);
-
-      /**
-      Keep the conductance. The debt update after the solve needs it to
-      measure the heat that this step withheld. */
-
-      KSf[] = KS;
-      KGf[] = KG;
-      if (gasfrozen)
-        debtGT[] = 0.;
-
-      betaST[] -= KS;
-      betaGT[] -= KG;
-
-      /**
-      Give back the heat that the last step withheld. Without this term the
-      conductance is a heat sink: the cell keeps only `SMAX/S` of what the
-      interface gave it, and the rest is destroyed. With it, the steady
-      heating rate is exact, because `(theta/dt + K) dT = q + K dT` reduces
-      to `(theta/dt) dT = q`. See `int-temperature-robin.h`. */
-
-# ifndef INT_TEMP_ROBIN_DEBT
-#  define INT_TEMP_ROBIN_DEBT 1
-# endif
-# if INT_TEMP_ROBIN_DEBT
-      sST[] += KS*TS[] + debtST[];
-      sGT[] += KG*TG[] + debtGT[];
-#  ifdef TG_PROBE
-      qrob_dbg[] = KG*TG[] + debtGT[];
-#  endif
-# else
-      sST[] += KS*TS[];
-      sGT[] += KG*TG[];
-#  ifdef TG_PROBE
-      qrob_dbg[] = KG*TG[];
-#  endif
-# endif
-# endif
     }
   }
 
@@ -607,9 +388,6 @@ divisors use the state before the solves, as there.
 
 For the species, the expansion reads only `sum_j dY_j/MW_j`. The species
 part therefore needs one sum for each phase, not one field for each species.
-
-Under `INT_TEMP_ROBIN` the diagonal `betaST` is part of the solve, and the
-change of the solve includes it, so the form holds with no special term.
 
 The corrected `drhodt` reaches the projection of the same step:
 `project_sf()` reads `drhodt` in `advection_term` and in `projection`, and
@@ -1493,12 +1271,6 @@ measure `T^{n+1} - T^n`. Nothing writes `TS` or `TG` between the call to
 `interface_temperature_sources()` above and this point, so the snapshot
 matches the fields that built the source. */
 
-# if INT_TEMP_ROBIN
-  foreach() {
-    TS_rn[] = TS[];
-    TG_rn[] = TG[];
-  }
-# endif
 
 
 
@@ -1583,21 +1355,12 @@ pure scatter; eleven proper runs gave 0.6 per cent. */
     mgstats mgS, mgG;
     mgG.i = 0; mgG.nrelax = 0; mgG.resa = 0.;
 
-#if INT_TEMP_ROBIN
-    TOLERANCE = tolS;
-    mgS = diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
-#   ifndef TEMPERATURE_PROFILE
-    TOLERANCE = tolG;
-    mgG = diffusion (TG, dt, D=lambda2f, r=sGT, beta=betaGT, theta=theta2);
-#   endif
-#  else
     TOLERANCE = tolS;
     mgS = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
 #   ifndef TEMPERATURE_PROFILE
     TOLERANCE = tolG;
     mgG = diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
 #   endif
-#  endif
 
     TOLERANCE = tol_save;
     ITT_iS = mgS.i; ITT_nrelaxS = mgS.nrelax; ITT_resaS = mgS.resa;
@@ -1631,51 +1394,6 @@ pure scatter; eleven proper runs gave 0.6 per cent. */
 #if DRHODT_BUDGET
   drhodt_budget_postsolve();
 #endif
-
-  /**
-  Give the solid temperature to every cell that the gas energy equation does
-  not solve for. `TS` and `TG` both hold the value of one phase here, so this
-  is a direct assignment. The source of such a cell carries no interface term,
-  so the solve above left it near its old value; this line makes the value
-  mean something. */
-
-  if (TG_FGMIN > 0.) {
-    double nfrozen = 0., nint = 0.;
-    foreach (reduction(+:nfrozen) reduction(+:nint)) {
-      bool interfacial = (f[] > F_ERR && f[] < 1. - F_ERR);
-      if (interfacial)
-        nint += 1.;
-      if (fG[] < TG_FGMIN && fS[] > F_ERR) {
-
-        /**
-        Mode 1 replaces the answer of the solve. Mode 2 keeps it: the solve
-        of that cell is already bounded, because the full conductance sits on
-        its diagonal. */
-
-        if (TG_FGMIN_MODE == 1)
-          TG[] = TS[];
-
-        /**
-        Count only the cells that this changes. A pure solid cell already
-        holds `TG = TS` after the extrapolation of the last step, so it is
-        not part of the count. */
-
-        if (interfacial)
-          nfrozen += 1.;
-      }
-    }
-    TG_fgmin_ncells = nfrozen;
-#ifdef TG_PROBE
-    if (pid() == 0) {
-      if (!tgf_fp) {
-        tgf_fp = fopen ("fgmin.dat", "w");
-        fprintf (tgf_fp, "#t i nfrozen ninterface\n");
-      }
-      fprintf (tgf_fp, "%g %d %g %g\n", t, i, nfrozen, nint);
-      fflush (tgf_fp);
-    }
-#endif
-  }
 
 #ifdef TG_PROBE
   tg_source_check ("S-postsolve");
@@ -1723,41 +1441,6 @@ Add the temperature part of the transport to `drhodt`. Nothing reads
 # if DRI_ON
   foreach()
     drhodt[] += dri_cT[];
-# endif
-
-/**
-The debt of this step: the heat that the conductance withheld, as a rate. The
-next step adds it to the source. `KSf` and `KGf` hold the conductance of the
-LAST pass, which is the pass that produced these temperatures.
-
-The guard is the same one that `interface_temperature_sources()` uses, so a
-cell that is no longer an interface cell gets a debt of zero. That costs one
-step of heat, which is the same bound the carry itself has. */
-
-# if INT_TEMP_ROBIN
-  ITR_debt_max = 0.;
-  ITR_debt_l1 = 0.;
-  ITR_dTcap_max = 0.;
-  ITR_ncap = 0.;
-
-  foreach (reduction(max:ITR_debt_max) reduction(+:ITR_debt_l1)
-           reduction(max:ITR_dTcap_max) reduction(+:ITR_ncap)) {
-    debtST[] = 0.;
-    debtGT[] = 0.;
-    if (f[] > F_ERR && f[] < 1. - F_ERR) {
-      double dTS = TS[] - TS_rn[], dTG = TG[] - TG_rn[];
-      debtST[] = KSf[]*dTS;
-      debtGT[] = KGf[]*dTG;
-
-      if (KSf[] > 0. || KGf[] > 0.) {
-        ITR_ncap += 1.;
-        ITR_debt_max = max (ITR_debt_max,
-                            max (fabs (debtST[]), fabs (debtGT[])));
-        ITR_debt_l1 += (fabs (debtST[]) + fabs (debtGT[]))*dv();
-        ITR_dTcap_max = max (ITR_dTcap_max, max (fabs (dTS), fabs (dTG)));
-      }
-    }
-  }
 # endif
 
 /**

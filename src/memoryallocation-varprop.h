@@ -44,32 +44,8 @@ scalar TInt[]; // interface temperature
 scalar TS, TG; // solid and gas temperatures
 scalar sST[], sGT[]; // source terms for solid and gas temperatures
 
-/**
-The interface conductance of each phase, for the diagonal of the diffusion
-operator. `INT_TEMP_ROBIN` turns it on. See `multicomponent-varprop.h`. */
 
-#if INT_TEMP_ROBIN
-scalar betaST[], betaGT[];
-#endif
 
-#if INT_TEMP_ROBIN
-
-/**
-The work fields that make the conductance conserve energy.
-
-- `KSf`, `KGf` keep the conductance that the step used, so that the debt
-  update can measure the heat it withheld.
-- `TS_rn`, `TG_rn` keep the temperature before the solve.
-- `debtST`, `debtGT` hold that withheld heat, as a rate. The next step adds
-  it back to the source.
-
-The debt is a ONE-STEP carry, not a running sum, so the loss of it costs one
-step. See `int-temperature-robin.h`. */
-
-scalar KSf[], KGf[];
-scalar TS_rn[], TG_rn[];
-scalar debtST[], debtGT[];
-#endif
 
 face vector lambda1f[], lambda2f[]; // face vector thermal conductivities for porous and gas phases
 vector lambda1v[], lambda2v[]; // thermal conductivities for porous and gas phases
@@ -342,19 +318,7 @@ for (int jj=0; jj<NGS; jj++) {
   sST.nodump = true;
   sGT.nodump = true;
 
-#if INT_TEMP_ROBIN
-  betaST.nodump = true;
-  betaGT.nodump = true;
-#endif
 
-#if INT_TEMP_ROBIN
-  KSf.nodump = true;
-  KGf.nodump = true;
-  TS_rn.nodump = true;
-  TG_rn.nodump = true;
-  debtST.nodump = true;
-  debtGT.nodump = true;
-#endif
 
 
 

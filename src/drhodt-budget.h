@@ -164,9 +164,6 @@ step in about 20 at `DT = 5e-4`. On the other steps it tests one flag. */
 
 #if DRI_ON
 scalar dbg_exS[], dbg_exG[];
-# if INT_TEMP_ROBIN
-scalar dbg_bS[], dbg_bG[];
-# endif
 #else
 scalar dbg_TSpre[], dbg_TGpre[], dbg_th1[], dbg_th2[], dbg_exS[], dbg_exG[];
 #endif
@@ -190,9 +187,6 @@ event drhodt_budget_arm (t += 0.01) {
 event defaults (i = 0) {
 #if DRI_ON
   dbg_exS.nodump = true; dbg_exG.nodump = true;
-# if INT_TEMP_ROBIN
-  dbg_bS.nodump = true; dbg_bG.nodump = true;
-# endif
 #else
   dbg_TSpre.nodump = true; dbg_TGpre.nodump = true;
   dbg_th1.nodump = true; dbg_th2.nodump = true;
@@ -220,10 +214,6 @@ static void drhodt_budget_presolve (scalar theta1, scalar theta2)
   foreach() {
     dbg_exS[] = sST[];
     dbg_exG[] = sGT[];
-# if INT_TEMP_ROBIN
-    dbg_bS[] = betaST[];
-    dbg_bG[] = betaGT[];
-# endif
   }
 #else
   face vector qS[], qG[];
@@ -315,10 +305,6 @@ static void drhodt_budget_postsolve (void)
       dbg_exS[] += (gS.x[1] - gS.x[])/Delta;
       dbg_exG[] += (gG.x[1] - gG.x[])/Delta;
     }
-# if INT_TEMP_ROBIN
-    dbg_exS[] += dbg_bS[]*TS[];
-    dbg_exG[] += dbg_bG[]*TG[];
-# endif
   }
 
   /**

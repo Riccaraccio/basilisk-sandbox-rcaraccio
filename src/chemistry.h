@@ -277,69 +277,35 @@ static void accumulate_gas_sources (Point point, const double * ystart,
 /**
 ## The gate that skips the cells the step cannot change
 
-The gate spends **one** evaluation of the reactor right-hand side to
-decide whether the stiff solve of a gas cell can change the state over the
-step. The measurements below come from `test/bench88.c` and
-`test/gate-ignition.c` with `biomass/Solid-gas-88` (87 gas species, 33 solid
-species) at `dt = 2.4e-4` s.
-
-The gas branch solves 88 equations in every cell that holds gas. In the free
-stream the mixture is air at the inlet temperature and it does not react, but
-the stiff solve still costs 1.8 to 3.8 ms, which is about 100 evaluations. The
-gate applies the explicit update instead, which is exact at that size, and
-skips the solve. It replaces those 100 evaluations with one.
+The gate spends **one** evaluation of the reactor right-hand side to decide
+whether the stiff solve of a gas cell can change the state over the step.
+With `biomass/Solid-gas-88` the gas branch solves 88 equations in every cell
+that holds gas. In the free stream the mixture is air that does not react,
+but the stiff solve still costs 1.8 to 3.8 ms, about 100 evaluations. When
+the change of the step is below the tolerances, the gate applies the explicit
+update, which is exact at that size, and skips the solve.
 
 The margin is large. Air at 1123 K gives `max|dY|` of 2e-17 and `|dT|` of
-3e-13 K over the step. Hot air with 0.5 per cent of CO and 0.5 per cent of tar
-gives 2e-4 and 3e-2 K.
+3e-13 K over a step of 2.4e-4 s. Hot air with 0.5 per cent of CO and 0.5 per
+cent of tar gives 2e-4 and 3e-2 K.
 
-## An ignition never closes the gate
+An ignition does not close the gate. `test/gate-ignition.c` marches a batch
+reactor with the pyrolysis gas in air from 800 K to 1300 K. The gate stays
+open on every one of the 3000 steps, and the gated trajectory is equal to the
+ungated one to the last bit, also through an induction of 0.48 s at 800 K.
 
-`test/gate-ignition.c` marches a batch reactor at the step of the production
-case and compares the gated trajectory with the ungated one. An ignition is
-the case that a rate test can miss: the species move slowly through the
-induction period, and the mixture then runs away inside one step.
+The tolerances are the size of the state that the gate throws away on one
+step, thus of the perturbation that it feeds to the solver. At
+`FROZEN_CELL_YTOL` = 1e-10 a 2-D run at level 8 kept the mass, `Tmax` and
+`dt`, but the projection residual moved by 5e-5 from t = 0.33 s. At 1e-15 the
+run is equal to the ungated run in every column. The tolerances below are
+40 times above the rate of the free stream, so the gate keeps its work and
+the trajectory stays reproducible.
 
-With the pyrolysis gas of the biomass in air, from 800 K to 1300 K, the gate
-stays open on **every one of the 3000 steps**, at every temperature. The
-ignition delay and the whole temperature trajectory are equal to the last bit,
-even at 800 K where the induction lasts 0.48 s, which is 2000 steps.
-
-At the tolerances below the gate closes on hot air only under about 1e-9 of
-fuel by mass. A mixture with 1e-8 of fuel still gets the solve. At the level
-where the gate does close, the mixture moves by 2e-9 K over 0.72 s, and the
-gated trajectory follows the solved one to 1.4e-9 K.
-
-## Why the tolerances are as tight as they are
-
-The tolerance is the size of the state that the gate throws away on one step,
-so it is also the size of the perturbation that the gate feeds to the rest of
-the solver. A 2-D A/B on `run/test.c` at `maxlevel` 8 measured it. With
-`FROZEN_CELL_YTOL` at 1e-10 the mass, `Tmax`, `dt` and the count of the
-pressure iterations stay equal to the printed precision over 0.6 s, but the
-projection residual moves by 5e-5 in relative terms from t = 0.33, and the two
-`Tavg` probes nearest the surface then differ, because they are a ratio of two
-integrals that are both near zero when the plume arrives.
-
-At 1e-15 the same run is equal to the ungated run in every column of every
-row. The tolerances are therefore the tight values: they still sit 40 times
-above the rate of the free stream, so the gate keeps its work, and they leave
-the trajectory reproducible. Raise them only if a run needs the speed more
-than it needs a run-to-run comparison.
-
-## What it is worth
-
-A 2-D `fatehi-combustion` at `maxlevel` 7 with the 88-species scheme, over a
-fixed wall budget, reaches **1.28 times** the simulated time of the same case
-with the gate off. The gate takes the whole domain on the first step, about
-42 per cent of the gas cells by step 10, and 9 per cent once the plume is
-established. At `FROZEN_CELL_YTOL` of 1e-10 the same case reaches 1.43 times,
-with the drift above.
-
-Caution: compare two builds only inside one batch of runs. The absolute time
-of this case swings 15 per cent from one run to the next on the same binary,
-while the ratio inside a batch repeats to 1 per cent. */
-
+A 2-D `fatehi-combustion` at level 7 with 88 species reaches 1.28 times the
+simulated time of the ungated case over a fixed wall budget (1.43 times at
+`FROZEN_CELL_YTOL` = 1e-10). Caution: compare two builds only inside one batch
+of runs. The absolute time swings 15 per cent from one run to the next. */
 
 #ifndef FROZEN_CELL_YTOL
 # define FROZEN_CELL_YTOL 1e-15
@@ -361,11 +327,10 @@ int frozen_cell_gate_n = 0;
 ## The Strang split of the gas chemistry
 
 A Lie split integrates the gas reactor over the full `dt` at the start of
-the step, and the advection and the implicit diffusion follow. A
-constant-dt ladder from the plateau at level 10 showed that this split
-carries the whole `Tmax(dt)` law: the jump of `Tmax` over the chemistry is
-50.9, 28.8, 15.7 and 8.4 K at `dt` 4e-4, 2e-4, 1e-4 and 5e-5 s, thus first
-order in `dt`.
+the step, and the advection and the implicit diffusion follow. At level 10
+this split carries the whole `Tmax(dt)` law: the jump of `Tmax` over the
+chemistry is 50.9, 28.8, 15.7 and 8.4 K at `dt` 4e-4, 2e-4, 1e-4 and 5e-5 s,
+thus first order in `dt`.
 
 The gas chemistry therefore uses a symmetric (Strang) split:
 
@@ -383,7 +348,7 @@ What the split covers:
 * The gas-phase reactions of the external gas (`YGList_G`, `TG`). This is
   where the flame is.
 * NOT the solid reactor. The solid, the pore gas (`YGList_S`, `TS`) and
-  `porosity` stay on the full `dt` in the first call, as before. The pore gas
+  `porosity` stay on the full `dt` in the first call. The pore gas
   reacts inside the same stiff system as the solid, with the heat capacity of
   the solid in the temperature equation, so a split of the pore gas needs a
   split of the whole solid reactor. The solid changes slowly: `TS` changes
@@ -404,8 +369,8 @@ The expansion of the gas reactions (the chemistry part of `drhodt`):
   that `update_divergence()` gives the chemistry part. The projection of the
   same step reads `drhodt` in `advection_term` and in `projection`, and both
   run after this event. So the projection of step n receives the sum of the
-  two half increments divided by `dt`, which is what the review asks for.
-  No increment enters two projections, and no increment is lost.
+  two half increments divided by `dt`. No increment enters two
+  projections, and no increment is lost.
 
 The heat of reaction is not counted two times. The gas reactor puts its heat
 into `TG` only. `data.sources` of the gas branch stays `NULL`, and the
@@ -436,7 +401,7 @@ What the split can change, and what it cannot:
   output, `adapt` and the probes read the state. It also moves the
   expansion of each half into the projection of its own step. It does not
   change the sequence of the reactor and the transport. So expect a
-  smaller `Tmax(dt)` law from a ladder with the split, not zero.
+  smaller `Tmax(dt)` law with the split, not zero.
 * The transport is first order in time: the diffusion solves are backward
   Euler. The whole step therefore stays first order. The split removes only
   the first-order error of the splitting.
@@ -449,10 +414,8 @@ Cost: the gas reactor runs two times in each step, each time over `dt/2`.
 Each call of the Gear solver has a fixed start cost, so a cell that does
 not react costs about 2 times. A burning cell costs about 1.1 times (0.4 to
 1.8, `test/strang-cell.c`), because the solver takes fewer internal steps
-over a shorter interval. The smoke run of `run/test.c` at level 8 from
-t = 0 to 0.3 s (no flame yet) gave 42.4 s of chemistry with the Lie split
-and 69.6 s with this split (the second half 33.7 s), thus 1.64 times the
-chemistry and about 1.7 times the gas part. The solid reactor does not change. With
+over a shorter interval. At level 8 before the ignition, the chemistry cost
+1.64 times the Lie split. The solid reactor does not change. With
 `CHEMISTRY_LOG` the second half prints its time on a line that starts with
 `S2`.
 

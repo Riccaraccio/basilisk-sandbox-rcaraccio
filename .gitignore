@@ -21,3 +21,7 @@
 
 # run/Makefile holds the build flags of the cases.
 !run/Makefile
+
+# test/Makefile and the reference outputs of the tests.
+!test/Makefile
+!test/*.ref

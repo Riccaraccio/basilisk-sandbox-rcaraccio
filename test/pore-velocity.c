@@ -2,8 +2,7 @@
 # The velocity of the pore species
 
 This test measures the velocity at which `multicomponent-varprop.h` moves the
-gas species in the pores (`YGList_S`). It is the check of item 4 of the
-discretization report.
+gas species in the pores (`YGList_S`).
 
 A porous slab fills the full height of a 2D channel. A uniform flow `U`
 enters from the left. The flow is 1D, so the superficial velocity is `U` in

@@ -215,7 +215,7 @@ event init (i = 0) {
 
   /**
   A burning start: march the feed with a fine Strang split to the steady
-  state, so each run of the ladder starts on the same burning branch. The
+  state, so each run of the dt sweep starts on the same burning branch. The
   reference then marches the same time again, at `DT_REF` and at
   `DT_REF/2`. The difference of the two references gives the accuracy of
   the reference, and the drift from the start gives the distance to the

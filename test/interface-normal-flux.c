@@ -1,8 +1,8 @@
 /**
 # The interface flux of a sphere, with one plane or with two
 
-This is the check of item 8 of the report on the consistency of the
-discretization. It needs no chemistry, no flow and no OpenSMOKE.
+This test checks `interface_source_normal()` of `intgrad.h`. It needs no
+chemistry, no flow and no OpenSMOKE.
 
 ## The issue under test
 
@@ -16,7 +16,7 @@ sources, the `mycs` plane.
 
 ## The set-up
 
-A sphere of radius `R` in axisymmetric coordinates, as in `run/test.c`. The
+A sphere of radius `R` in axisymmetric coordinates. The
 temperature is linear in the radius on each side of the interface:
 
     TS = Ti + gS (r - R)     (solid, r < R)
@@ -53,7 +53,7 @@ All errors are relative.
 
 ## The levels
 
-The level `L` of a row gives the cell size of `run/test.c` at `maxlevel = L`:
+The level `L` of a row gives the cell size of `run/fatehi-combustion.c` at `maxlevel = L`:
 `Delta = 20 D0/2^L`, with `D0 = 8 mm`. The domain of this test is smaller
 (`L0 = 1.25 D0`), so the grid has `2^(L-4)` cells on a side. The run is
 therefore short at every level.

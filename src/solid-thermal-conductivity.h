@@ -188,9 +188,7 @@ coord lambda_tenwolde (Point point, double lambdaG, double porosity, double Temp
     The caller gives `eps_frac = clamp (porosity[]/f[], 0., 1.)`, and that
     clamp includes 1. A cell whose solid is fully converted therefore reaches
     exactly 1, and the line below divides by 0. Basilisk arms
-    `FE_DIVBYZERO`, thus the run stops. This happened on 2026-09-03: `x/i
-    $pc` gave `divsd 0x10(%rsp),%xmm0` in this function, and MXCSR held bit 2
-    (divide by zero) with bit 0 (invalid) and bit 3 (overflow) both clear.
+    `FE_DIVBYZERO`, thus the run stops. A measured run stopped here.
 
     `EPS_MAX_TENWOLDE` caps the ratio. At the default of 0.99 the ratio stops
     at 99, which gives about 4 W/m/K for a char pore at 1000 K. The cap

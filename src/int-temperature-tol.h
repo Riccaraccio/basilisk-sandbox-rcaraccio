@@ -2,8 +2,8 @@
 # The tolerance of the two temperature solves
 
 `TOLERANCE` is one number for the whole run, but every solver compares it
-against a residual in its own units. `run/test.c` sets `TOLERANCE = 1e-5`
-because the projection needs it there. The temperature solves inherit it, and
+against a residual in its own units. The production cases set
+`TOLERANCE = 1e-5` because the projection needs it there. The temperature solves inherit it, and
 for them it means something quite different.
 
 `diffusion()` solves
@@ -18,7 +18,7 @@ temperature error that `TOLERANCE` really asks for is
 
 ## How wrong the inherited value is
 
-Measured in `test-fullrobin`, the gas solve at the step where it stalls:
+Measured in a run whose gas solve stalled, at the step where it stalls:
 
     res: 2.0e-05  sum: -1.09e+13  nrelax: 50  tolerance: 1e-05
 
@@ -52,10 +52,8 @@ about five orders looser than the inherited value.
 Two properties matter.
 
 - `max(theta)` is read from the `theta1` and `theta2` fields that the solve is
-  about to use, so it needs no property constant. An earlier version used
-  `rhoS*cpS`, which had no gas counterpart: `run/test.c` never sets `cpG`, so
-  `rhoG*cpG` is meaningless, and under `VARPROP` the gas heat capacity is the
-  field `cpGv_G`.
+  about to use, so it needs no property constant. Under `VARPROP` the heat
+  capacities are fields, and a constant such as `rhoG*cpG` has no meaning.
 - The `max` with the old value means this can only LOOSEN the tolerance, never
   tighten it. No other solver can be made stricter by accident, and a
   configuration whose physical scale falls below 1e-5 keeps 1e-5.
@@ -67,7 +65,7 @@ call. `diffusion()` overwrites `theta` in place with `theta*(-1/dt)`.
 
     #t(1) dt(2) tolS(3) iS(4) nrelaxS(5) resaS(6) tolG(7) iG(8) nrelaxG(9) resaG(10)
 
-- `iS`, `iG` the multigrid cycles each solve used. `run/test.c` sets
+- `iS`, `iG` the multigrid cycles each solve used. The production cases set
   `NITERMIN = 2`, so 2 is the floor and 2 means the tolerance never bound.
   A value of 100 is `NITERMAX`: that solve failed.
 - `nrelaxS`, `nrelaxG` the relaxation sweeps per cycle. This is the real cost.

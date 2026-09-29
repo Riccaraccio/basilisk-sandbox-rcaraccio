@@ -38,7 +38,7 @@ The accumulators `DTDtS`, `DTDtG`, `DYDtG_S` and `DYDtG_G` (and
 `update_divergence()` multiplies the chemistry part by `f`
 (or `1-f`) at the start of `update_divergence()`, before the first flux term.
 All the terms are then per unit volume of the cell, and `drhodt` is their sum
-with no weight. A pure cell keeps the same `drhodt`, bit for bit. In a cut
+with no weight. A pure cell keeps the same `drhodt`. In a cut
 cell the flux and interface part of the solid side increases by `1/f`, and
 that of the gas side by `1/(1-f)`.
 

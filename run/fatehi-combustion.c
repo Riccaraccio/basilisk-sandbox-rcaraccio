@@ -17,84 +17,42 @@ sensor-equivalent value that the plots use.
 
 ## The configuration
 
-The configuration is the one of `test-fbestl11full` in `run/Makefile`:
-`run/test.c` with `TLAD_FULL`, `TLAD_BEST` and level 11. The user chose it on
-2026-09-25, because `test-fbestfull` (level 10) and `test-fbestl11full` gave
-the best results of the campaign in the full case. The comparison of the two
-sources is in `~/publication-review/production-flags.md`. Do not change a
-value here without a run that supports it.
+| setting | value |
+|---|---|
+| domain | `L0 = 20 D0`, axisymmetric, pellet of 8 mm (superquadric of exponent 20) |
+| grid | `MAXLEVEL` 11, minimum level 2, adapt on `{T, O2}` with `{5, 1e-2}` |
+| timestep | cap 5e-4 s, `CFL` 0.5 |
+| projection | `TOLERANCE` 1e-5, `NITERMIN` 2 |
+| gas chemistry | Strang split and the frozen-cell gate (`chemistry.h`) |
+| expansion source | exact form, filtered in 4 passes of width `Delta_min` |
+| shrinkage | `ZETA_REACTION`: it follows the local rate of reaction |
+| inlet, top | air at 1123 K, 0.13 m/s |
+| outlet | Neumann `u`, `TG`, `YG`; Dirichlet `p`, `pf` |
 
-The numerical flags, in the order of the code below:
+Notes on the settings:
 
-| flag | value | reason |
-|---|---|---|
-| `INT_TEMP_VOFBC`, `INT_TEMP_PICARD` | 0 | the evidence runs had 0; VOFBC makes `dt` smaller |
-| `CORRECTIVE_CFL` | 0.5 | the default of `src/`, as in the evidence runs |
-| `GAS_SOURCE_EXACT` | 1 | TL-3, with the filter of 4 passes |
-| `DRHODT_IMPLICIT` | 1 | TL-2 |
-| `GAS_UBF_ADVECTION` | 2 | item 7 |
-| `GAS_CHEMISTRY_STRANG` | 1 | TL-1 |
-| `FROZEN_CELL_GATE` | 1 | 1.28x faster, same answer at 1e-15 |
-| `PIN_SOLID_INTERIOR` | 0 | the user chose 0; the evidence runs had 1 |
-| `OUTLET_BC` | 0 | the outlet of `run/test.c` |
-| adapt | `{T, O2}` | the criterion of `run/test.c`, no `zdiff` |
-| `MAXLEVEL`, `DT_VALUE`, `CFL_VALUE` | 11, 5e-4, 0.5 | as in the evidence runs |
-| `PROJ_TOLERANCE`, `PROJ_NITERMIN` | 1e-5, 2 | as in the evidence runs |
+- `TOLERANCE` and `NITERMIN`: Basilisk scales the tolerance of the projection
+  as `TOLERANCE/dt^2`, so the default 1e-3 stops the solve after one
+  multigrid cycle at every step.
+- One cell holds 1104 fields with `biomass/Solid-gas-88`, which is 8.8 kB.
+  `main()` starts on level 8 and `event init` refines a disc near the
+  pellet. A uniform grid at level 10 allocates 9.3 GB before the first adapt.
+- `event output` samples at 0.01 s. At 0.1 s the Nyquist limit is 5 Hz, and
+  the flicker of the flame near 17 Hz folds into the band below 1 Hz.
 
-Other settings that the campaign settled:
+Known limits:
 
-- `TOLERANCE = 1e-5` and `NITERMIN = 2`. Basilisk scales the tolerance of the
-  projection as `TOLERANCE/dt^2`, so the default 1e-3 stops the solve after
-  one multigrid cycle at every step.
-- `init_grid (1 << min (maxlevel, 8))` in `main()`, and a `refine()` of a disc
-  of 0.75 D0 in `event init`, before `fraction()`. One cell of this case holds
-  1104 fields, which is 8.8 kB, so `init_grid (1 << 10)` allocates 9.3 GB
-  before the first adapt. A `refine()` in `main()` does nothing: read
-  `event init`.
-- `event output (t += 0.01)`. At 0.1 s the Nyquist limit is 5 Hz, and the
-  flame flickers near 17 Hz, so the jitter folds into the band below 1 Hz.
-  The profile events stay at 0.1 s, because they write 1025 samples per line
-  and per file.
-- `zeta_policy = ZETA_REACTION`. The shrinkage follows the local rate of
-  reaction. The A/B from one ignition snapshot gave `ZETA_CONST` a worse
-  probe temperature (50.8 K against 35.4 K peak to peak) and a worse peak
-  reaction rate.
-- A guard on `nodata` in `print_profile()`. `interpolate()` gives 1e30 when no
-  rank holds the point.
-- The defaults of `src/` that the campaign moved: `GAS_SOURCE_AVERAGED = 1`,
-  `CORRECTIVE_LIMITER = 1`, `MDE_INTERFACE = 1`, `INT_TEMP_TOL = 1`,
-  `TS_PORE_ADVECTION = 1`, `GAS_STATE_FALLBACK = 1` and
-  `DARCY_PRESSURE_COUPLING = 1`. `PROPS_AFTER_SOLVES` and
-  `PHASE_AWARE_PROPERTIES` stay at 0.
+- Nothing bounds `TG` in a gas sliver. The output writes `TGmin_gas` and
+  `nTGneg` as the early warning. Read the caution at the interface heat
+  source in `multicomponent-varprop.h`.
+- The expansion source carries a spatial filter
+  (`navier-stokes/centered-phasechange.h`). State it, with its width
+  `sigma = Delta_min`, in a publication.
+- `shift_field()` makes the solid mass drift by about -0.4 per cent of
+  `solid_mass0` at level 11. It is not fixed.
 
-Known limits of this configuration:
-
-- `INT_TEMP_VOFBC` is off, so no term bounds `TG` in a sliver cell. The
-  output writes `TGmin_gas` and `nTGneg` as an early warning. If a runaway
-  starts, restart from the last numbered snapshot with `-DINT_TEMP_VOFBC=1`.
-  Caution: that rescue has no test with this set. With the full set, VOFBC
-  died at t = 10.34 s (`test-fullvofbc`, a build from before the `pf`
-  conditions), and at level 11 in this case it made `dt` fall from 2.4e-4 to
-  6e-5 at t = 5.55 s. `test-vofbcm` (moisture only) reached t = 39.74 s.
-- `GAS_SOURCE_EXACT` carries a spatial filter of the expansion source
-  (`centered-phasechange.h`). The paper must state it, with its width
-  `sigma = Delta_min`. The restart rung `test-sgsenf` tells if the filter or
-  the log form gives the effect.
-- The solid drift of NEW-1 (`shift_field()`) is not fixed. It is about
-  -0.4 per cent of `solid_mass0` at level 11.
-- `PIN_SOLID_INTERIOR = 0` has no evidence run with this set.
-- The outlet 0 has no run of this case with `biomass/Solid-gas-88`. See the
-  caution in the section on the outlet.
-
-`GAS_PHASE_REACTIONS` is NOT set here. No file in `src/` tests it, so it is a
-dead flag: the mechanism of the pore gas runs whatever its value is. */
-
-#ifndef INT_TEMP_VOFBC
-# define INT_TEMP_VOFBC 0
-#endif
-#ifndef INT_TEMP_PICARD
-# define INT_TEMP_PICARD 0
-#endif
+`GAS_PHASE_REACTIONS` does nothing. Use `TURN_OFF_GAS_REACTIONS` to switch off
+the gas kinetics. */
 
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
@@ -103,84 +61,10 @@ dead flag: the mechanism of the pore gas runs whatever its value is. */
 #define MASS_DIFFUSION_ENTHALPY 1
 
 /**
-The knobs below are overridable from the `Makefile`, so that an A/B keeps one
-source. Every one of them holds the value that the campaign settled.
+The knobs below are overridable with `-D`.
 
-Caution: `CORRECTIVE_CFL` is a floating constant. The preprocessor rejects a
-floating constant in an `#if`, so test it at run time, never with `#if`. */
-
-#ifndef FROZEN_CELL_GATE
-# define FROZEN_CELL_GATE 1
-#endif
-
-#ifndef CORRECTIVE_CFL
-# define CORRECTIVE_CFL 0.5
-#endif
-
-/**
-The four flags of `TLAD_BEST` in `run/Makefile`. `test-fbestfull` (level 10)
-and `test-fbestl11full` (level 11) carry them. Those two runs are the evidence
-for this configuration.
-
-- `GAS_SOURCE_EXACT = 1` selects the exact form `ln(rho_start/rho_end)/dt`
-  of the chemistry part of `drhodt` (TL-3). It also selects a filter on
-  `gas_source + drhodt` before the projection: `GAS_SOURCE_FILTER_PASSES`
-  passes, 4 by default, width `sigma = Delta_min`. The evidence runs had the
-  filter. `test-sgsenf` tells which of the two changes gives the effect.
-- `DRHODT_IMPLICIT = 1` builds the transport part of `drhodt` from the
-  implicit solves (TL-2).
-- `GAS_UBF_ADVECTION = 2` masks `ubf` in the advection of the gas tracers
-  (item 7). Mode 0 makes `TG` of the sliver cells 40 to 50 K colder.
-- `GAS_CHEMISTRY_STRANG = 1` integrates the gas reactor over `dt/2` before
-  the transport and over `dt/2` after it (TL-1). It costs about 1.1 times the
-  gas chemistry in a burning cell and about 2 times in a cell that does not
-  react and that the gate does not skip (`chemistry.h`). */
-
-#ifndef GAS_SOURCE_EXACT
-# define GAS_SOURCE_EXACT 1
-#endif
-
-#ifndef DRHODT_IMPLICIT
-# define DRHODT_IMPLICIT 1
-#endif
-
-#ifndef GAS_UBF_ADVECTION
-# define GAS_UBF_ADVECTION 2
-#endif
-
-#ifndef GAS_CHEMISTRY_STRANG
-# define GAS_CHEMISTRY_STRANG 1
-#endif
-
-/**
-`PIN_SOLID_INTERIOR = 0` lets the interior of the pellet coarsen. It is also
-the default of `src/`, and it is set here to show the choice. Caution: the
-evidence runs had 1, because `run/Makefile` adds `TLAD_PIN` to every `test-*`
-target. This is the only numerical difference between this case and
-`test-fbestl11full`. It can change the cost, the solid drift of NEW-1 and the
-band of the solid side. */
-
-#ifndef PIN_SOLID_INTERIOR
-# define PIN_SOLID_INTERIOR 0
-#endif
-
-/**
-The tolerance of the projection. Basilisk scales it as `TOLERANCE/dt^2`, so
-the default 1e-3 stops the solve after one multigrid cycle at every step. The
-values are the ones of `run/test.c`. */
-
-#ifndef PROJ_TOLERANCE
-# define PROJ_TOLERANCE 1e-5
-#endif
-
-#ifndef PROJ_NITERMIN
-# define PROJ_NITERMIN 2
-#endif
-
-/**
-The mechanism. `FATEHI_DUMMY = 1` selects `biomass/dummy-solid-gas` and the
-initial solid of `run/test.c` (BIOMASS, MOIST and ASH). Use it only for the
-check run of this build against `test-fbestfull`. That mechanism has no OH,
+`FATEHI_DUMMY = 1` selects `biomass/dummy-solid-gas` and a solid of BIOMASS,
+MOIST and ASH. It is for a quick check of a build. That mechanism has no OH,
 so the OH outputs are off with it. */
 
 #ifndef FATEHI_DUMMY
@@ -195,13 +79,11 @@ so the OH outputs are off with it. */
 
 /**
 `SNAPSHOT_EVERY` writes a numbered snapshot `snapshot-<t>` every that many
-seconds of physical time, beside `last-snapshot`. A failure then costs a
-restart from the last numbered snapshot, not a new run. It is an integer, so
-that the preprocessor can test it. Set it to 0 to turn the snapshots off.
+seconds of physical time, beside `last-snapshot`. It is an integer, so that
+the preprocessor can test it. Set it to 0 to turn the snapshots off.
 
-Caution: one cell holds 1104 fields with `biomass/Solid-gas-88`, so a
-snapshot at level 11 is large. Check the free space of the scratch disk
-before a run of 150 s. */
+Caution: a snapshot at level 11 with `biomass/Solid-gas-88` is large. Check
+the free space of the disk before a run of 150 s. */
 
 #ifndef SNAPSHOT_EVERY
 # define SNAPSHOT_EVERY 5
@@ -223,29 +105,6 @@ at 68 s, so 100 s covers every comparison and keeps the files small. */
 # define PROFILE_TEND 100.
 #endif
 
-/**
-`DT_VALUE` caps the step. The CFL usually binds below it, so this value only
-stops a runaway. Do not push the step below 2e-4: the amplitude of the slow
-band saturates there, and the cost of the chemistry per second of physical
-time grows as 1/dt. */
-
-#ifndef DT_VALUE
-# define DT_VALUE 5e-4
-#endif
-
-/**
-`CFL_VALUE` is applied in `event init`, never in `main()`. The `defaults`
-event of `navier-stokes/centered.h` sets `CFL = 0.8` and runs after `main()`,
-and the `stability` event of `vof.h` then clamps it to 0.5. An `init` event
-runs after every `defaults` event, so a value set there survives. */
-
-#ifndef CFL_VALUE
-# define CFL_VALUE 0.5
-#endif
-
-#define PRINT_FIELDS 0
-#define VTK_OUTPUT 1
-
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
@@ -257,10 +116,7 @@ runs after every `defaults` event, so a value set there survives. */
 #include "darcy.h"
 #include "view.h"
 #include "flame.h"
-
-#if VTK_OUTPUT
 #include "vtk.h"
-#endif
 
 const double Uin = 0.13; //inlet velocity
 /**
@@ -268,9 +124,7 @@ Caution: give `pf` the same conditions as `p`. Basilisk does not copy the
 conditions of `p` to `pf`. Without the lines for `pf`, every boundary of `pf`
 is Neumann. The projection of `uf` then has no solution when the expansion
 term `drhodt` is not zero, because the outflow flux is fixed. `pf` drifts
-without limit, the divergence error grows, and at ignition `dt` collapses. The
-production runs of 2026-09-16/17 crashed in this way (`pf` near -6e5, `sum`
-2e10 in the log of the solver). */
+without limit, the divergence error grows, and at ignition `dt` collapses. */
 
 u.n[left]    = dirichlet (Uin);
 u.t[left]    = dirichlet (0.);
@@ -281,69 +135,20 @@ psi[left]    = dirichlet (0.);
 psi[top]     = dirichlet (0.);
 
 /**
-## The conditions at the outlet
+## The outlet
 
-`OUTLET_BC` selects how the outlet (right) treats gas that flows back into the
-domain. A plain Neumann outlet lets the backflow grow without limit: in the
-runs of 2026-09-16/17 the axis cell of the outlet flowed back at -0.35 m/s at
-t = 10 and at -58 m/s at t = 10.227, and `dt` collapsed.
+Neumann for `u`, `TG` and `YG`, Dirichlet for `p` and `pf`.
 
-- `OUTLET_BC = 0` (default): Neumann for `u`, `TG` and `YG`, Dirichlet for
-  `p` and `pf`. This is the outlet of `run/test.c`, and so of the evidence
-  runs `test-fbestfull` and `test-fbestl11full`.
-- `OUTLET_BC = 1`: strict block. Where the gas flows in (`u.x < 0`
-  in the cell next to the outlet), `u.n` and `u.t` are 0. The outlet is a
-  wall for that flow.
-- `OUTLET_BC = 2`: controlled inflow. The gas can flow in. `u.n` stays
-  Neumann, `u.t` is 0, and the gas that enters is ambient gas: `TG0` and air.
-  Where the gas flows out, all fields stay Neumann.
+Caution: a Neumann outlet lets gas flow back into the domain. The physics of
+the heating phase needs it: while the moisture evaporates, a cold plume sinks
+from the pellet toward the inlet, and gas must replace it. But runs with
+other settings saw the backflow on the axis grow by a constant factor until
+`dt` collapsed. If the inflow at the outlet grows in this way, stop the run.
+The tag `oscillation-campaign-2026-09` keeps two other outlets (`OUTLET_BC`
+1 and 2). */
 
-The two runs from t = 0 of 2026-09-17/18 made 1 the default until
-2026-09-25. With 2, the inflow at the outlet started at t = 6 and grew by
-about 2 times every 0.5 s, to -0.76 m/s at t = 8 and -159 m/s at t = 8.17,
-where the run crashed before ignition. With 1, `uf` on the outlet stayed at
-or above 0, the centred `u.x` next to the outlet stayed above -0.035 m/s, and
-the run went through ignition (Tmax 1718 K at t = 11.16) at a normal `dt`.
-
-On 2026-09-25 the default became 0, the outlet of the evidence runs. With it
-and the `pf` conditions, `test-fbestfull` reached t = 35.8 s and
-`test-fbestl11full` passed ignition at level 11, with no backflow. The crash
-with 2 had `INT_TEMP_VOFBC`, `INT_TEMP_PICARD`, `CORRECTIVE_CFL = 0.8` and the
-`zdiff` adapt, and this configuration has none of them.
-
-Caution: no run of this case has checked 0 with `biomass/Solid-gas-88`. In
-the first runs, watch the columns `umin` and `Qin` of `dtlimits.dat` over
-t = 5 to 10 s. If `Qin` grows by a constant factor, stop the run and use 1.
-
-Caution: `-DOUTLET_BC` without a value defines the flag as 1. Always give the
-value.
-
-With 1 and 2, the gas that enters is ambient gas in both cases (see
-`event init`). Only the velocity differs.
-
-Caution: the physics of the heating phase needs an inflow at the outlet. While
-the moisture evaporates, a cold plume sinks from the particle toward the inlet,
-and gas from above must replace it. `OUTLET_BC = 1` makes the outlet a wall
-for that gas, so it changes the flow of the heating phase.
-
-Caution: these conditions act on the centred `u`. The projection corrects the
-boundary face of `uf` with the gradient of `pf`, so `uf` can still flow in.
-Read the outlet columns of `dtlimits.dat` to see it. */
-
-#ifndef OUTLET_BC
-# define OUTLET_BC 0
-#endif
-
-#if OUTLET_BC == 1
-u.n[right]    = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
-u.t[right]    = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
-#elif OUTLET_BC == 2
-u.n[right]    = neumann (0.);
-u.t[right]    = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
-#else
 u.n[right]    = neumann (0.);
 u.t[right]    = neumann (0.);
-#endif
 p[right]      = dirichlet (0.);
 pf[right]     = dirichlet (0.);
 psi[right]    = neumann (0.);
@@ -357,34 +162,6 @@ double solid_mass0 = 0.;
 #define circle(x,y,R)(sq(R) - sq(x) - sq(y))
 
 int main() {
-
-  /**
-  Caution: under MPI every rank shares this stderr. Guard the message with
-  `pid() == 0`, or the log carries one copy per rank.
-
-  Read this line before you quote a run. It prints what the build enabled,
-  not what the directory name promises. */
-
-  if (pid() == 0)
-    fprintf (stderr, "# fatehi: kin=%s maxlevel=%d DT=%g CFL=%g Uin=%g"
-                     " tend=%g zeta=REACTION frozen=%d corrCFL=%g"
-                     " exact=%d filter=%d dri=%d ubf=%d"
-                     " strang=%d vofbc=%d picard=%d pin=%d outlet=%d"
-                     " tol=%g nitermin=%d"
-                     " snapevery=%d nranks=%d\n",
-             FATEHI_KINFOLDER, MAXLEVEL, (double) DT_VALUE,
-             (double) CFL_VALUE, Uin, (double) TEND, FROZEN_CELL_GATE,
-             (double) CORRECTIVE_CFL,
-             GAS_SOURCE_EXACT,
-#if GAS_SOURCE_EXACT
-             gas_source_filter_passes,
-#else
-             0,
-#endif
-             DRHODT_IMPLICIT, GAS_UBF_ADVECTION, GAS_CHEMISTRY_STRANG,
-             INT_TEMP_VOFBC, INT_TEMP_PICARD, PIN_SOLID_INTERIOR, OUTLET_BC,
-             PROJ_TOLERANCE, PROJ_NITERMIN, SNAPSHOT_EVERY, npe());
-
   lambdaSmodel = L_TENWOLDE;
   TS0 = 300.; TG0 = 1123.;
   rhoS = 1550;
@@ -396,7 +173,7 @@ int main() {
 
   zeta_policy = ZETA_REACTION;
 
-  DT = DT_VALUE;
+  DT = 5e-4; // the CFL usually binds below this cap
 
   G.x = -9.81;
 
@@ -427,8 +204,19 @@ int main() {
   Caution: do not read `mgp.resa` against `TOLERANCE`. The quantity that
   Basilisk controls is `resa*dt^2`. */
 
-  TOLERANCE = PROJ_TOLERANCE;
-  NITERMIN = PROJ_NITERMIN;
+  TOLERANCE = 1e-5;
+  NITERMIN = 2;
+
+  /**
+  Read this line before you quote a run. It prints what the build enabled,
+  not what the directory name promises. Under MPI every rank shares stderr,
+  so only rank 0 writes. */
+
+  if (pid() == 0)
+    fprintf (stderr, "# fatehi: kin=%s maxlevel=%d DT=%g Uin=%g tend=%g"
+                     " tol=%g nitermin=%d filter=%d snapevery=%d nranks=%d\n",
+             FATEHI_KINFOLDER, MAXLEVEL, DT, Uin, (double) TEND, TOLERANCE,
+             NITERMIN, gas_source_filter_passes, SNAPSHOT_EVERY, npe());
 
   run();
 }
@@ -460,10 +248,9 @@ event init (i = 0) {
   /**
   Caution: `navier-stokes/centered.h` assigns `CFL = 0.8` in its `defaults`
   event, which runs after `main()`, and `vof.h` then clamps it to 0.5. So the
-  value belongs here. To confirm that it took effect, read the live variable,
-  not the macro. */
+  value belongs here. */
 
-  CFL = CFL_VALUE;
+  CFL = 0.5;
 
   /**
   Refine near the particle BEFORE `fraction()`. `fraction()` computes the
@@ -471,19 +258,14 @@ event init (i = 0) {
 
   Caution: do not move this `refine()` to `main()`. `run()` calls
   `init_grid (N)` again (`$BASILISK/run.h:17`), and `init_grid` of the tree
-  frees the grid. A `refine()` in `main()` does nothing, so the particle
-  started on a uniform grid at level 8. The first adapt then built the finest
-  cells from coarse PLIC lines: the solid lost 0.3 % at the first step, and the
-  corner of the pellet smeared. `run/shrink-corner.c` measures this.
+  frees the grid. A `refine()` in `main()` does nothing: the particle then
+  starts on a uniform grid at level 8, the first adapt builds the finest
+  cells from coarse PLIC lines, and the solid loses 0.3 % at the first step.
 
   The disc holds the particle and no more: the corner of a square pellet is at
   0.71 of its size. One cell holds 1104 fields, so a disc of 4 sizes at level
   11 would hold 2.3 GB, and the chemistry event of `i = 0` would run on all of
-  it. The adapt of the first steps refines the gas near the particle.
-
-  Caution: runs before this change took `solid_mass0` from the level 8 `f0`.
-  Their normalized mass reads about 0.3 % lower. Compare new runs with new
-  runs. */
+  it. The adapt of the first steps refines the gas near the particle. */
 
   refine (circle (x, y, 0.75*max (D0, H0)) > 0. && level < maxlevel);
 
@@ -522,39 +304,21 @@ event init (i = 0) {
 
   TG[left] = dirichlet (TG0);
   TG[top] = dirichlet (TG0);
-#if OUTLET_BC
-  TG[right] = u.x[] < 0. ? dirichlet (TG0) : neumann (0.);
-#else
   TG[right] = neumann (0.);
-#endif
   TG[bottom] = neumann (0.);
-
-  /**
-  With `OUTLET_BC` set, the gas that enters through the outlet is air. The
-  values must be constants in each branch: a boundary condition cannot read
-  a local variable of this loop. */
 
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
       YG[left] = dirichlet (0.765);
       YG[top] = dirichlet (0.765);
-#if OUTLET_BC
-      YG[right] = u.x[] < 0. ? dirichlet (0.765) : neumann (0.);
-#endif
     } else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
       YG[left] = dirichlet (0.235);
       YG[top] = dirichlet (0.235);
-#if OUTLET_BC
-      YG[right] = u.x[] < 0. ? dirichlet (0.235) : neumann (0.);
-#endif
     }
     else {
       YG[left] = dirichlet (0.);
       YG[top] = dirichlet (0.);
-#if OUTLET_BC
-      YG[right] = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
-#endif
     }
   }
 
@@ -595,7 +359,7 @@ writes.
 
 Caution: `interpolate()` gives `nodata`, which is 1e30, when no rank holds the
 point. `WMS.py` masks no such value, so it would read 1e30 as a temperature.
-This function drops the sample instead. Two rows of the archived run carried
+This function drops the sample instead. Two rows of an earlier run carried
 one and gave a spike of 190 K.
 
 The position of the sample comes from an integer index, not from an
@@ -693,7 +457,7 @@ The scalar series.
 
 Caution: keep the sampling at 0.01 s. At 0.1 s the Nyquist limit is 5 Hz, the
 flame flickers near 17 Hz, and everything above 5 Hz folds into the band below
-it. That aliasing is what made the archived run appear to wander at about
+it. That aliasing made an earlier run appear to wander at about
 1 Hz. */
 
 event output (t += 0.01) {
@@ -719,9 +483,9 @@ event output (t += 0.01) {
 
   /**
   The early warning of a runaway of the gas temperature in a thin cell.
-  `INT_TEMP_VOFBC` is off, so no term bounds `TG` in a sliver cell. The value
-  of `TG` is `TG*(1-f)` or `TG` itself, which depends on the position within
-  the step. So the event writes two quantities that do not depend on it:
+  Nothing bounds `TG` in a sliver cell. The value of `TG` is `TG*(1-f)` or
+  `TG` itself, which depends on the position within the step. So the event
+  writes two quantities that do not depend on it:
 
   - `TGmin_gas`, the smallest `TG` over the cells with `f < F_ERR`, where the
     two forms are equal,
@@ -730,8 +494,7 @@ event output (t += 0.01) {
 
   A runaway starts as a negative `TG` in a cell with a gas fraction of about
   1e-4, and it reaches the pure gas cells after a few steps. If `nTGneg` is
-  not 0, or `TGmin_gas` falls below about 250 K, stop the run and restart it
-  from the last numbered snapshot with `-DINT_TEMP_VOFBC=1`. */
+  not 0, or `TGmin_gas` falls below about 250 K, stop the run. */
 
   double TGmin_gas = HUGE, nTGneg = 0.;
   foreach (reduction(min:TGmin_gas) reduction(+:nTGneg)) {
@@ -766,8 +529,7 @@ event output (t += 0.01) {
 
   /**
   Columns of `OutputData-<maxlevel>`: t(1) Ms/Ms0(2) Tmax(3) TGmin_gas(4)
-  nTGneg(5) dt(6). Columns 4 to 6 are new on 2026-09-25, so a reader of the
-  first three columns does not change. */
+  nTGneg(5) dt(6). */
 
   fprintf (fp, "%g %g %g %g %g %g\n", t, solid_mass/solid_mass0, sT.max,
            TGmin_gas, nTGneg, dt);
@@ -775,338 +537,9 @@ event output (t += 0.01) {
 }
 
 /**
-## The probe of the timestep limits
-
-`DT_PROBE` writes `dtlimits.dat` at every step. Use it to find which velocity
-makes the timestep collapse at ignition. Three limits set `dt`:
-
-- `dt_uf`, the CFL limit of the flow velocity `uf` (`centered-phasechange.h`),
-- `dt_ubf`, the CFL limit of the shrinkage velocity `ubf` (`shrinking.h`),
-- `dt_corr`, the limit of the corrective velocity (`multicomponent-varprop.h`).
-
-`bind` gives the smallest of them: 0 is `DT`, 1 is `uf`, 2 is `ubf` and 3 is
-the corrective velocity. `dt` can be smaller than all four, because
-`timestep()` lets the step grow only slowly.
-
-For `uf` and `ubf`, the file also gives the face with the largest
-`|u|/(fm*Delta)`. It gives the position, the level, and `f`, `T`, `TG`,
-`omega` and `gas_source` of the two cells on each side of that face. `L` is
-the cell on the left or bottom side, `R` is the cell on the right or top side.
-`TG` is the raw field, not the gas temperature. `omega` is the value of the
-previous step, because the `chemistry` event comes after `stability`.
-
-Caution: do not call `timestep()` here. It keeps a static `previous` value,
-and a second call changes the step of the solver. This probe repeats its
-loop instead.
-
-This `stability` event is declared after the headers, so it runs before
-their `stability` events. The fields are thus the ones that set `dt`. The
-event `dtprobe_write` writes the line later in the same step, when `dt` is
-final.
-
-Caution: do not name the writer `vof`. An event of that name in this file
-joins the `vof` chain of the headers and changes its place in the order of
-the events. Then `shrink_budget_arm` of `shrink-budget.h` came after the
-`vof` event of its own step, and `shrinkbudget.dat` lost most of its lines
-(2026-09-25, level 7: lines at t = 0 and 0.04 only, against one line each
-0.01 s without the probe).
-
-### The neighbourhood of the fastest `uf` face
-
-Columns 37 to 56 describe the neighbourhood of the fastest `uf` face. Use them
-to tell a checkerboard mode from a smooth jet.
-
-- `dir` is 0 for a face normal to x (axial) and 1 for a face normal to y.
-- `u0` is the signed velocity on the face. `um1` and `up1` are the velocities
-  on the previous and the next face along the normal. `ub` and `ut` are the
-  velocities on the two faces beside it, below and above for an x face. All
-  five are `uf/fm`, thus physical velocities in m/s. In a checkerboard mode
-  the signs alternate. In a jet they do not.
-- `rho` is `rhov/cm`, the density that the flow solver uses.
-- `drhodt` and `divsrc` are the expansion term and the full source of the
-  projection (`div_source`), per unit volume. `divuf` is the divergence of
-  `uf` per unit volume. After the projection `divuf + divsrc` is close to 0.
-  Caution: this probe reads them in `stability`, thus after the projection of
-  the previous step, and `drhodt` and `divsrc` belong to that step.
-- `p` and `pf` are the two pressures of the solver.
-
-All cell values come as a pair: `L` first, `R` second.
-
-### Snapshots
-
-`DTP_DUMP_T1` and `DTP_DUMP_T2` give two times for a `dump()`. The files are
-`dtprobe-t<time>`. A third `dump()`, `dtprobe-dt`, happens once when `dt`
-falls below `DTP_DUMP_DT`. It catches the late stage of the collapse, because
-the time of the crash changes from one restart to the next. These files also
-contain `p` and `pf`. They do not replace `last-snapshot`. To look at one,
-restore it in a short program and write a VTK file. */
-
-#ifndef DT_PROBE
-# define DT_PROBE 1
-#endif
-
-#if DT_PROBE
-#define DTP_NCELL 5  // f, T, TG, omega, gas_source
-#define DTP_NFACE (4 + 2*DTP_NCELL) // rate, x, y, level, L cells, R cells
-
-#define DTP_NNEAR 20 // dir, 5 velocities, 7 cell pairs
-#define DTP_NOUT 5    // outlet: min u.x, min uf/fm, inflow, outflow, inlet
-
-static double dtp_out[DTP_NOUT];
-
-/**
-The outlet columns. `umin` is the smallest `u.x` in the cells next to the
-outlet. `ufmin` is the smallest `uf.x/fm.x` on the faces of the outlet. `Qin`
-and `Qout` are the sums of `uf.x*Delta` over the faces of the outlet where
-the gas flows in and out: `uf` carries the metric, so this is the volume flux
-per radian. `Qinlet` is the same sum on the inlet, for reference. A value of
-`Qin` that grows toward `Qinlet` or beyond is the backflow. */
-
-static void dtp_outlet (double * out)
-{
-  double umin = HUGE, ufmin = HUGE;
-  double flux_in = 0., flux_out = 0., flux_inlet = 0.;
-  double xr = X0 + L0, xl = X0;
-  foreach_face (x, reduction(min:umin) reduction(min:ufmin)
-                reduction(+:flux_in) reduction(+:flux_out)
-                reduction(+:flux_inlet)) {
-    if (x > xr - 1e-6*L0) {
-      umin = min (umin, u.x[-1]);
-      if (fm.x[] > 0.)
-        ufmin = min (ufmin, uf.x[]/fm.x[]);
-      if (uf.x[] < 0.)
-        flux_in += uf.x[]*Delta;
-      else
-        flux_out += uf.x[]*Delta;
-    }
-    else if (x < xl + 1e-6*L0)
-      flux_inlet += uf.x[]*Delta;
-  }
-  double v[DTP_NOUT] = {umin, ufmin, flux_in, flux_out, flux_inlet};
-  for (int k = 0; k < DTP_NOUT; k++)
-    out[k] = v[k];
-}
-
-static double dtp_uf[DTP_NFACE], dtp_ubf[DTP_NFACE];
-static double dtp_near[DTP_NNEAR];
-static double dtp_corr = HUGE, dtp_DT = HUGE;
-
-/**
-Find the face with the largest `|u|/(fm*Delta)`, and fill `out` with the
-data of that face. Every rank calls it, because the loops are collective. */
-
-static void dtp_scan (face vector u, double * out)
-{
-  double rate = 0.;
-  foreach_face (reduction(max:rate))
-    if (u.x[] != 0. && fm.x[] > 0.)
-      rate = max (rate, fabs (u.x[])/(fm.x[]*Delta));
-
-  /**
-  Every rank sets a value only at the face that has the maximum rate. The
-  others keep `-HUGE`, so the `max` reduction returns the value of that
-  face. */
-
-  double xf = -HUGE, yf = -HUGE, lev = -HUGE;
-  double fL = -HUGE, fR = -HUGE, TL = -HUGE, TR = -HUGE;
-  double TGL = -HUGE, TGR = -HUGE, oL = -HUGE, oR = -HUGE;
-  double sL = -HUGE, sR = -HUGE;
-  if (rate > 0.)
-    foreach_face (reduction(max:xf) reduction(max:yf) reduction(max:lev)
-                  reduction(max:fL) reduction(max:fR)
-                  reduction(max:TL) reduction(max:TR)
-                  reduction(max:TGL) reduction(max:TGR)
-                  reduction(max:oL) reduction(max:oR)
-                  reduction(max:sL) reduction(max:sR))
-      if (u.x[] != 0. && fm.x[] > 0. &&
-          fabs (u.x[])/(fm.x[]*Delta) >= rate) {
-        xf = x; yf = y; lev = level;
-        fL = f[-1];           fR = f[];
-        TL = T[-1];           TR = T[];
-        TGL = TG[-1];         TGR = TG[];
-        oL = omega[-1];       oR = omega[];
-        sL = gas_source[-1];  sR = gas_source[];
-      }
-
-  double v[DTP_NFACE] = {rate, xf, yf, lev,
-                         fL, TL, TGL, oL, sL,
-                         fR, TR, TGR, oR, sR};
-  for (int k = 0; k < DTP_NFACE; k++)
-    out[k] = v[k];
-}
-
-/**
-Fill `out` with the neighbourhood of the face of `u` that has the rate `rate`.
-The array reduction uses the same `-HUGE` method as `dtp_scan()`. */
-
-static inline double dtp_vel (double uff, double fmf)
-{
-  return fmf > 0. ? uff/fmf : 0.;
-}
-
-static void dtp_neighbourhood (face vector u, double rate, double * out)
-{
-  double nb[DTP_NNEAR];
-  for (int k = 0; k < DTP_NNEAR; k++)
-    nb[k] = -HUGE;
-  int uxi = u.x.i; // not rotated: the loop compares it with the rotated u.x
-
-  if (rate > 0.)
-    foreach_face (reduction(max:nb[:DTP_NNEAR]))
-      if (u.x[] != 0. && fm.x[] > 0. &&
-          fabs (u.x[])/(fm.x[]*Delta) >= rate) {
-        nb[0] = (u.x.i == uxi) ? 0. : 1.;
-        nb[1] = dtp_vel (u.x[-1], fm.x[-1]);
-        nb[2] = dtp_vel (u.x[], fm.x[]);
-        nb[3] = dtp_vel (u.x[1], fm.x[1]);
-        nb[4] = dtp_vel (u.x[0,-1], fm.x[0,-1]);
-        nb[5] = dtp_vel (u.x[0,1], fm.x[0,1]);
-        nb[6] = cm[-1] > 0. ? rhov[-1]/cm[-1] : 0.;
-        nb[7] = cm[] > 0. ? rhov[]/cm[] : 0.;
-        nb[8] = cm[-1] > 0. ? drhodt[-1]/cm[-1] : 0.;
-        nb[9] = cm[] > 0. ? drhodt[]/cm[] : 0.;
-        nb[10] = cm[-1] > 0. ? div_source[-1]/cm[-1] : 0.;
-        nb[11] = cm[] > 0. ? div_source[]/cm[] : 0.;
-        nb[12] = cm[-1] > 0. ?
-          (u.x[] - u.x[-1] + u.y[-1,1] - u.y[-1])/(Delta*cm[-1]) : 0.;
-        nb[13] = cm[] > 0. ?
-          (u.x[1] - u.x[] + u.y[0,1] - u.y[])/(Delta*cm[]) : 0.;
-        nb[14] = p[-1];   nb[15] = p[];
-        nb[16] = pf[-1];  nb[17] = pf[];
-        nb[18] = porosity[-1]; nb[19] = porosity[];
-      }
-
-  for (int k = 0; k < DTP_NNEAR; k++)
-    out[k] = nb[k];
-}
-
-event stability (i++) {
-  dtp_DT = dtmax;
-  dtp_scan (uf, dtp_uf);
-  dtp_neighbourhood (uf, dtp_uf[0], dtp_near);
-  dtp_outlet (dtp_out);
-  dtp_scan (ubf, dtp_ubf);
-#ifdef FICK_CORRECTED
-  dtp_corr = (CORRECTIVE_CFL > 0. && corrective_uodx > 0.) ?
-    CORRECTIVE_CFL/corrective_uodx : HUGE;
-#endif
-}
-
-static void dtp_print_face (FILE * fp, const double * d)
-{
-  for (int k = 0; k < DTP_NFACE; k++)
-    fprintf (fp, " %g", d[k]);
-}
-
-event dtprobe_write (i++) {
-  if (pid() != 0)
-    return 0;
-
-  static FILE * fp = NULL;
-  if (!fp) {
-    fp = open_profile ("dtlimits.dat");
-
-    /**
-    A restart appends to the file. The file can be new all the same, for
-    example after a restart in a new folder. So write the header when the
-    file is empty, not when `restarted` is 0. */
-
-    fseek (fp, 0, SEEK_END);
-    if (ftell (fp) == 0)
-      fprintf (fp, "#t(1) i(2) dt(3) DT(4) dt_uf(5) dt_ubf(6) dt_corr(7)"
-               " bind(8)"
-               " uf: rate(9) x(10) y(11) level(12)"
-               " fL(13) TL(14) TGL(15) omegaL(16) gsL(17)"
-               " fR(18) TR(19) TGR(20) omegaR(21) gsR(22)"
-               " ubf: rate(23) x(24) y(25) level(26)"
-               " fL(27) TL(28) TGL(29) omegaL(30) gsL(31)"
-               " fR(32) TR(33) TGR(34) omegaR(35) gsR(36)"
-               " ufnear: dir(37) um1(38) u0(39) up1(40) ub(41) ut(42)"
-               " rhoL(43) rhoR(44) drhodtL(45) drhodtR(46)"
-               " divsrcL(47) divsrcR(48) divufL(49) divufR(50)"
-               " pL(51) pR(52) pfL(53) pfR(54) porL(55) porR(56)"
-               " outlet: umin(57) ufmin(58) Qin(59) Qout(60) Qinlet(61)\n");
-  }
-
-  double lim[4] = {
-    dtp_DT,
-    dtp_uf[0] > 0. ? CFL/dtp_uf[0] : HUGE,
-    dtp_ubf[0] > 0. ? CFL/dtp_ubf[0] : HUGE,
-    dtp_corr
-  };
-  int bind = 0;
-  for (int k = 1; k < 4; k++)
-    if (lim[k] < lim[bind])
-      bind = k;
-
-  fprintf (fp, "%g %d %g %g %g %g %g %d", t, i, dt,
-           lim[0], lim[1], lim[2], lim[3], bind);
-  dtp_print_face (fp, dtp_uf);
-  dtp_print_face (fp, dtp_ubf);
-  for (int k = 0; k < DTP_NNEAR; k++)
-    fprintf (fp, " %g", dtp_near[k]);
-  for (int k = 0; k < DTP_NOUT; k++)
-    fprintf (fp, " %g", dtp_out[k]);
-  fputc ('\n', fp);
-  fflush (fp);
-  return 0;
-}
-
-#ifndef DTP_DUMP_T1
-# define DTP_DUMP_T1 10.235
-#endif
-#ifndef DTP_DUMP_T2
-# define DTP_DUMP_T2 10.244
-#endif
-#ifndef DTP_DUMP_DT
-# define DTP_DUMP_DT 1e-5
-#endif
-
-/**
-Caution: an event at a fixed time makes `dtnext()` shorten the step before
-it. After a restart, the run thus follows a slightly different path than a
-run without these events. So the two dumps at fixed times are off by
-default: set `DTP_DUMP_FIXED = 1` to turn them on. The dump at a small `dt`
-adds no event time, so it stays on. */
-
-#ifndef DTP_DUMP_FIXED
-# define DTP_DUMP_FIXED 0
-#endif
-
-/**
-`centered.h` sets `nodump` on `p` and `pf`, so a normal `dump()` does not write
-them. `dtp_dump()` writes them in the probe files only. It sets the flag again
-after the dump, so `last-snapshot` does not change. */
-
-static void dtp_dump (const char * name)
-{
-  p.nodump = pf.nodump = false;
-  dump (name);
-  p.nodump = pf.nodump = true;
-}
-
-#if DTP_DUMP_FIXED
-event dtprobe_dump (t = {DTP_DUMP_T1, DTP_DUMP_T2}) {
-  char name[80];
-  sprintf (name, "dtprobe-t%g", t);
-  dtp_dump (name);
-}
-#endif
-
-event dtprobe_dump_dt (i++) {
-  static bool done = false;
-  if (!done && i > 0 && dt < DTP_DUMP_DT) {
-    dtp_dump ("dtprobe-dt");
-    done = true;
-  }
-}
-#endif // DT_PROBE
-
-/**
-The adapt criterion is the one of `run/test.c`: `T` and the oxidiser. The
-field `zmix - zsto` is not a criterion any more. `flame.h` updates `zmix` and
-`zsto` only every `FLAME_PRINT_TIME`, so the grid followed a stale field
-between two updates. No evidence run adapted on it. */
+The adapt criterion is `T` and the oxidiser. Do not adapt on `zmix - zsto`:
+`flame.h` updates `zmix` and `zsto` only every `FLAME_PRINT_TIME`, so the
+grid would follow a stale field between two updates. */
 
 #if TREE
 event adapt (i++) {
@@ -1140,7 +573,6 @@ event movie (t += 1) {
   save ("movie.mp4");
 }
 
-#if VTK_OUTPUT
 event vtk (t += 5; t <= 80) {
 
   mixture_fraction (zmix);
@@ -1180,52 +612,7 @@ event vtk (t += 5; t <= 80) {
 
   output_vtk ({f, T, XH2O, XCO2, XOH, u.x, u.y, zdiff}, n=(1<<maxlevel), fp=fvtk, linear=true);
 }
-#endif
 
-#if PRINT_FIELDS
-event save_fields (t += 10) {
-  // H2O
-  scalar XH2O_G = XGList_G[OpenSMOKE_IndexOfSpecies ("H2O")];
-  scalar XH2O_S = XGList_S[OpenSMOKE_IndexOfSpecies ("H2O")];
-  scalar XH2O[];
-  foreach()
-    XH2O[] = XH2O_S[]*f[] + XH2O_G[]*(1. - f[]);
-
-  // CO2
-  scalar XCO2_G = XGList_G[OpenSMOKE_IndexOfSpecies ("CO2")];
-  scalar XCO2_S = XGList_S[OpenSMOKE_IndexOfSpecies ("CO2")];
-  scalar XCO2[];
-  foreach()
-    XCO2[] = XCO2_S[]*f[] + XCO2_G[]*(1. - f[]);
-
-  // OH
-  scalar XOH_G = XGList_G[OpenSMOKE_IndexOfSpecies ("OH")];
-  scalar XOH_S = XGList_S[OpenSMOKE_IndexOfSpecies ("OH")];
-  scalar XOH[];
-  foreach()
-    XOH[] = XOH_S[]*f[] + XOH_G[]*(1. - f[]);
-
-  // CO
-  scalar XCO_G = XGList_G[OpenSMOKE_IndexOfSpecies ("CO")];
-  scalar XCO_S = XGList_S[OpenSMOKE_IndexOfSpecies ("CO")];
-  scalar XCO[];
-  foreach()
-    XCO[] = XCO_S[]*f[] + XCO_G[]*(1. - f[]);
-
-  // LVG
-  scalar LVG_G = YGList_G[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
-  scalar LVG_S = YGList_S[OpenSMOKE_IndexOfSpecies ("C6H10O5")];
-  scalar LVG[];
-  foreach()
-    LVG[] = LVG_S[]*f[] + LVG_G[]*(1. - f[]);
-
-  char name[80];
-  sprintf (name, "fields-%g", t);
-  FILE * fs = open_profile (name);
-  output_field ({T, f, u.x, u.y, XH2O, XCO2, XOH, XCO, LVG, omega}, fs);
-  fclose (fs);
-}
-#endif
 
 event dump (t = 1; t += 1) {
   dump ("last-snapshot");
@@ -1250,8 +637,7 @@ Caution: `return 1` is what ends the run, not the time of the event.
 `events()` in `$BASILISK/grid/events.h` keeps the loop alive while any event
 still has a condition and is still alive. `event print_profile` carries
 `t <= PROFILE_TEND`, so it holds the loop open, and a bare `event stop
-(t = tend)` cannot end a run with `tend` below `PROFILE_TEND`. A run at
-`TEND = 0.25` went on to t = 0.29 before this line existed. An action that
+(t = tend)` cannot end a run with `tend` below `PROFILE_TEND`. An action that
 returns a non-zero value gives `event_stop`, which ends the run whatever the
 other events ask for. */
 

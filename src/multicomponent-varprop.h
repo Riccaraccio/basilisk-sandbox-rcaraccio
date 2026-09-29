@@ -54,32 +54,6 @@ heat that it holds. It changes no field either. */
 #endif
 
 /**
-`INT_TEMP_VOFBC` makes `TInt` a Dirichlet condition of each temperature solve.
-The condition lives INSIDE the Poisson operator: `poisson.h` calls
-`plic_flux()` in every relaxation and every residual sweep, so the interface
-gradient is built from the current iterate and not from step `n`. Read
-`plicbc.h` and `int-temperature-vofbc.h` before you change any of it.
-
-It needs the two patches in `basilisk-patches/`, which are applied to the
-install. Without them `diffusion()` has no `flux` argument and this does not
-compile.
-
-A frozen source cannot do the same job. `r` and `beta` are both constant
-during the solve, so the interpolated neighbour value stays at step `n`, the
-source never shuts off as the cell heats, and the cut cell settles wherever it
-must to pass the OLD flux onward. Measured in `test/intbc-sliver.c`: a
-fourfold overshoot of the interface value with the frozen source, against nine
-per cent with the operator, at every gas fraction from 0.4 down to 1e-6. */
-
-#if INT_TEMP_VOFBC
-# include "plicbc.h"
-# include "int-temperature-vofbc.h"
-# if INT_TEMP_ROBIN
-#  error "INT_TEMP_ROBIN is superseded by INT_TEMP_VOFBC. Use one."
-# endif
-#endif
-
-/**
 ## The transport of heat by the pore gas
 
 The `tracer_diffusion` event advects `TS` with `u_prime`. `u_prime` is the velocity at which the gas that
@@ -373,7 +347,7 @@ event reset_sources (i++) {
     qmde_dbg[] = 0.;
     qrob_dbg[] = 0.;
 #endif
-#if INT_TEMP_ROBIN || INT_TEMP_VOFBC
+#if INT_TEMP_ROBIN
     betaST[] = 0.;
     betaGT[] = 0.;
 #endif
@@ -441,13 +415,7 @@ end. */
 static void interface_temperature_sources (void)
 {
   bool success = false;
-#if INT_TEMP_VOFBC
-  double vnint = 0.;
-
-  foreach (reduction(+:vnint)) {
-#else
   foreach() {
-#endif
     if (f[] > F_ERR && f[] < 1. - F_ERR) {
       coord n = interface_source_normal (point, fS, fsS), p;
       double alpha = plane_alpha (fS[], n);
@@ -481,10 +449,8 @@ static void interface_temperature_sources (void)
       bool gasdrop   = (gasfrozen && TG_FGMIN_MODE == 1);
 
       /**
-      The interface heat flux. Under `INT_TEMP_VOFBC` this is NOT the source
-      of the solve: `plic_flux()` rebuilds it inside the operator. It is still
-      needed here, because `update_divergence()` reads `sST` and `sGT` as the
-      interface heat of the thermal expansion, and it runs before the solve.
+      The interface heat flux. `update_divergence()` also reads `sST` and
+      `sGT`, as the interface heat of the thermal expansion.
 
       The Picard snapshot `sST_base` is taken just before this function, so
       the solve restores from it and sees the volumetric terms only. Miss that
@@ -495,9 +461,6 @@ static void interface_temperature_sources (void)
         sGT[] += Gheatflux*aov;
 #ifdef TG_PROBE
       qint_dbg[] = gasdrop ? 0. : Gheatflux*aov;
-#endif
-#if INT_TEMP_VOFBC
-      vnint += 1.;
 #endif
 
 /**
@@ -636,9 +599,6 @@ finite-difference it. */
     }
   }
 
-#if INT_TEMP_VOFBC
-  ITV_nint = vnint;
-#endif
 }
 
 #endif
@@ -666,10 +626,8 @@ divisors use the state before the solves, as there.
 For the species, the expansion reads only `sum_j dY_j/MW_j`. The species
 part therefore needs one sum for each phase, not one field for each species.
 
-Under `INT_TEMP_VOFBC` the solve puts the interface flux inside the operator
-(`plic_flux()`), with the implicit `TInt` condition. The change of the solve
-includes it, so the form holds with no special term. Under `INT_TEMP_ROBIN`
-the diagonal `betaST` is part of the solve, and the same holds. Under
+Under `INT_TEMP_ROBIN` the diagonal `betaST` is part of the solve, and the
+change of the solve includes it, so the form holds with no special term. Under
 `INT_TEMP_PICARD` the last pass gives the value.
 
 The corrected `drhodt` reaches the projection of the same step:
@@ -1185,7 +1143,7 @@ event tracer_diffusion (i++) {
   `TInt` — the spark of `spark.h` and the enthalpy of mass diffusion — so
   that each pass of the loop can rebuild the interface part alone. */
 
-# if INT_TEMP_PICARD || INT_TEMP_VOFBC
+# if INT_TEMP_PICARD
   foreach() {
     sST_base[] = sST[];
     sGT_base[] = sGT[];
@@ -1623,7 +1581,7 @@ matches the fields that built the source. */
         TG[] = TG_n[];
         sST[] = sST_base[];
         sGT[] = sGT_base[];
-#  if INT_TEMP_ROBIN || INT_TEMP_VOFBC
+#  if INT_TEMP_ROBIN
         betaST[] = 0.;
         betaGT[] = 0.;
 #  endif
@@ -1632,23 +1590,6 @@ matches the fields that built the source. */
     }
 # endif // INT_TEMP_PICARD
 
-#if INT_TEMP_VOFBC
-
-  /**
-  Take the interface flux OUT of the source. `plic_flux()` rebuilds it inside
-  the operator, so leaving it here would count it twice.
-
-  `sST_base` and `sGT_base` hold everything that is not the interface flux:
-  the reaction heat, the spark, and the enthalpy of mass diffusion. The
-  snapshot is taken immediately before `interface_temperature_sources()`, and
-  `update_divergence()` has already run with the full source, which is what it
-  needs. */
-
-  foreach() {
-    sST[] = sST_base[];
-    sGT[] = sGT_base[];
-  }
-#endif
 
   foreach_face() {
     lambda1f.x[] = face_value(lambda1v.x, 0)*fsS.x[]*fm.x[];
@@ -1737,47 +1678,7 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     mgstats mgS, mgG;
     mgG.i = 0; mgG.nrelax = 0; mgG.resa = 0.;
 
-#  if INT_TEMP_VOFBC
-
-  /**
-  Attach the interface condition to the two temperatures.
-
-  Caution: this MUST NOT go in a `defaults` event of this file. `TS` and `TG`
-  are created by `TS = new scalar` in the `defaults` event of
-  `memoryallocation-varprop.h`, which this file includes at the top. Same-name
-  Basilisk events run in REVERSE declaration order, so an event declared here
-  runs BEFORE the one that creates the fields, and the condition lands on a
-  handle that is not a field yet.
-
-  The real `TS` then keeps the default boundary of a new `bid`, which is
-  `symmetry`. `symmetry` returns `s[]` and leaves the Dirichlet flag false, so
-  `plic_flux()` builds the interface gradient with the CELL's own temperature
-  as the interface value. The gradient collapses to an internal one and the
-  interface exchange goes to nothing. A measured run of `test-vofbcm` cooled
-  the particle core from 300 K to 270 K in a furnace at 1123 K over 25 s, and
-  it lost 0.05 per cent of its mass where `test-base` loses 87 per cent.
-
-  Assign it here instead, in the event that uses it. The fields exist, the
-  cost is two function pointers, and no ordering rule can break it. */
-
-    TS[interface] = dirichlet (TInt[]);
-    TG[interface] = dirichlet (TInt[]);
-
-  /**
-  Name the phase before its own solve: `plic_flux()` reads one pair of
-  fraction fields, and the two solves differ only in that pair. */
-
-    plicbc_phase (fS, fsS);
-    TOLERANCE = tolS;
-    mgS = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1,
-                     flux = plic_flux);
-#   ifndef TEMPERATURE_PROFILE
-    plicbc_phase (fG, fsG);
-    TOLERANCE = tolG;
-    mgG = diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2,
-                     flux = plic_flux);
-#   endif
-#  elif INT_TEMP_ROBIN
+#if INT_TEMP_ROBIN
     TOLERANCE = tolS;
     mgS = diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
 #   ifndef TEMPERATURE_PROFILE

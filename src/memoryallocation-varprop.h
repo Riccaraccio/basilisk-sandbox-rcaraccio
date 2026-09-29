@@ -48,7 +48,7 @@ scalar sST[], sGT[]; // source terms for solid and gas temperatures
 The interface conductance of each phase, for the diagonal of the diffusion
 operator. `INT_TEMP_ROBIN` turns it on. See `multicomponent-varprop.h`. */
 
-#if INT_TEMP_ROBIN || INT_TEMP_VOFBC
+#if INT_TEMP_ROBIN
 scalar betaST[], betaGT[];
 #endif
 
@@ -81,13 +81,11 @@ The work fields of the Picard loop on the interface temperature.
   restarts from them, or the loop becomes a sequence of timesteps.
 - `TInt_prev` holds the previous iterate, for the convergence test. */
 
-#if INT_TEMP_PICARD || INT_TEMP_VOFBC
+#if INT_TEMP_PICARD
 
 /**
 `sST_base` and `sGT_base` hold the source WITHOUT the interface flux.
-`INT_TEMP_PICARD` restores from them on each pass. `INT_TEMP_VOFBC` restores
-from them once, before the solve, because there the interface flux belongs to
-the operator and must not also be in the source. */
+`INT_TEMP_PICARD` restores from them on each pass. */
 
 scalar sST_base[], sGT_base[];
 #endif
@@ -367,7 +365,7 @@ for (int jj=0; jj<NGS; jj++) {
   sST.nodump = true;
   sGT.nodump = true;
 
-#if INT_TEMP_ROBIN || INT_TEMP_VOFBC
+#if INT_TEMP_ROBIN
   betaST.nodump = true;
   betaGT.nodump = true;
 #endif
@@ -381,7 +379,7 @@ for (int jj=0; jj<NGS; jj++) {
   debtGT.nodump = true;
 #endif
 
-#if INT_TEMP_PICARD || INT_TEMP_VOFBC
+#if INT_TEMP_PICARD
   sST_base.nodump = true;
   sGT_base.nodump = true;
 #endif

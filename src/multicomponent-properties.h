@@ -441,16 +441,9 @@ void update_divergence (void) {
   }
 
   /**
-  The interface heat source. Under `INT_TEMP_VOFBC` the source is split
-  between `sST` and the diagonal `betaST`, so the whole term is
-  `sST + betaST*TS`. Read only `sST` and the expansion loses the diagonal
-  half, which for a sliver is the whole of it, and then the velocity and the
-  mass loss rate are wrong with no message.
-
-  `INT_TEMP_ROBIN` escapes this by accident: it adds `+KS*TS[]` to `sST` and
-  `-KS` to `betaST`, and the two cancel at `TS = TS^n`. The exact split of
-  `INT_TEMP_VOFBC` has no such cancellation, so the term must be written out
-  here. */
+  The interface heat source. `INT_TEMP_ROBIN` adds `+KS*TS[]` to `sST` and
+  `-KS` to `betaST`, and the two cancel at `TS = TS^n`, so `sST` alone is the
+  whole term. */
 
   foreach() {
     foreach_dimension()
@@ -461,10 +454,6 @@ void update_divergence (void) {
       DTDtG[] += (lambdagradTG.x[1] - lambdagradTG.x[])/Delta;
     DTDtG[] += sGT[];
 
-#if INT_TEMP_VOFBC
-    DTDtS[] += betaST[]*TS[];
-    DTDtG[] += betaGT[]*TG[];
-#endif
   }
 #endif // !(DRI_ON && SOLVE_TEMPERATURE)
 

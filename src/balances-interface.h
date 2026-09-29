@@ -180,8 +180,7 @@ static void compute_balances(void) {
   Keep the two phases together. This event rebuilds `fS` and `fsS` from the
   freshly advected `f`, so `fG` and `fsG` must follow. If only one pair is
   rebuilt, `ebmgrad` reads one side of the interface at this step and the
-  other side at the last one. That is wrong today for the diffusive fluxes,
-  and under `INT_TEMP_VOFBC` it also sets a matrix coefficient. */
+  other side at the last one, and the diffusive fluxes are wrong. */
 
   foreach() {
     fS[] = f[];

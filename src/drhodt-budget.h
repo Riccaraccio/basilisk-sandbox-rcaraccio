@@ -240,10 +240,6 @@ static void drhodt_budget_presolve (scalar theta1, scalar theta2)
     }
     dbg_exS[] = dS + sST[];
     dbg_exG[] = dG + sGT[];
-#if INT_TEMP_VOFBC
-    dbg_exS[] += betaST[]*TS[];
-    dbg_exG[] += betaGT[]*TG[];
-#endif
     dbg_TSpre[] = TS[];
     dbg_TGpre[] = TG[];
     dbg_th1[] = theta1[];
@@ -324,18 +320,6 @@ static void drhodt_budget_postsolve (void)
     dbg_exG[] += dbg_bG[]*TG[];
 # endif
   }
-# if INT_TEMP_VOFBC
-  plicbc_phase (fS, fsS);
-  foreach() {
-    double c, e = plic_flux (point, TS, lambda1f, &c);
-    dbg_exS[] += e*TS[] - c;
-  }
-  plicbc_phase (fG, fsG);
-  foreach() {
-    double c, e = plic_flux (point, TG, lambda2f, &c);
-    dbg_exG[] += e*TG[] - c;
-  }
-# endif
 
   /**
   The `drhodt` that the projection receives. The temperature part `dri_cT`

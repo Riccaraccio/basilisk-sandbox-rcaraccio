@@ -212,27 +212,17 @@ the interface in the presence of phase change.
 face vector ufsave[];
 
 /**
-`GAS_UBF_ADVECTION` selects which faces carry `ubf` for the tracers of `f`.
-`multicomponent-varprop.h` gives the full description.
-
-  0  `ubf` on all faces. `multicomponent-varprop.h` takes `TG` and
-     `YGList_G` out of the list for the sweep.
-  1  `ubf` on all faces, for all tracers. This is the previous code.
-  2  `ubf` only on the faces next to a cell with solid. A face between two
-     pure gas cells gets 0. */
-
-#ifndef GAS_UBF_ADVECTION
-# define GAS_UBF_ADVECTION 0
-#endif
+`ubf` moves the tracers of `f` only on the faces next to a cell with solid.
+A face between two pure gas cells gets 0: the gas there moves with `ufsave`
+in the `tracer_diffusion` event of `multicomponent-varprop.h`, and a second
+transport with `ubf` counts that flow two times. In a cut cell the `ubf`
+transport stays, because it fills the gas volume that the interface frees.
+`multicomponent-varprop.h` gives the full description. */
 
 event vof (i++) {
   foreach_face() {
     ufsave.x[] = uf.x[];
-#if GAS_UBF_ADVECTION == 2
     uf.x[] = (f[] > F_ERR || f[-1] > F_ERR) ? ubf.x[] : 0.;
-#else
-    uf.x[] = ubf.x[];
-#endif
   }
 @if _MPI
   boundary ((scalar *){uf});

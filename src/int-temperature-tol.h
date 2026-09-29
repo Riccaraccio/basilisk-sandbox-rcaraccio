@@ -67,10 +67,6 @@ Caution: with `INT_TEMP_PICARD` the outer loop cannot converge below what the
 linear solve delivers. Keep `INT_TEMP_TOL_K` well under `INT_TEMP_PICARD_TOL`,
 which is 1e-2 K by default, and check `rel_max` after any change.
 
-`INT_TEMP_TOL` is the switch, and it is 1 by default. Set it to 0 to restore
-the plain inherited `TOLERANCE`. Keep the switch and the value separate: the
-preprocessor cannot compare a floating point value in an `#if`.
-
 ## How to read `tsolve.dat`
 
     #t(1) dt(2) tolS(3) iS(4) nrelaxS(5) resaS(6) tolG(7) iG(8) nrelaxG(9) resaG(10)

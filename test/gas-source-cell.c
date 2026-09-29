@@ -89,8 +89,8 @@ same part of the exact form:
 
 The sum of the two is `ln(rho_0/rho_end)/dt`, because the pressure does not
 change. The columns `1+x/2` and `1+x` give the first-order estimates of the
-time-level review, with `x = (T_end - T_0)/T_0`. `GAS_SOURCE_EXACT` in
-`chemistry.h` removes both errors, because it uses the exact form. */
+time-level review, with `x = (T_end - T_0)/T_0`. `chemistry.h` has neither
+error, because it uses the exact form. */
 
 #define F_ERR 1e-10
 #ifndef NREF

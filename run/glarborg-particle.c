@@ -246,13 +246,13 @@ int main() {
   if (pid() == 0)
     fprintf (stderr, "# glarborg: case=%d D0=%g H0=%g maxlevel=%d DT=%g"
                      " CFL=%g Uin=%g tend=%g zeta=REACTION"
-                     " frozen=%d corrCFL=%g averaged=%d exact=%d filter=%d dri=%d"
+                     " frozen=%d corrCFL=%g exact=%d filter=%d dri=%d"
                      " ubf=%d strang=%d vofbc=%d picard=%d pin=%d tol=%g"
                      " nitermin=%d shrinkbudget=%d yclamp=%d snapevery=%d"
                      " nranks=%d\n",
              CASE_NUMBER, D0, H0, MAXLEVEL, (double) DT_VALUE,
              (double) CFL_VALUE, Uin, (double) TEND, FROZEN_CELL_GATE, (double) CORRECTIVE_CFL,
-             (int) gas_source_averaged, GAS_SOURCE_EXACT,
+             GAS_SOURCE_EXACT,
 #if GAS_SOURCE_EXACT
              gas_source_filter_passes,
 #else

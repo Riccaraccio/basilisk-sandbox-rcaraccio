@@ -178,10 +178,8 @@ event reset_sources (i++) {
   foreach()
     csp_TGpre[] = TG[];
   csp_snap = true;
-#if GAS_CHEMISTRY_STRANG
   strang_probe_armed = true;
   strang_Tmax_tr = strang_Q2 = 0.;
-#endif
   csp_cpu += (double)(clock() - c0)/CLOCKS_PER_SEC;
 }
 
@@ -262,9 +260,7 @@ event end_timestep (i++) {
   if (!csp_armed)
     return 0;
   csp_armed = false;
-#if GAS_CHEMISTRY_STRANG
   strang_probe_armed = false;
-#endif
   if (!csp_snap)
     return 0;
   clock_t c0 = clock();
@@ -283,18 +279,14 @@ event end_timestep (i++) {
         fprintf (fp, "#t(1) i(2) dt(3) Tmax_pre(4) Tmax_chem(5) Tmax_end(6)"
                      " Tmid(7) dT_max(8) dT_mean(9) nreact(10) nzone(11)"
                      " qmax(12) Qchem(13)"
-#if GAS_CHEMISTRY_STRANG
                      " Tmax_tr(14) Q2(15)"
-#endif
                      "\n");
     }
     fprintf (fp, "%g %d %g %g %g %g %g %g %g %g %g %g %g",
              t, i, dt, csp_Tmax_pre, csp_Tmax_chem, Tend,
              0.5*(csp_Tmax_chem + Tend), csp_dTmax, csp_dTmean,
              csp_nreact, csp_nzone, csp_qmax, csp_Qchem);
-#if GAS_CHEMISTRY_STRANG
     fprintf (fp, " %g %g", strang_Tmax_tr, strang_Q2);
-#endif
     fprintf (fp, "\n");
     fflush (fp);
   }

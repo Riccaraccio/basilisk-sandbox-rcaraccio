@@ -231,21 +231,20 @@ sources must take the area, the centroid and the weights of the anisotropic
 conductivity from this plane too. If they do not, one cut cell uses two
 planes: the flux comes from one plane and the area from the other.
 
-`interface_source_normal()` gives the normal that the sources use. Call it
-at every site that multiplies an `ebmgrad` gradient by an area.
-`INTERFACE_NORMAL_MYCS` selects the normal:
+`interface_source_normal()` gives the normal that the sources use,
+`interface_normal (point, c)`, the plane of `ebmgrad`. Call it at every site
+that multiplies an `ebmgrad` gradient by an area. The argument `s` is not
+used.
 
-- 1, the default: `interface_normal (point, c)`, the plane of `ebmgrad`.
-- 0: `facet_normal (point, c, s)`, the old code, bit for bit. This normal
-  comes from the face fractions `s`. `face_fraction()` sets each face
-  fraction from the geometric mean of the planes of the two cells of the
-  face, and it sets 0 on a face next to an empty cell. So this normal is not
-  the plane of the cell.
+Do not use `facet_normal (point, c, s)` here. It comes from the face
+fractions `s`. `face_fraction()` sets each face fraction from the geometric
+mean of the planes of the two cells of the face, and it sets 0 on a face
+next to an empty cell. So that normal is not the plane of the cell.
 
-Do not expect a more accurate flux from the default. On a smooth sphere the
-two normals differ by 0.1 to 0.3 degrees on average, and the old normal
+Do not expect a more accurate flux from this normal. On a smooth sphere the
+two normals differ by 0.1 to 0.3 degrees on average, and `facet_normal()`
 gives an area that is 3 per cent more accurate. The error of `ebmgrad` sets
-the error of the flux (`test/interface-normal-flux.c`). The default gives
+the error of the flux (`test/interface-normal-flux.c`). This normal gives
 three other things:
 
 1. One plane per cell. `ebmgrad` takes its start point and its direction
@@ -263,18 +262,11 @@ Both normals are box-normalised (`|n.x| + |n.y| = 1`), so `plane_alpha()`
 accepts either one. Call `normalize()` only after `plane_alpha()` and
 `plane_area_center()`. */
 
-#ifndef INTERFACE_NORMAL_MYCS
-# define INTERFACE_NORMAL_MYCS 1
-#endif
 
 coord interface_source_normal (Point point, scalar c, face vector s)
 {
-#if INTERFACE_NORMAL_MYCS
   NOT_UNUSED (s);
   return interface_normal (point, c);
-#else
-  return facet_normal (point, c, s);
-#endif
 }
 
 /**

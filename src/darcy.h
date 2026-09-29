@@ -49,7 +49,7 @@ $\Delta t$.
 Without the factor on `alpha`, the steady state is
 $\mathbf{u} = -\Delta t\,G/(1 - e^{-c})$. For $c \gg 1$ that is
 $-\Delta t\,G$: the pressure then depends on $\Delta t$ and does not depend on
-**K**. Compile with `-DDARCY_PRESSURE_COUPLING=0` to get that old scheme back.
+**K**.
 
 Caution: do not apply $e^{-c}$ to `alpha`. The steady state is then
 $-\Delta t\,G\,e^{-c}/(1 - e^{-c})$, and for $c \gg 1$ the Poisson problem
@@ -89,17 +89,12 @@ to account for anisotropic porous media. Units: m^2
 
 coord Da = {1e-10, 1e-10};
 
-#ifndef DARCY_PRESSURE_COUPLING
-# define DARCY_PRESSURE_COUPLING 1
-#endif
 
 /**
 ## The drag rate
 
 `darcy_lambda.x` holds $\lambda = f(A + B)$ for the direction `x`, with
-$A = \mu/(K\rho)$ and $B = F|\mathbf{u}|/\sqrt{K}$. Both schemes below use
-this function, so `DARCY_PRESSURE_COUPLING` changes only the coupling with the
-pressure, not the drag.
+$A = \mu/(K\rho)$ and $B = F|\mathbf{u}|/\sqrt{K}$.
 
 `rhoGv_S` and `muGv_S` are the density and the viscosity of the pore gas.
 Do not use the Brinkman viscosity $\mu/\epsilon$ here. A case can give that
@@ -135,7 +130,6 @@ static void darcy_cell_rate (void)
   }
 }
 
-#if DARCY_PRESSURE_COUPLING
 
 /**
 The `advection_term` event fills `darcy_lambda` once per step. The
@@ -203,29 +197,6 @@ event viscous_term (i++) {
       u.x[] *= exp(-darcy_lambda.x[]*dt);
 }
 
-#else // !DARCY_PRESSURE_COUPLING
-
-/**
-## Viscous term event (old scheme)
-This event runs BEFORE the viscous solve of `centered.h`, because same-name
-events run in reverse order of the declaration. It damps the velocity to
-account for the Darcy and Forchheimer resistance. The projection does not see
-the drag.
-*/
-
-event defaults (i = 0) {
-  foreach_dimension()
-    darcy_lambda.x.nodump = true;
-}
-
-event viscous_term (i++) {
-  darcy_cell_rate();
-  foreach()
-    foreach_dimension()
-      u.x[] *= exp(-darcy_lambda.x[]*dt);
-}
-
-#endif // DARCY_PRESSURE_COUPLING
 
 /**
 ## Previous implementation (commented out)

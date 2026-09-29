@@ -383,11 +383,7 @@ static void drhodt_budget_postsolve (void)
     double dG = TGpre*rhoGv_G[]*cpGv_G[];
     double cG = (dG > 0.) ? 1./dG : 0.;
 
-#if DRHODT_CELL_AVERAGE
     double wS = (f[] > F_ERR) ? 1. : 0., wG = (f[] < 1. - F_ERR) ? 1. : 0.;
-#else
-    double wS = f[], wG = 1. - f[];
-#endif
 
     double dd = -(wS*cS*difS + wG*cG*difG);
     double ad = fabs (dd), ar = fabs (drf);

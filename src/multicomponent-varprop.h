@@ -80,20 +80,9 @@ per cent with the operator, at every gas fraction from 0.4 down to 1e-6. */
 #endif
 
 /**
-The tolerance of the two temperature solves, scaled to their own residual.
-The inherited `TOLERANCE = 1e-5` asks the gas temperature for 7e-12 K, which
-no solve can deliver, and the wasted iterations killed two runs. On by
-default; set `INT_TEMP_TOL` to 0 to restore the inherited value. */
-
-#ifndef INT_TEMP_TOL
-# define INT_TEMP_TOL 1
-#endif
-
-/**
 ## The transport of heat by the pore gas
 
-`TS_PORE_ADVECTION` controls the advection of `TS` with `u_prime` in the
-`tracer_diffusion` event. `u_prime` is the velocity at which the gas that
+The `tracer_diffusion` event advects `TS` with `u_prime`. `u_prime` is the velocity at which the gas that
 flows through the pores carries the heat of the pseudo-phase:
 
   u_prime = fsS*uf*rhoG*cpG/(rhoG*cpG*eps + rhoS*cpS*(1 - eps))
@@ -101,125 +90,38 @@ flows through the pores carries the heat of the pseudo-phase:
 The gas leaves the reaction front cold and flows out through the hot char,
 so this term cools the char layer when the release rate rises.
 
-The default is 1, which keeps the previous code bit for bit. Set it to 0 to
-remove the term and nothing else. The advection of `TG` and of the gas
-species stays. The advection of `TS` with the solid velocity `ubf` also
-stays, because `TS` is a tracer of `f` and `vof.h` moves it.
-
-Caution: a build with 0 is a different physical model. It measures whether
-the loop of the slow oscillation runs through this term. It is not a fix.
-
-The test is `#if`, so `-DTS_PORE_ADVECTION=0` means off. */
-
-#ifndef TS_PORE_ADVECTION
-# define TS_PORE_ADVECTION 1
-#endif
+The advection of `TS` with the solid velocity `ubf` is separate: `TS` is a
+tracer of `f`, and `vof.h` moves it. */
 
 /**
 ## The gas side does not move with the solid velocity
 
 `TG` and `YGList_G` are tracers of `f`. The `vof` event of `shrinking.h` sets
-`uf = ubf`, and `vof.h` then moves every tracer of `f` with `ubf`. `ubf` is
+`uf = ubf`, and `vof.h` then moves the tracers of `f` with `ubf`. `ubf` is
 not zero in the gas, because the solver solves `psi` over the full domain.
 The `tracer_diffusion` event then moves the gas side again with `ufsave`.
 
 `ufsave` is the total volume flux `(1 - eps) ubf + eps v_g`. The projection
 source does not contain `prod` or `zeta`. So `ufsave` already carries the
-gas that fills the volume that the shrinkage frees. In the gas, the second
-transport with `ubf` counts that flow two times.
+gas that fills the volume that the shrinkage frees. In the pure gas, a
+second transport with `ubf` counts that flow two times.
 
-The two events below take `TG` and `YGList_G` out of `f.tracers` for the
-sweep of `vof.h`, and put them back after it. The gas side of a cut cell then
-keeps its intrinsic value while `f` changes. The steps are:
-
-1. Before the sweep, divide by `1 - f` with the old `f`. In a pure solid
-   cell, the gas side has no value, so copy the solid side (`TS`,
-   `YGList_S`). This is the same value that the extrapolation in
-   `tracer_diffusion` gives. If the interface uncovers the cell, the gas side
-   starts from the pore gas and not from 0 K.
-2. After the sweep, multiply by `1 - f` with the new `f`. Clip `f` with the
-   same rule as `tracer_diffusion`, so that its division gives back the
-   intrinsic value.
-
-`TS`, `YGList_S`, `YSList` and `porosity` stay in the list. The matrix
-carries the pore gas, and the solid side of a cut cell must follow the
-interface.
-
-`shrinking.h` defines the switch `GAS_UBF_ADVECTION`:
-
-  0  The two events below. This is the default.
-  1  The previous code, bit for bit.
-  2  The mask of `shrinking.h`: `ubf` is 0 on the faces between two pure
-     gas cells. The gas side of a cut cell still moves with `ubf`.
+`shrinking.h` therefore gives `ubf` only to the faces next to a cell with
+solid. A face between two pure gas cells gets 0.
 
 Caution: in a cut cell, the `ubf` transport of the gas side is not a double
 count. It fills the gas volume that the interface frees with upwind gas. The
 advection with `ufsave` moves the intrinsic value and does not see the change
-of `1 - f`. With 0, the freed volume takes the value of the cell itself. In a
-sliver cell (`1 - f` near 2e-4) that value is cold, and a hot start
-(`TS0 = 700`, level 8, `ZETA_SHRINK`) gave a minimum `TG` 40 to 70 K lower than
-with 1. Option 2 keeps the fill in the cut cells and removes only the double
-count in the pure gas. */
-
-#if GAS_UBF_ADVECTION == 0
-scalar * gas_ubf_saved = NULL;
-
-event vof (i++) {
-  foreach() {
-    double fG = 1. - f[];
-    for (int jj=0; jj<NGS; jj++) {
-      scalar YG_S = YGList_S[jj];
-      scalar YG_G = YGList_G[jj];
-      YG_G[] = (fG > F_ERR) ? YG_G[]/fG :
-               (f[] > F_ERR) ? YG_S[]/f[] : 0.;
-    }
-#ifdef SOLVE_TEMPERATURE
-    TG[] = (fG > F_ERR) ? TG[]/fG :
-           (f[] > F_ERR) ? TS[]/f[] : 0.;
-#endif
-  }
-
-  scalar * gasl = list_copy (YGList_G);
-#ifdef SOLVE_TEMPERATURE
-  gasl = list_append (gasl, TG);
-#endif
-  scalar * kept = NULL;
-  for (scalar s in f.tracers)
-    if (!list_lookup (gasl, s))
-      kept = list_append (kept, s);
-  free (gasl);
-
-  gas_ubf_saved = f.tracers;
-  f.tracers = kept;
-}
+of `1 - f`. Without the `ubf` transport, the freed volume of a sliver cell
+takes the cold value of the cell itself, and the minimum `TG` fell by 40 to
+70 K. So keep `ubf` on the faces of the cut cells. */
 
 /**
-`vof.h` has moved `f` and the other tracers here. The event of
-`two-phase-generic.h` with the same name runs after this one and reads only
-`f`. */
+The tolerance of the two temperature solves, scaled to their own residual.
+The inherited `TOLERANCE = 1e-5` asks the gas temperature for 7e-12 K, which
+no solve can deliver. See `int-temperature-tol.h`. */
 
-event tracer_advection (i++) {
-  free (f.tracers);
-  f.tracers = gas_ubf_saved;
-  gas_ubf_saved = NULL;
-
-  foreach() {
-    double fc = clamp (f[], 0., 1.);
-    fc = (fc > F_ERR) ? fc : 0.;
-    fc = (fc < 1. - F_ERR) ? fc : 1.;
-    double fG = 1. - fc;
-    for (scalar YG_G in YGList_G)
-      YG_G[] = (fG > F_ERR) ? YG_G[]*fG : 0.;
-#ifdef SOLVE_TEMPERATURE
-    TG[] = (fG > F_ERR) ? TG[]*fG : 0.;
-#endif
-  }
-}
-#endif // GAS_UBF_ADVECTION == 0
-
-#if INT_TEMP_TOL
 # include "int-temperature-tol.h"
-#endif
 
 /**
 ## The gradient of the mass diffusion enthalpy term
@@ -237,32 +139,16 @@ With no neighbour it gives 0.
 Give `fS` for the solid side and `fG` for the gas side. */
 
 /**
-## The off switches of the three transport fixes
+## The corrective flux and the mass diffusion enthalpy term
 
-Each fix has a switch, so that a case can measure the fix against the previous
-code. All three are on by default, and each one is independent of the others.
+`CORRECTIVE_CFL` is the Courant limit of the corrective flux, 0.5 by
+default. 0 removes the limit. The corrective flux uses a limited slope and
+the true Courant number. The mass diffusion enthalpy term also acts in the
+interface cells, with the phase weight and the phase aware gradient below.
+Without `SOLVE_TEMPERATURE` the term acts in the full cells only, with the
+plain centred stencil. */
 
-  `CORRECTIVE_CFL`      The Courant limit of the corrective flux. 0 removes
-                        the limit and gives back the previous timestep.
-                        Default 0.5.
-  `CORRECTIVE_LIMITER`  The limited slope and the true Courant number of the
-                        corrective flux. 0 gives back the unlimited centred
-                        slope, and the mass flux in place of a velocity.
-                        Default 1.
-  `MDE_INTERFACE`       The mass diffusion enthalpy term in the interface
-                        cells, with the phase weight and the phase aware
-                        gradient. 0 gives back the term in the full cells
-                        only, with the plain centred stencil. Default 1.
 
-Set all three off to get the previous code exactly. */
-
-#ifndef CORRECTIVE_LIMITER
-# define CORRECTIVE_LIMITER 1
-#endif
-
-#ifndef MDE_INTERFACE
-# define MDE_INTERFACE 1
-#endif
 
 /**
 ## The threshold of the gas energy equation
@@ -355,16 +241,12 @@ The term feeds the two temperature solves, and the cut cell branch reads
 `TInt`. Without `SOLVE_TEMPERATURE` neither of them exists, so keep the
 previous gate in that build. */
 
-#if MDE_INTERFACE && !defined SOLVE_TEMPERATURE
-# undef MDE_INTERFACE
-# define MDE_INTERFACE 0
-#endif
 
 #ifdef MASS_DIFFUSION_ENTHALPY
 foreach_dimension()
 static double mde_gradient_x (Point point, scalar a, scalar ff)
 {
-#if MDE_INTERFACE
+#ifdef SOLVE_TEMPERATURE
   bool vp = (ff[1] > F_ERR), vm = (ff[-1] > F_ERR);
   if (vp && vm) return (a[1] - a[-1])/(2.*Delta);
   if (vp)       return (a[1] - a[])/Delta;
@@ -769,8 +651,8 @@ the event below. It does not change the run. See `drhodt-budget.h`. */
 /**
 ## The transport part of `drhodt` from the implicit solves
 
-`DRHODT_IMPLICIT` (default 0, see `multicomponent-properties.h`) makes
-`update_divergence()` skip the diffusion fluxes and the interface sources.
+When `DRI_ON` is 1 (see `multicomponent-properties.h`),
+`update_divergence()` skips the diffusion fluxes and the interface sources.
 The event below adds them after the solves, as the change that each solve
 really made:
 
@@ -793,20 +675,6 @@ the diagonal `betaST` is part of the solve, and the same holds. Under
 The corrected `drhodt` reaches the projection of the same step:
 `project_sf()` reads `drhodt` in `advection_term` and in `projection`, and
 both events run after `tracer_diffusion`. */
-
-#if DRHODT_IMPLICIT && defined VARPROP && !defined NO_EXPANSION
-# define DRI_ON 1
-#else
-# define DRI_ON 0
-#endif
-
-#if DRHODT_IMPLICIT && !DRI_ON
-# warning "DRHODT_IMPLICIT does nothing without VARPROP or with NO_EXPANSION."
-#endif
-
-#if DRI_ON && defined TEMPERATURE_PROFILE
-# error "DRHODT_IMPLICIT needs the solve of TG. TEMPERATURE_PROFILE skips it."
-#endif
 
 #if DRI_ON
 
@@ -836,13 +704,8 @@ loop of `update_divergence()`. */
 
 static inline void dri_weights (double ff, double * wS, double * wG)
 {
-# if DRHODT_CELL_AVERAGE
   *wS = ff > F_ERR ? 1. : 0.;
   *wG = ff < 1. - F_ERR ? 1. : 0.;
-# else
-  *wS = ff;
-  *wG = 1. - ff;
-# endif
 }
 
 #endif // DRI_ON
@@ -1133,11 +996,11 @@ event tracer_diffusion (i++) {
   foreach() {
 
     /**
-    The weight of the two sides. `MDE_INTERFACE` on gives the phase fraction,
-    which is the weight that `theta1` and `theta2` carry. `MDE_INTERFACE` off
-    gives the previous gate: 1 in a full cell, and 0 in every other cell. */
+    The weight of the two sides is the phase fraction, which is the weight
+    that `theta1` and `theta2` carry. Without `SOLVE_TEMPERATURE` the weight
+    is 1 in a full cell and 0 in every other cell. */
 
-#if MDE_INTERFACE
+#ifdef SOLVE_TEMPERATURE
     double wS = fS[], wG = fG[];
     bool interfacial = (f[] > F_ERR && f[] < 1. - F_ERR);
 #else
@@ -1148,7 +1011,7 @@ event tracer_diffusion (i++) {
     if (wS > F_ERR) { //Internal gas phase
       double mdeGS = 0.;
 
-#if MDE_INTERFACE
+#ifdef SOLVE_TEMPERATURE
       if (interfacial) {
 
         /**
@@ -1228,7 +1091,7 @@ event tracer_diffusion (i++) {
     if (wG > F_ERR) { //External gas phase
       double mdeGG = 0.;
 
-#if MDE_INTERFACE
+#ifdef SOLVE_TEMPERATURE
       if (interfacial) {
 
         /**
@@ -1434,9 +1297,7 @@ event tracer_diffusion (i++) {
 
     scalar YG = YGList_G[jj];
 
-#if CORRECTIVE_LIMITER
     face vector rhocjj[];
-#endif
     foreach_face (reduction(max:uodx)) {
       double rhoGf;
 #ifdef VARPROP
@@ -1444,32 +1305,21 @@ event tracer_diffusion (i++) {
 #else
       rhoGf = rhoG;
 #endif
-#if CORRECTIVE_LIMITER
       rhocjj.x[] = rhoGf;
       phicjj.x[] = (rhoGf > 0.) ? phicjj.x[]/rhoGf : 0.;
       if (fm.x[] > 0.)
         uodx = max (uodx, fabs (phicjj.x[])/(fm.x[]*Delta));
-#else
-      if (fm.x[] > 0. && rhoGf > 0.)   // record it, but do not change the flux
-        uodx = max (uodx, fabs (phicjj.x[])/(rhoGf*fm.x[]*Delta));
-#endif
     }
 
     double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
-#if CORRECTIVE_LIMITER
     YG.gradient = minmod2; // NULL means the unlimited centred slope, not no slope
-#else
-    YG.gradient = NULL;    // the previous choice: the unlimited centred slope
-#endif
     face vector flux[];
     tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
     YG.gradient = gradient_backup; // restore the gradient function
 
-#if CORRECTIVE_LIMITER
     // back to a mass flux, so that the balance is untouched
     foreach_face()
       flux.x[] *= rhocjj.x[];
-#endif
 
     // apply the corrective fluxes
     foreach()
@@ -1516,9 +1366,7 @@ event tracer_diffusion (i++) {
 
     scalar YG = YGList_S[jj];
 
-#if CORRECTIVE_LIMITER
     face vector rhocjj[];
-#endif
     foreach_face (reduction(max:uodx)) {
       double rhoGf;
 #ifdef VARPROP
@@ -1526,32 +1374,21 @@ event tracer_diffusion (i++) {
 #else
       rhoGf = rhoG;
 #endif
-#if CORRECTIVE_LIMITER
       rhocjj.x[] = rhoGf;
       phicjj.x[] = (rhoGf > 0.) ? phicjj.x[]/rhoGf : 0.;
       if (fm.x[] > 0.)
         uodx = max (uodx, fabs (phicjj.x[])/(fm.x[]*Delta));
-#else
-      if (fm.x[] > 0. && rhoGf > 0.)   // record it, but do not change the flux
-        uodx = max (uodx, fabs (phicjj.x[])/(rhoGf*fm.x[]*Delta));
-#endif
     }
 
     double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
-#if CORRECTIVE_LIMITER
     YG.gradient = minmod2; // NULL means the unlimited centred slope, not no slope
-#else
-    YG.gradient = NULL;    // the previous choice: the unlimited centred slope
-#endif
     face vector flux[];
     tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
     YG.gradient = gradient_backup; // restore the gradient function
 
-#if CORRECTIVE_LIMITER
     // back to a mass flux, so that the balance is untouched
     foreach_face()
       flux.x[] *= rhocjj.x[];
-#endif
 
     // apply the corrective fluxes
     foreach()
@@ -1858,7 +1695,7 @@ matches the fields that built the source. */
 /**
 ## The tolerance of the two temperature solves
 
-`INT_TEMP_TOL`, on by default, scales `TOLERANCE` to the residual of each
+`int-temperature-tol.h` scales `TOLERANCE` to the residual of each
 solve. The full derivation, the measured numbers and the columns of
 `tsolve.dat` are in `int-temperature-tol.h`. The short version: the inherited
 `TOLERANCE = 1e-5` asks the gas temperature for 7e-12 K, `poisson.h` then
@@ -1887,7 +1724,6 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
   `theta` in place. See `int-temperature-tol.h` for why the inherited
   `TOLERANCE` is the wrong number here. */
 
-#  if INT_TEMP_TOL
     double th1max = 0., th2max = 0.;
     foreach (reduction(max:th1max) reduction(max:th2max)) {
       th1max = max (th1max, theta1[]);
@@ -1900,7 +1736,6 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
     ITT_tolG = tolG;
     mgstats mgS, mgG;
     mgG.i = 0; mgG.nrelax = 0; mgG.resa = 0.;
-#  endif
 
 #  if INT_TEMP_VOFBC
 
@@ -1933,56 +1768,34 @@ linear solve delivers. Keep `INT_TEMP_TOL_K` well under
   fraction fields, and the two solves differ only in that pair. */
 
     plicbc_phase (fS, fsS);
-#   if INT_TEMP_TOL
     TOLERANCE = tolS;
-#   endif
     mgS = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1,
                      flux = plic_flux);
 #   ifndef TEMPERATURE_PROFILE
     plicbc_phase (fG, fsG);
-#    if INT_TEMP_TOL
     TOLERANCE = tolG;
-#    endif
     mgG = diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2,
                      flux = plic_flux);
 #   endif
 #  elif INT_TEMP_ROBIN
-#   if INT_TEMP_TOL
     TOLERANCE = tolS;
     mgS = diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
-#   else
-    diffusion (TS, dt, D=lambda1f, r=sST, beta=betaST, theta=theta1);
-#   endif
 #   ifndef TEMPERATURE_PROFILE
-#    if INT_TEMP_TOL
     TOLERANCE = tolG;
     mgG = diffusion (TG, dt, D=lambda2f, r=sGT, beta=betaGT, theta=theta2);
-#    else
-    diffusion (TG, dt, D=lambda2f, r=sGT, beta=betaGT, theta=theta2);
-#    endif
 #   endif
 #  else
-#   if INT_TEMP_TOL
     TOLERANCE = tolS;
     mgS = diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
-#   else
-    diffusion (TS, dt, D=lambda1f, r=sST, theta=theta1);
-#   endif
 #   ifndef TEMPERATURE_PROFILE
-#    if INT_TEMP_TOL
     TOLERANCE = tolG;
     mgG = diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
-#    else
-    diffusion (TG, dt, D=lambda2f, r=sGT, theta=theta2);
-#    endif
 #   endif
 #  endif
 
-#  if INT_TEMP_TOL
     TOLERANCE = tol_save;
     ITT_iS = mgS.i; ITT_nrelaxS = mgS.nrelax; ITT_resaS = mgS.resa;
     ITT_iG = mgG.i; ITT_nrelaxG = mgG.nrelax; ITT_resaG = mgG.resa;
-#  endif
 
 #if DRI_ON
 
@@ -2265,7 +2078,7 @@ and the consistent velocity is the interstitial velocity `u/eps`.
 `advection_div` with `NO_ADVECTION_DIV` gives `-dt*u.grad(Y)` for any face
 velocity, thus the velocity that it receives must be `u/eps`.
 
-`PORE_SPECIES_INTERSTITIAL` 1 (the default) moves `YGList_S` with
+The event below therefore moves `YGList_S` with
 
   u_pore = ufsave/max (face_value (e1), PORE_EPS_MIN),  e1 = f*eps + 1 - f
 
@@ -2273,21 +2086,13 @@ velocity, thus the velocity that it receives must be `u/eps`.
 `eps` in a full solid cell and 1 in the gas, so the gas side does not change.
 `PORE_EPS_MIN` stops a division by a small porosity.
 
-`PORE_SPECIES_INTERSTITIAL` 0 gives the previous code: `YGList_S` moves with
-`ufsave`, which is `eps` times too slow inside the particle.
-
 Caution: `u_pore` is `1/eps` times larger than `uf` inside the particle. The
 `stability` event below therefore adds a CFL limit on `u_pore`. It computes
 the limit from `uf` and from the `f` and `porosity` of the start of the step,
 because `uf` becomes `ufsave` in the `vof` event of `shrinking.h`. It only
 lowers `dtmax`, and the `stability` events of `shrinking.h` and `centered.h`
-run after it and use that value. `pore_dtmax` keeps the limit for output.
+run after it and use that value. `pore_dtmax` keeps the limit for output. */
 
-The test is `#if`, so `-DPORE_SPECIES_INTERSTITIAL=0` means off. */
-
-#ifndef PORE_SPECIES_INTERSTITIAL
-# define PORE_SPECIES_INTERSTITIAL 1
-#endif
 
 #ifndef PORE_EPS_MIN
 # define PORE_EPS_MIN 0.05
@@ -2295,7 +2100,6 @@ The test is `#if`, so `-DPORE_SPECIES_INTERSTITIAL=0` means off. */
 
 double pore_dtmax = HUGE; // the CFL limit of u_pore, for output only
 
-#if PORE_SPECIES_INTERSTITIAL
 event stability (i++) {
 
   /**
@@ -2321,7 +2125,6 @@ event stability (i++) {
   if (pore_dtmax < dtmax)
     dtmax = pore_dtmax;
 }
-#endif
 
 event tracer_diffusion (i++,last) {
 
@@ -2373,7 +2176,6 @@ foreach() {
     }
   }
 
-#if PORE_SPECIES_INTERSTITIAL
   {
     // porosity is intrinsic here, and 0 where f <= F_ERR
     scalar e1[];
@@ -2386,13 +2188,9 @@ foreach() {
 
     advection_div(YGList_S, u_pore, dt);
   }
-#else
-  advection_div(YGList_S, ufsave, dt);
-#endif
   advection_div(YGList_G, ufsave, dt);
 
 #ifdef SOLVE_TEMPERATURE
-# if TS_PORE_ADVECTION
   foreach_face() {
     double ef = clamp(face_value(porosity, 0), 0., 1.);
 
@@ -2414,7 +2212,6 @@ foreach() {
   }
 
   advection_div({TS}, u_prime, dt);
-# endif // TS_PORE_ADVECTION
 # ifndef TEMPERATURE_PROFILE
   advection_div({TG}, ufsave, dt);
 # endif

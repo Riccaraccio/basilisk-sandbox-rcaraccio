@@ -1,8 +1,8 @@
 /**
 # Lie and Strang split of the gas chemistry in one stirred cell
 
-This test supports `GAS_CHEMISTRY_STRANG` in `chemistry.h` (item TL-1 of
-`~/discretization-report/time-level-review.md`). It answers two questions:
+This test supports the Strang split of the gas chemistry in `chemistry.h`.
+It answers two questions:
 
 1. What order in `dt` does each split give, on a problem where the reaction
    and the transport balance each other, as in a flame?

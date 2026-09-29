@@ -15,15 +15,13 @@ scalar DTDtS[], DTDtG[];
 scalar * DYDtG_G = NULL;
 
 /**
-With `GAS_SOURCE_EXACT`, `chemistry.h` writes the expansion rate of the
+`chemistry.h` writes the expansion rate of the
 gas-phase reactions here, as `cm[]*ln(rho_start/rho_end)/dt` per unit volume
 of gas. `update_divergence()` adds it to `divu2`. The reaction part then does
 not pass through `DYDtG_G` and `DTDtG`, and those two fields carry only the
 diffusion and the interface terms. */
 
-#if GAS_SOURCE_EXACT
 scalar drhodt_chem[];
-#endif
 scalar * DYDtG_S = NULL;
 
 /**
@@ -37,62 +35,56 @@ The accumulators `DTDtS`, `DTDtG`, `DYDtG_S` and `DYDtG_G` (and
   interface sources (weight `aov`) per unit volume of the CELL. These are the
   same terms that the diffusion solve divides by `theta = cm*f*rho*cp`.
 
-`DRHODT_CELL_AVERAGE` at 1 (the default) multiplies the chemistry part by `f`
+`update_divergence()` multiplies the chemistry part by `f`
 (or `1-f`) at the start of `update_divergence()`, before the first flux term.
 All the terms are then per unit volume of the cell, and `drhodt` is their sum
 with no weight. A pure cell keeps the same `drhodt`, bit for bit. In a cut
 cell the flux and interface part of the solid side increases by `1/f`, and
 that of the gas side by `1/(1-f)`.
 
-Set `DRHODT_CELL_AVERAGE` to 0 to get the previous code, which multiplied the
-flux and interface part by `f` (or `1-f`) a second time. This is section 3 of
-`~/discretization-report/discretization-consistency.md`. */
+Do not multiply the flux and interface part by `f` (or `1-f`) again. They
+already carry the weight of the phase. */
 
-#ifndef DRHODT_CELL_AVERAGE
-# define DRHODT_CELL_AVERAGE 1
-#endif
 
 /**
 ## The time level of the transport part of `drhodt`
 
 `update_divergence()` runs before the implicit solves of the species and of
-the temperature. By default it adds the transport part as explicit fluxes of
-the state before the solves (`T**`, `Y**`). The solves then move the heat and
-the mass with the fluxes of the new state. The projection thus enforces an
-expansion that is not the one of the solves. This is item TL-2 of
-`~/discretization-report/time-level-review.md`, section 3.2.
+the temperature. Explicit fluxes of the state before the solves (`T**`,
+`Y**`) would give an expansion that is not the one of the solves, because
+the solves move the heat and the mass with the fluxes of the new state.
 
-`DRHODT_IMPLICIT` at 1 removes the diffusion fluxes and the interface sources
-from `update_divergence()`. `tracer_diffusion` in `multicomponent-varprop.h`
+So when `DRI_ON` is 1, `update_divergence()` leaves out the diffusion fluxes
+and the interface sources. `tracer_diffusion` in `multicomponent-varprop.h`
 then adds the transport part after the solves, as `theta*(X^{n+1} - X**)/dt`
 for `TS`, `TG` and every gas species of the two phases. The chemistry part
 and the explicit Fick correction (`FICK_CORRECTED`) stay as they are. Both
 forms are per unit volume of the cell and carry `cm`.
 
-The default is 0, which gives the previous code bit for bit. */
+`DRI_ON` is 0 without `VARPROP`, with `NO_EXPANSION` (no expansion to
+correct), and with `TEMPERATURE_PROFILE` (no solve of `TG`). These builds
+keep the explicit fluxes. */
 
-#ifndef DRHODT_IMPLICIT
-# define DRHODT_IMPLICIT 0
+#if defined VARPROP && !defined NO_EXPANSION && !defined TEMPERATURE_PROFILE
+# define DRI_ON 1
+#else
+# define DRI_ON 0
 #endif
 
 /**
 ## The state of a newly uncovered gas cell
 
-`GAS_STATE_FALLBACK` at 1 gives a cell that changes from solid to gas a
-usable gas state, so that `update_properties()` can fill its properties. See
-the block in the external gas branch below for the mechanism and for the
-reason why the repair touches no conserved field.
+A cell that changes from solid to gas gets a usable gas state, so that
+`update_properties()` can fill its properties. See the block in the external
+gas branch below for the mechanism and for the reason why the repair touches
+no conserved field.
 
 `GAS_STATE_FALLBACK_FMIN` is the least gas fraction of a donor cell. A donor
 below it is too close to the interface to carry a clean gas state.
 
-Set `GAS_STATE_FALLBACK` to 0 to get the previous behaviour, bit for bit.
 Define `GAS_STATE_FALLBACK_DEBUG` to write `gasfallback-<pid>.dat`, which
 gives every cell that the repair examined and whether the repair succeeded. */
 
-#ifndef GAS_STATE_FALLBACK
-# define GAS_STATE_FALLBACK 1
-#endif
 
 #ifndef GAS_STATE_FALLBACK_FMIN
 # define GAS_STATE_FALLBACK_FMIN 0.5
@@ -218,7 +210,6 @@ void update_properties (void) {
       }
       double TGh = TG[]/gf;
 
-#if GAS_STATE_FALLBACK
       /**
       ## The state of a cell that changes from solid to gas
 
@@ -241,11 +232,7 @@ void update_properties (void) {
 
       The order of the fallback is: the solid side of the same cell for the
       temperature, then the neighbour that holds the most gas for whatever is
-      still missing.
-
-      Set `GAS_STATE_FALLBACK` to 0 to get the previous behaviour. With the
-      flag at 0 this block is empty and the test below is the same test as
-      before, because `gf` is larger than 0 here. */
+      still missing. */
 
       if (!(TGh > 0.) || !(ytot > 0.)) {
         double wbest = 0., Tdon = 0., ydon[NGS];
@@ -306,7 +293,6 @@ void update_properties (void) {
         }
 #endif
       }
-#endif // GAS_STATE_FALLBACK
 
       // empty external gas: skip the fill (fields stay at reset 0, guarded downstream).
       if (TGh > 0. && mole_from_mass (xG, &MWmixG, yG, NGS)) {
@@ -401,9 +387,7 @@ event reset_sources (i++) {
   foreach() {
     DTDtG[] = 0.;
     DTDtS[] = 0.;
-#if GAS_SOURCE_EXACT
     drhodt_chem[] = 0.;
-#endif
   }
 
   reset (DYDtG_G, 0.);
@@ -426,7 +410,6 @@ void update_divergence (void) {
   restriction (XGList_S);
 #endif
 
-#if DRHODT_CELL_AVERAGE
   /**
   Here the accumulators hold only the chemistry part, per unit volume of one
   phase. Only `chemistry.h` writes them between `reset_sources` and this
@@ -440,20 +423,17 @@ void update_divergence (void) {
       s[] *= f[];
     for (scalar s in DYDtG_G)
       s[] *= 1. - f[];
-#if GAS_SOURCE_EXACT
     drhodt_chem[] *= 1. - f[];
-#endif
   }
-#endif
 
 //   /**
 //   We calculate the Lagrangian derivative of the temperature fields. */
 
   /**
-  With `DRHODT_IMPLICIT` the temperature solve adds this part after the
-  solve, so skip it here. See the note on `DRHODT_IMPLICIT` above. */
+  With `DRI_ON` the temperature solve adds this part after the solve, so
+  skip it here. See the note on `DRI_ON` above. */
 
-#if !(DRHODT_IMPLICIT && defined SOLVE_TEMPERATURE)
+#if !(DRI_ON && defined SOLVE_TEMPERATURE)
   face vector lambdagradTS[], lambdagradTG[];
   foreach_face() {
     lambdagradTS.x[] = face_value(lambda1v.x, 0)*face_gradient_x (TS, 0)*fm.x[]*fsS.x[];
@@ -486,7 +466,7 @@ void update_divergence (void) {
     DTDtG[] += betaGT[]*TG[];
 #endif
   }
-#endif // !(DRHODT_IMPLICIT && SOLVE_TEMPERATURE)
+#endif // !(DRI_ON && SOLVE_TEMPERATURE)
 
   // EXTERNAL GAS PHASE
   /**
@@ -494,12 +474,12 @@ void update_divergence (void) {
   fractions. */ 
 
   /**
-  With `DRHODT_IMPLICIT` the species solves add the diffusion flux and the
+  With `DRI_ON` the species solves add the diffusion flux and the
   interface source after the solves, so skip them here. The Fick correction
   below stays explicit, because the code applies it as an explicit step
   before the solves. */
 
-#if !DRHODT_IMPLICIT
+#if !DRI_ON
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_G[jj];
     scalar DmixGv = DmixGList_G[jj];
@@ -520,7 +500,7 @@ void update_divergence (void) {
       DYDtGjj[] += sgexp[];
     }
   }
-#endif // !DRHODT_IMPLICIT
+#endif // !DRI_ON
 
   /**
   We add diffusion correction contributions to the chemical species
@@ -580,7 +560,7 @@ void update_divergence (void) {
   We calculate the Lagrangian derivative for the chemical species mass
   fractions. */ 
 
-#if !DRHODT_IMPLICIT
+#if !DRI_ON
   for (int jj=0; jj<NGS; jj++) {
     scalar YG = YGList_S[jj];
     scalar DmixGv = DmixGList_S[jj];
@@ -601,7 +581,7 @@ void update_divergence (void) {
       DYDtGjj[] += ssexp[];
     }
   }
-#endif // !DRHODT_IMPLICIT
+#endif // !DRI_ON
 
   face vector phicStot[];
   foreach_face() {
@@ -685,12 +665,9 @@ void update_divergence (void) {
     }
     divu2 += (rhoGv_G[] > 0.) ? MWmixG_G[]/rhoGv_G[]*divu2species : 0.;
 
-#if GAS_SOURCE_EXACT
     // Exact step mean of the expansion from the gas-phase reactions
     divu2 += drhodt_chem[];
-#endif
 
-#if DRHODT_CELL_AVERAGE
     /**
     All the terms are per unit volume of the cell, so add them with no
     weight.
@@ -701,10 +678,6 @@ void update_divergence (void) {
     now, and the same holds for the gas side of a pure solid cell. */
 
     drhodt[] = (f[] > F_ERR ? divu1 : 0.) + (f[] < 1. - F_ERR ? divu2 : 0.);
-#else
-    // Volume averaged contributions
-    drhodt[] = divu1*f[] + divu2*(1. - f[]);
-#endif
 
     // Adjust sign for internal convention
     drhodt[] *= -1.;

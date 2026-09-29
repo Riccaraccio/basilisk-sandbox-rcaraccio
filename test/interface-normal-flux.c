@@ -12,8 +12,7 @@ the gradient from `ebmgrad`, which uses the `mycs` plane
 weights of the conductivity from `facet_normal (point, fS, fsS)`, which
 uses the face fractions. So one cut cell used two planes.
 `interface_source_normal()` in `intgrad.h` now gives the normal of the
-sources, and `INTERFACE_NORMAL_MYCS` selects it (1 `mycs`, 0 the old
-`facet_normal`).
+sources, the `mycs` plane.
 
 ## The set-up
 
@@ -35,8 +34,7 @@ exact values. It does this for three normals:
 - `old`: `facet_normal (point, fS, fsS)`, the code before the fix.
 - `new`: `interface_normal (point, fS)`, the plane of `ebmgrad`.
 - `src`: `interface_source_normal (point, fS, fsS)`, the function that the
-  solver calls. It must be equal to `new` when `INTERFACE_NORMAL_MYCS` is 1
-  and equal to `old` when it is 0.
+  solver calls. It must be equal to `new`.
 
 ## The errors
 
@@ -272,11 +270,7 @@ int check_source_normal (void)
            reduction(max:amax) reduction(+:nfb))
     if (f[] > F_ERR && f[] < 1. - F_ERR) {
       coord a = interface_source_normal (point, fS, fsS);
-#if INTERFACE_NORMAL_MYCS
       coord b = interface_normal (point, fS);
-#else
-      coord b = facet_normal (point, fS, fsS);
-#endif
       foreach_dimension()
         if (a.x != b.x)
           nbad++;
@@ -330,8 +324,7 @@ int main()
   TG.inverse = true;
   TS.inverse = false;
 
-  fprintf (stderr, "# INTERFACE_NORMAL_MYCS %d, %d positions per level\n",
-           INTERFACE_NORMAL_MYCS, NOFF);
+  fprintf (stderr, "# %d positions per level\n", NOFF);
   fprintf (stderr, "# relative errors, mean over the positions; "
            "angle between the two normals in degrees\n");
   fprintf (stderr, "#%3s %5s | %9s %9s %9s | %9s %9s | %9s %9s |"
@@ -414,8 +407,8 @@ event. This event runs after `init`, once per position. */
 event measure (i = 0)
 {
   if (check_source_normal()) {
-    fprintf (stderr, "FAIL: interface_source_normal() does not follow "
-             "INTERFACE_NORMAL_MYCS\n");
+    fprintf (stderr, "FAIL: interface_source_normal() is not "
+             "interface_normal()\n");
     nfail++;
   }
 

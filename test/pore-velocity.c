@@ -18,15 +18,12 @@ The test writes `pore.dat`: the time, the mass of `TAR` in the pores over its
 initial value, the timestep, and the CFL limit of the pore velocity. At the
 end it writes the times at which the mass falls to 50 % and to 10 %.
 
-Build the two versions of the transport:
+`-DDT_VALUE=<dt>` caps the timestep.
 
-    -DPORE_SPECIES_INTERSTITIAL=1   (the default) u/eps
-    -DPORE_SPECIES_INTERSTITIAL=0   the previous code, u
-
-`-DDT_VALUE=<dt>` caps the timestep. Use it to run the two versions with the
-same timestep.
-
-Result (2026-09-19, level 7, `eps0 = 0.2`, `Ls/U = 0.2 s`):
+Result (2026-09-19, level 7, `eps0 = 0.2`, `Ls/U = 0.2 s`). The rows
+"previous" come from the code before the fix, which moved the pore species
+with `u`. The tag `oscillation-campaign-2026-09` still builds it with
+`-DPORE_SPECIES_INTERSTITIAL=0`.
 
 | build | dt | t50 [s] | t10 [s] |
 |---|---|---|---|
@@ -37,8 +34,8 @@ Result (2026-09-19, level 7, `eps0 = 0.2`, `Ls/U = 0.2 s`):
 | previous, `SLAB_SHIFT=0.5` | 6.25e-4 | 0.1017 | 0.1960 |
 
 The ratio of the flush times is 0.22 (t50) and 0.20 (t10), which is `eps0`.
-The plug flow gives t50 = 0.02 s and t10 = 0.036 s. The build 0 gives the
-dump of commit 93ed0a0 bit for bit. */
+The plug flow gives t50 = 0.02 s and t10 = 0.036 s. The previous code gives
+the dump of commit 93ed0a0 bit for bit. */
 
 #define NO_ADVECTION_DIV 1
 #define TURN_OFF_REACTIONS 1
@@ -201,9 +198,8 @@ event stop (t = tend) {
   foreach_face (x, reduction(+:umean) reduction(+:n))
     if (x > xs + 0.25*Ls && x < xs + 0.75*Ls)
       umean += uf.x[], n += 1.;
-  fprintf (stderr, "PORE_SPECIES_INTERSTITIAL=%d eps0=%g U=%g Ls=%g level=%d"
-           " DT=%g\n", PORE_SPECIES_INTERSTITIAL, eps0, U, Ls, LEVEL,
-           (double) DT_VALUE);
+  fprintf (stderr, "eps0=%g U=%g Ls=%g level=%d DT=%g\n",
+           eps0, U, Ls, LEVEL, (double) DT_VALUE);
   fprintf (stderr, "uf in the slab %g, t50 %g, t10 %g,"
            " plug flow eps*Ls/U %g, Ls/U %g, steps %d\n",
            umean/n, t50, t10, eps0*Ls/U, Ls/U, i);

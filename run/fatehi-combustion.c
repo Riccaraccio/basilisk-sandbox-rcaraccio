@@ -391,13 +391,13 @@ int main() {
   if (pid() == 0)
     fprintf (stderr, "# fatehi: kin=%s maxlevel=%d DT=%g CFL=%g Uin=%g"
                      " tend=%g zeta=REACTION frozen=%d corrCFL=%g"
-                     " averaged=%d exact=%d filter=%d dri=%d ubf=%d"
+                     " exact=%d filter=%d dri=%d ubf=%d"
                      " strang=%d vofbc=%d picard=%d pin=%d outlet=%d"
                      " tol=%g nitermin=%d shrinkbudget=%d yclamp=%d"
                      " snapevery=%d nranks=%d\n",
              FATEHI_KINFOLDER, MAXLEVEL, (double) DT_VALUE,
              (double) CFL_VALUE, Uin, (double) TEND, FROZEN_CELL_GATE,
-             (double) CORRECTIVE_CFL, (int) gas_source_averaged,
+             (double) CORRECTIVE_CFL,
              GAS_SOURCE_EXACT,
 #if GAS_SOURCE_EXACT
              gas_source_filter_passes,

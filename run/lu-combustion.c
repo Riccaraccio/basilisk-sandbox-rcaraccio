@@ -214,13 +214,13 @@ int main() {
   if (pid() == 0)
     fprintf (stderr, "# lu: maxlevel=%d DT=%g CFL=%g Uin=%g tend=%g"
                      " zeta=%d"
-                     " frozen=%d corrCFL=%g averaged=%d exact=%d filter=%d dri=%d"
+                     " frozen=%d corrCFL=%g exact=%d filter=%d dri=%d"
                      " ubf=%d strang=%d vofbc=%d picard=%d pin=%d tol=%g"
                      " nitermin=%d shrinkbudget=%d yclamp=%d snapevery=%d"
                      " nranks=%d\n",
              MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, Uin,
              (double) TEND, (int) ZETA_POLICY, FROZEN_CELL_GATE, (double) CORRECTIVE_CFL,
-             (int) gas_source_averaged, GAS_SOURCE_EXACT,
+             GAS_SOURCE_EXACT,
 #if GAS_SOURCE_EXACT
              gas_source_filter_passes,
 #else

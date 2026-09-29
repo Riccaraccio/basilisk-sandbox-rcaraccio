@@ -160,57 +160,7 @@ Set `CORRECTIVE_CFL` to 0 to remove the limit and get the previous timestep. */
 #  define CORRECTIVE_CFL 0.5
 # endif
 
-#ifdef TG_PROBE
-scalar qint_dbg[], qmde_dbg[], qrob_dbg[], TGadv_dbg[];
-# ifndef TG_PROBE_TMIN
-#  define TG_PROBE_TMIN 100.
-# endif
-# ifndef TG_PROBE_MAX
-#  define TG_PROBE_MAX 400
-# endif
-#endif
 
-#ifdef TG_PROBE
-
-/**
-`tg_stage_check()` reports every cell whose gas temperature is negative. It
-tests the sign only, so it is correct in tracer form and in physical form.
-Call it at each stage of the step. The tag of the first row names the stage
-that makes the value negative. */
-
-FILE * tgs_fp = NULL;
-int tgs_n = 0;
-FILE * tgq_fp = NULL;
-int tgq_n = 0;
-
-#define tg_stage_check(TAG) do {                                        \
-  if (tgs_n < TG_PROBE_MAX) {                                           \
-    foreach (serial) {                                                  \
-      if (TG[] < 0. && tgs_n < TG_PROBE_MAX) {                          \
-        if (!tgs_fp) {                                                  \
-          char nm[80];                                                  \
-          sprintf (nm, "tgstage-%d.dat", pid());                        \
-          tgs_fp = fopen (nm, "w");                                     \
-          fprintf (tgs_fp, "#tag t i x y level f TG TS T\n");           \
-        }                                                               \
-        fprintf (tgs_fp, "%s %g %d %g %g %d %.17g %.17g %.17g %.17g\n", \
-                 TAG, t, i, x, y, level, f[], TG[], TS[], T[]);          \
-        fflush (tgs_fp);                                                \
-        tgs_n++;                                                        \
-      }                                                                 \
-    }                                                                   \
-  }                                                                     \
-} while (0)
-
-/**
-This event runs before every other `vof` event, because the same-name events
-run in reverse order of the declaration. It therefore reports the state that
-`adapt` left, before the advection of this step. */
-
-event vof (i++) {
-  tg_stage_check ("0-prevof");
-}
-#endif
 
 double corrective_uodx = 0.;    // max |u_c|/Delta of the last step
 double corrective_dtmax = HUGE; // the limit that it gives
@@ -224,33 +174,11 @@ event stability (i++) {
 }
 #endif
 
-/**
-## The probe of the gas temperature
-
-`TG_PROBE` reports every gas cell whose temperature falls below
-`TG_PROBE_TMIN`. It writes `tgprobe-<pid>.dat`.
-
-The first question the file answers is WHERE the fall happens. `TGadv` is the
-value that enters the diffusion solve, thus it carries the advection of the
-step. `TGpost` is the value that leaves it. If `Tpre_phys` is already bad, the
-advection makes it. If only `Tpost_phys` is bad, the source terms make it.
-
-The next columns separate the sources. `qint` is the interface heat flux,
-`qmde` is the mass diffusion enthalpy and `qrob` is the Robin correction.
-`theta2` is the heat capacity of the cell, and it carries the factor `fG`,
-which the interface flux does NOT carry. A small `fG` with a large `qint` is
-the runaway. */
-
 event reset_sources (i++) {
 #ifdef SOLVE_TEMPERATURE
   foreach() {
     sST[] = 0.;
     sGT[] = 0.;
-#ifdef TG_PROBE
-    qint_dbg[] = 0.;
-    qmde_dbg[] = 0.;
-    qrob_dbg[] = 0.;
-#endif
   }
 #endif
 
@@ -355,9 +283,6 @@ static void interface_temperature_sources (void)
 
       sST[] += Sheatflux*aov;
       sGT[] += Gheatflux*aov;
-#ifdef TG_PROBE
-      qint_dbg[] = Gheatflux*aov;
-#endif
 
     }
   }
@@ -479,9 +404,6 @@ properties in each step. */
 
 event tracer_diffusion (i++) {
 
-#ifdef TG_PROBE
-  tg_stage_check ("A-postvof");
-#endif
 
   //Check the mass fractions Can be removed for performance
   check_and_correct_fractions (YGList_S, NGS, false);
@@ -883,9 +805,6 @@ event tracer_diffusion (i++) {
       }
       }
       sGT[] -= mdeGG*cm[]*wG;
-#ifdef TG_PROBE
-      qmde_dbg[] = -mdeGG*cm[]*wG;
-#endif
     }
   }
 #endif //MASS_DIFFUSION_ENTHALPY
@@ -1108,36 +1027,6 @@ event tracer_diffusion (i++) {
 
   scalar theta1[], theta2[];
 
-#ifdef TG_PROBE
-
-/**
-`tg_source_check()` reports the full energy balance of every cell whose gas
-temperature is negative. Use it only inside this event, because `theta2` lives
-here. `TGadv` is the value before the solve. */
-
-#define tg_source_check(TAG) do {                                       \
-  if (tgq_n < TG_PROBE_MAX) {                                           \
-    foreach (serial) {                                                  \
-      if (TG[] < 0. && tgq_n < TG_PROBE_MAX) {                          \
-        if (!tgq_fp) {                                                  \
-          char nm[80];                                                  \
-          sprintf (nm, "tgsource-%d.dat", pid());                       \
-          tgq_fp = fopen (nm, "w");                                     \
-          fprintf (tgq_fp, "#tag t i x y level dt f fG theta2 sGT"      \
-                           " betaGT qint qmde qrob TGadv TG TS\n");     \
-        }                                                               \
-        fprintf (tgq_fp, "%s %g %d %g %g %d %g %.17g %.17g %.17g %.17g" \
-                         " %.17g %.17g %.17g %.17g %.17g %.17g %.17g\n",\
-                 TAG, t, i, x, y, level, dt, f[], fG[], theta2[],       \
-                 sGT[], betaGT[], qint_dbg[], qmde_dbg[], qrob_dbg[],   \
-                 TGadv_dbg[], TG[], TS[]);                              \
-        fflush (tgq_fp);                                                \
-        tgq_n++;                                                        \
-      }                                                                 \
-    }                                                                   \
-  }                                                                     \
-} while (0)
-#endif
 
 #if TREE
   theta1.refine = fraction_refine;
@@ -1291,9 +1180,6 @@ matches the fields that built the source. */
 
     theta1[] = cm[]*max(fS[]*theta1vh, F_ERR);
     theta2[] = cm[]*max(fG[]*theta2vh, F_ERR);
-#ifdef TG_PROBE
-    TGadv_dbg[] = TG[];   // the value that the advection of this step left
-#endif
   }
 
 #if DRI_ON
@@ -1333,9 +1219,6 @@ Caution: measure any change here with several alternating runs, normalised by
 CPU time. A single pair on a loaded machine once gave 43 per cent, which was
 pure scatter; eleven proper runs gave 0.6 per cent. */
 
-#ifdef TG_PROBE
-  tg_stage_check ("B-presolve");
-#endif
 
   /**
   Read the two heat capacities BEFORE either solve. `diffusion()` overwrites
@@ -1395,43 +1278,7 @@ pure scatter; eleven proper runs gave 0.6 per cent. */
   drhodt_budget_postsolve();
 #endif
 
-#ifdef TG_PROBE
-  tg_source_check ("S-postsolve");
-#endif
 
-#ifdef TG_PROBE
-  {
-    static FILE * fpt = NULL;
-    static int nt = 0;
-    foreach (serial) {
-      double gfr = 1. - f[];
-      if (gfr > F_ERR && nt < TG_PROBE_MAX) {
-        double Tpre  = TGadv_dbg[];   // TG is physical inside this event
-        double Tpost = TG[];
-        if (Tpre < TG_PROBE_TMIN || Tpost < TG_PROBE_TMIN) {
-          if (!fpt) {
-            char nm[80];
-            snprintf (nm, sizeof(nm), "tgprobe-%d.dat", pid());
-            fpt = fopen (nm, "w");
-            fprintf (fpt, "#t i x y level dt f fG theta2 rhoGv_G cpGv_G"
-                          " TGadv TGpost Tpre_phys Tpost_phys sGT betaGT"
-                          " qint qmde qrob lam2L lam2R\n");
-          }
-          fprintf (fpt, "%g %d %g %g %d %g %.17g %.17g %.17g %.17g %.17g"
-                        " %.17g %.17g %.17g %.17g %.17g %.17g"
-                        " %.17g %.17g %.17g %.17g %.17g\n",
-                   t, i, x, y, level, dt, f[], fG[], theta2[],
-                   rhoGv_G[], cpGv_G[],
-                   TGadv_dbg[], TG[], Tpre, Tpost, sGT[], betaGT[],
-                   qint_dbg[], qmde_dbg[], qrob_dbg[],
-                   lambda2f.x[], lambda2f.x[1]);
-          fflush (fpt);
-          nt++;
-        }
-      }
-    }
-  }
-#endif
 
 
 /**
@@ -1475,9 +1322,6 @@ tracer form. */
   check_and_correct_fractions (YGList_S, NGS, false);
   check_and_correct_fractions (YGList_G, NGS, true);
 
-#ifdef TG_PROBE
-  tg_stage_check ("C-end433");
-#endif
 
 #if PROPS_AFTER_SOLVES
   event ("properties");
@@ -1563,9 +1407,6 @@ foreach() {
     fS[] = f[]; fG[] = 1. - f[];
   }
 
-#ifdef TG_PROBE
-  tg_stage_check ("D-pre1557");
-#endif
 
   //Compute face gradients
   face_fraction (fS, fsS);
@@ -1662,7 +1503,4 @@ foreach() {
     }
   }
 
-#ifdef TG_PROBE
-  tg_stage_check ("E-end1557");
-#endif
 }

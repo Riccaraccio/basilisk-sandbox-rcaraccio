@@ -6,22 +6,6 @@
 
 #include "diffusion.h"
 
-/**
-`EXPLICIT_DIFFUSION` and `VARCOEFF` were removed on the `interface-vofbc`
-branch. The interface heat flux now writes a term on the diagonal through the
-`beta` argument of `diffusion()`. `diffusion_explicit()` applied `beta`
-explicitly, which needs `dt < theta/|beta|` — the very constraint that this
-work removes — and `VARCOEFF` rescaled each row by a heat capacity built from
-constants while `theta` used the variable properties. Neither path had a live
-user. */
-
-#ifdef EXPLICIT_DIFFUSION
-# error "EXPLICIT_DIFFUSION was removed. It cannot carry the interface diagonal."
-#endif
-#ifdef VARCOEFF
-# error "VARCOEFF was removed. See the comment in multicomponent-varprop.h."
-#endif
-
 #include "common-phasechange.h"
 #include "memoryallocation-varprop.h"
 #include "int-temperature.h"
@@ -83,30 +67,12 @@ reaches into a cell without the phase therefore reads 0, not a temperature or
 a mass fraction, and it gives a false gradient.
 
 This function uses a neighbour only where the phase exists. With both
-neighbours it gives the centred difference, which is what the previous version
-gave in a full cell. With one neighbour it gives the one sided difference.
-With no neighbour it gives 0.
+neighbours it gives the centred difference, with one neighbour the one sided
+difference, and with no neighbour 0. Give `fS` for the solid side and `fG`
+for the gas side.
 
-Give `fS` for the solid side and `fG` for the gas side. */
-
-/**
-## The corrective flux and the mass diffusion enthalpy term
-
-`CORRECTIVE_CFL` is the Courant limit of the corrective flux, 0.5 by
-default. 0 removes the limit. The corrective flux uses a limited slope and
-the true Courant number. The mass diffusion enthalpy term also acts in the
-interface cells, with the phase weight and the phase aware gradient below.
-Without `SOLVE_TEMPERATURE` the term acts in the full cells only, with the
-plain centred stencil. */
-
-
-
-
-/**
-The term feeds the two temperature solves, and the cut cell branch reads
-`TInt`. Without `SOLVE_TEMPERATURE` neither of them exists, so keep the
-previous gate in that build. */
-
+Without `SOLVE_TEMPERATURE` the term has no temperature solve to feed and no
+`TInt`, so it acts in the full cells only, with the plain centred stencil. */
 
 #ifdef MASS_DIFFUSION_ENTHALPY
 foreach_dimension()
@@ -119,7 +85,7 @@ static double mde_gradient_x (Point point, scalar a, scalar ff)
   if (vm)       return (a[] - a[-1])/Delta;
   return 0.;
 #else
-  (void) ff;                          // the previous plain centred stencil
+  (void) ff;                          // the plain centred stencil
   return (a[1] - a[-1])/(2.*Delta);
 #endif
 }
@@ -141,13 +107,12 @@ The `tracer_diffusion` event records `max(|u_c|/Delta)` in `corrective_uodx`.
 This event turns that record into a limit on `dtmax`. The record is one step
 old. That is safe, because the corrective velocity changes slowly.
 
-Set `CORRECTIVE_CFL` to 0 to remove the limit and get the previous timestep. */
+Set `CORRECTIVE_CFL` to 0 to remove the limit. */
 
 #ifdef FICK_CORRECTED
 # ifndef CORRECTIVE_CFL
 #  define CORRECTIVE_CFL 0.5
 # endif
-
 
 
 double corrective_uodx = 0.;    // max |u_c|/Delta of the last step
@@ -334,7 +299,6 @@ static inline void dri_weights (double ff, double * wS, double * wG)
 }
 
 #endif // DRI_ON
-
 
 
 /**
@@ -552,39 +516,25 @@ event tracer_diffusion (i++) {
   The term is `- sum_j cp_j (J_j - Y_j sum_k J_k) . grad T`. It is an explicit
   source of the two temperature solves. It is 0 when every `cp_j` is equal.
 
-  Two properties of the previous version made it noisy at the front.
+  The source carries `fS[]` on the solid side and `fG[]` on the gas side,
+  the same weight that `theta1` and `theta2` carry. An interface cell thus
+  gets a fraction of the term. A gate on the full cells would switch a large
+  explicit source on and off as the front passes, because the term is
+  largest next to the front.
 
-  1. The code applied it in full cells only (`f > 1 - F_ERR` on the solid side
-     and `f < F_ERR` on the gas side). An interface cell got nothing. The term
-     is largest in the cells next to the front, so each cell switched a large
-     explicit source on, then off, then on again as the front passed it. The
-     source now carries `fS[]` on the solid side and `fG[]` on the gas side.
-     That is the same weight that `theta1` and `theta2` carry, so it is the
-     consistent volume weight. A full cell keeps the previous value. An
-     interface cell gets a fraction of the term instead of a step to 0.
+  `TS`, `TG` and the two species lists hold the value of one phase only, and
+  they are 0 outside that phase. A centred stencil that reaches into a cell
+  without the phase reads 0 and gives a false gradient. `mde_gradient_x()`
+  uses a neighbour only where the phase exists.
 
-  2. The code used the plain centred stencil `(a[1] - a[-1])/(2*Delta)`. But
-     `TS`, `TG` and the two species lists hold the value of one phase only,
-     and they are 0 outside that phase. A stencil that reaches into a cell
-     without the phase reads 0 and gives a false gradient.
-     `mde_gradient_x()` uses a neighbour only where the phase exists.
-
-  A centred stencil is not correct in an interface cell either, and the phase
-  test alone does not repair it. In an interface cell the code holds a phase
-  AVERAGE, and that average belongs to the centroid of the phase, not to the
-  centre of the cell. A difference between an interface cell and a full cell
-  is therefore a difference of two values at two unknown positions. The error
-  is of the order of the offset, which is of the order of `Delta`, so the
-  gradient loses its order in the cells that this fix adds.
-
-  An interface cell therefore uses `ebmgrad()` and the interface value, in the
-  direction of the normal. That is the same method that the species source of
-  this event uses, and that `int-temperature.h` uses for `TS` and `TG`. It
-  keeps the geometry of the cut cell, and it needs no value from a cell that
-  holds another phase. The term becomes the normal part of the product, which
-  is the part that survives at a front. `ebmgrad()` gives both gradients along
-  the same normal, so the sign of the product does not depend on the
-  orientation. */
+  In an interface cell the code holds a phase AVERAGE, which belongs to the
+  centroid of the phase, not to the centre of the cell. A centred difference
+  there loses its order. An interface cell therefore uses `ebmgrad()` and the
+  interface value, along the normal, as the species source of this event and
+  `int-temperature.h` do. The term becomes the normal part of the product,
+  which is the part that survives at a front. `ebmgrad()` gives both
+  gradients along the same normal, so the sign of the product does not
+  depend on the orientation. */
 
   foreach() {
 
@@ -766,9 +716,8 @@ event tracer_diffusion (i++) {
 #ifdef SOLVE_TEMPERATURE
 
   /**
-  Assemble the interface heat source. This used to sit inside the species
-  loop above. The move is exact: `sST` and `sGT` are accumulators, the
-  enthalpy block writes only bulk cells, and this writes only interface
+  Assemble the interface heat source. `sST` and `sGT` are accumulators: the
+  enthalpy block above writes only bulk cells, and this writes only interface
   cells. */
 
 
@@ -860,20 +809,14 @@ event tracer_diffusion (i++) {
     /**
     Convert the corrective mass flux into a velocity before the transport.
 
-    `tracer_fluxes()` reads its second argument as a velocity. It builds the
-    Courant number `un = dt*uf/(fm*Delta)` from it, and it removes the slope
-    with the factor `(1 - s*un)`. But `phicjj` is a mass flux in kg/m2/s, so
-    `un` was too small by the density and the slope kept its full size at any
-    Courant number.
-
-    Divide by the face density here, and multiply the flux back after the
-    call. The flux, and so the mass balance, is the same expression as
-    before. Only `un` and the slope change.
+    `tracer_fluxes()` reads its second argument as a velocity: it builds the
+    Courant number `un = dt*uf/(fm*Delta)` from it, and it limits the slope
+    with the factor `(1 - s*un)`. `phicjj` is a mass flux in kg/m2/s, so
+    divide it by the face density here, and multiply the flux back after the
+    call.
 
     Caution: `gradients()` reads a `NULL` gradient as the unlimited centred
-    slope, not as no slope. The previous `YG.gradient = NULL` therefore
-    selected the least stable reconstruction, which is the opposite of what
-    its comment says. `minmod2` is the limited one. */
+    slope, not as no slope. `minmod2` is the limited one. */
 
     scalar YG = YGList_G[jj];
 
@@ -929,20 +872,14 @@ event tracer_diffusion (i++) {
     /**
     Convert the corrective mass flux into a velocity before the transport.
 
-    `tracer_fluxes()` reads its second argument as a velocity. It builds the
-    Courant number `un = dt*uf/(fm*Delta)` from it, and it removes the slope
-    with the factor `(1 - s*un)`. But `phicjj` is a mass flux in kg/m2/s, so
-    `un` was too small by the density and the slope kept its full size at any
-    Courant number.
-
-    Divide by the face density here, and multiply the flux back after the
-    call. The flux, and so the mass balance, is the same expression as
-    before. Only `un` and the slope change.
+    `tracer_fluxes()` reads its second argument as a velocity: it builds the
+    Courant number `un = dt*uf/(fm*Delta)` from it, and it limits the slope
+    with the factor `(1 - s*un)`. `phicjj` is a mass flux in kg/m2/s, so
+    divide it by the face density here, and multiply the flux back after the
+    call.
 
     Caution: `gradients()` reads a `NULL` gradient as the unlimited centred
-    slope, not as no slope. The previous `YG.gradient = NULL` therefore
-    selected the least stable reconstruction, which is the opposite of what
-    its comment says. `minmod2` is the limited one. */
+    slope, not as no slope. `minmod2` is the limited one. */
 
     scalar YG = YGList_S[jj];
 
@@ -1105,14 +1042,6 @@ A Picard loop over the pair of solves removed the lag to round-off, but the
 median lag was 0.35 K and the loop cost 12.7 per cent more, so the code does
 not iterate. */
 
-/**
-Keep the temperature before the solve. The debt update below needs it to
-measure `T^{n+1} - T^n`. Nothing writes `TS` or `TG` between the call to
-`interface_temperature_sources()` above and this point, so the snapshot
-matches the fields that built the source. */
-
-
-
 
   foreach_face() {
     lambda1f.x[] = face_value(lambda1v.x, 0)*fsS.x[]*fm.x[];
@@ -1147,7 +1076,6 @@ matches the fields that built the source. */
 #endif
 
 
-
 /**
 ## The tolerance of the two temperature solves
 
@@ -1157,11 +1085,6 @@ solve. The full derivation, the measured numbers and the columns of
 `TOLERANCE = 1e-5` asks the gas temperature for 7e-12 K, `poisson.h` then
 raises `nrelax` for a target it can never meet, and two runs died of the
 wasted iterations.
-
-An earlier version of this used `rhoS*cpS` and covered the solid solve alone.
-That was measured as a no-op at level 10 before the flame, because
-`NITERMIN = 2` binds before the tolerance does. It was still the wrong scale,
-and it left the gas solve, which is the one that fails, untouched.
 
 Caution: measure any change here with several alternating runs, normalised by
 CPU time. A single pair on a loaded machine once gave 43 per cent, which was
@@ -1221,9 +1144,6 @@ pure scatter; eleven proper runs gave 0.6 per cent. */
     foreach()
       dri_cT[] = 0.;
 #endif
-
-
-
 
 
 /**

@@ -17,27 +17,18 @@ See the note in the code below.
 
 ## The interior of the particle
 
-'PIN_SOLID_INTERIOR' selects what the function keeps at 'maxlevel':
+The function keeps at 'maxlevel' only the cells that hold an interface. The
+wavelet criterion may coarsen the body of the particle. The restriction of
+'vol_frac' together with 'slist' removes the artificial interface cells in
+the body of the particle. Before that restriction, they caused the SIGFPE
+at '1./rhomix' in 'src/variable-properties.h'.
 
-* 0 (the default): only the cells that hold an interface.
-* 1: every cell with 'vf[] > F_ERR', thus the interface and the full body of
-  the particle.
-
-Commit '5527632' set the default above. The restriction of 'vol_frac' that
-this function does, together with 'slist', removes the artificial interface
-cells in the body of the particle that were the first reason for the pin, and
-it closes the SIGFPE at 'src/variable-properties.h' on the line '1./rhomix'
-that the unpinned interior gave before that restriction.
-
-The pin costs cells. Measured at 'maxlevel' 10: 13 to 18 % more cells before
-the front lights, 0.5 to 2.6 % after. At 'maxlevel' 11: 74 % before, 26 % at
-t = 10.
-
-Caution: the pin makes the grid inside the particle independent of the case.
-Without it, the wavelet criterion coarsens the interior, and the coarsening is
-different for each case. A comparison of two cases then measures the grid as
-much as the physics. Set 'PIN_SOLID_INTERIOR' to 1 for a campaign that
-compares cases against each other, such as the ladder of 'run/test.c'.
+Caution: without a pin of the interior, the coarsening of the body is
+different for each case. A comparison of two cases then measures the grid
+as much as the physics. The tag 'oscillation-campaign-2026-09' keeps the
+option 'PIN_SOLID_INTERIOR', which kept every cell with 'vf[] > F_ERR' at
+'maxlevel'. It cost 13 to 18 % more cells at level 10 before the front
+lit, and 74 % at level 11.
 */
 #if TREE
 
@@ -45,9 +36,6 @@ compares cases against each other, such as the ladder of 'run/test.c'.
 # define F_ERR 1.e-10
 #endif
 
-#ifndef PIN_SOLID_INTERIOR
-# define PIN_SOLID_INTERIOR 0
-#endif
 
 astats adapt_wavelet_leave_interface(scalar *slist,      // list of scalars
                                      scalar *vol_frac,   // the volume fraction scalar
@@ -172,12 +160,8 @@ astats adapt_wavelet_leave_interface(scalar *slist,      // list of scalars
               }
               // arnbo: always set interface cells to the finest level
               for (scalar vf in vol_frac) {
-#if PIN_SOLID_INTERIOR
-                bool condition = (vf[] > F_ERR && level < maxlevel);
-#else
                 bool condition = (vf[] > F_ERR && vf[] < 1. - F_ERR &&
                                   level < maxlevel);
-#endif
                 if (condition) {
                   cell.flags |= too_coarse;
                   cell.flags &= ~too_fine;

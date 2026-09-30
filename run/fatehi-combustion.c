@@ -214,9 +214,11 @@ int main() {
 
   if (pid() == 0)
     fprintf (stderr, "# fatehi: kin=%s maxlevel=%d DT=%g Uin=%g tend=%g"
-                     " tol=%g nitermin=%d filter=%d snapevery=%d nranks=%d\n",
+                     " tol=%g nitermin=%d filter=%d strang=%d frozen=%d"
+                     " snapevery=%d nranks=%d\n",
              FATEHI_KINFOLDER, MAXLEVEL, DT, Uin, (double) TEND, TOLERANCE,
-             NITERMIN, gas_source_filter_passes, SNAPSHOT_EVERY, npe());
+             NITERMIN, gas_source_filter_passes, GAS_CHEMISTRY_STRANG,
+             FROZEN_CELL_GATE, SNAPSHOT_EVERY, npe());
 
   run();
 }

@@ -26,6 +26,33 @@ user-provided field list `sourcesList`. */
 extern scalar * sourcesList;
 #endif
 
+/**
+`GAS_CHEMISTRY_STRANG` selects the Strang split of the gas chemistry, and
+`FROZEN_CELL_GATE` selects the frozen-cell gate of the gas branch. Both are 1
+by default. Set one to 0 to get the reference path for a comparison. See "The
+Strang split of the gas chemistry" and "The gate that skips the cells the
+step cannot change" below. The defaults stay outside `TURN_OFF_REACTIONS`, so
+a case can print the flags in every build.
+
+The `BINNING` path keeps the Lie split. There the default of
+`GAS_CHEMISTRY_STRANG` is 0, and the value 1 stops the build. */
+
+#ifndef GAS_CHEMISTRY_STRANG
+# ifdef BINNING
+#  define GAS_CHEMISTRY_STRANG 0
+# else
+#  define GAS_CHEMISTRY_STRANG 1
+# endif
+#endif
+
+#if GAS_CHEMISTRY_STRANG && defined(BINNING)
+# error "GAS_CHEMISTRY_STRANG is not available with BINNING."
+#endif
+
+#ifndef FROZEN_CELL_GATE
+# define FROZEN_CELL_GATE 1
+#endif
+
 
 #ifndef TURN_OFF_REACTIONS
 
@@ -302,6 +329,9 @@ run is equal to the ungated run in every column. The tolerances below are
 40 times above the rate of the free stream, so the gate keeps its work and
 the trajectory stays reproducible.
 
+`FROZEN_CELL_GATE` 0 removes the gate. Every gas cell then goes to the stiff
+solve.
+
 A 2-D `fatehi-combustion` at level 7 with 88 species reaches 1.28 times the
 simulated time of the ungated case over a fixed wall budget (1.43 times at
 `FROZEN_CELL_YTOL` = 1e-10). Caution: compare two builds only inside one batch
@@ -316,10 +346,10 @@ of runs. The absolute time swings 15 per cent from one run to the next. */
 #endif
 
 /**
-The number of cells that the gate skipped over the last step. It makes the
-gain of the gate visible in a production log. The `foreach` loop below carries
-a `reduction` clause for it, so the value is the total over every rank and
-every thread. */
+The number of cells that the gate skipped over the last step, over both
+halves of the Strang split. The value is the total over every rank and every
+thread. With `CHEMISTRY_LOG` the last sweep of the step prints it on a line
+that starts with `GATE`. A case can also print it in its own log. */
 
 int frozen_cell_gate_n = 0;
 
@@ -332,7 +362,8 @@ this split carries the whole `Tmax(dt)` law: the jump of `Tmax` over the
 chemistry is 50.9, 28.8, 15.7 and 8.4 K at `dt` 4e-4, 2e-4, 1e-4 and 5e-5 s,
 thus first order in `dt`.
 
-The gas chemistry therefore uses a symmetric (Strang) split:
+The gas chemistry therefore uses a symmetric (Strang) split when
+`GAS_CHEMISTRY_STRANG` is 1 (the default):
 
     R(dt/2)   the `chemistry` event, first in the step
     T(dt)     VOF, advection, interface, species and temperature solves
@@ -422,9 +453,13 @@ over a shorter interval. At level 8 before the ignition, the chemistry cost
 Restart: the split adds no field.
 
 The gate tests each half with its own `dt/2`. The `BINNING` path keeps the
-Lie split. */
+Lie split.
 
-#if !defined(BINNING) && !TURN_OFF_GAS_REACTIONS
+`GAS_CHEMISTRY_STRANG` 0 gives the Lie split: the `chemistry` event
+integrates the gas reactor over the full `dt`, and the build has no second
+half. */
+
+#if GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
 # ifdef VARPROP
 /**
 The expansion of the second half, per unit volume of the cell. See the list
@@ -442,15 +477,15 @@ static void strang_second_half_expansion (Point point, const double * ystart,
 #  endif // !NO_EXPANSION
 }
 # endif // VARPROP
-#endif // !BINNING && !TURN_OFF_GAS_REACTIONS
+#endif // GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
 
 #if !defined(BINNING) && !TURN_OFF_GAS_REACTIONS
 /**
 ## The sweep of the gas-phase reactions
 
 This function holds the loop of the gas-phase reactions of the external gas.
-`dtc` is the time over which the reactor integrates, `dt/2` for each half
-of the Strang split. The expansion source
+`dtc` is the time over which the reactor integrates: `dt/2` for each half
+of the Strang split, `dt` for the Lie split. The expansion source
 always divides by the step `dt`, so each half gives its part of the mean of
 the step. `second_half` is true only for the second half of the Strang split.
 That half writes its expansion directly into `drhodt`, because
@@ -513,6 +548,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
       solved cell. */
 
       bool frozen = false;
+#if FROZEN_CELL_GATE
       if (dtc > 0.) {
         double dy_gate[NGS + 1];
         gas_batch_nonisothermal_constantpressure (y0ode, dtc, dy_gate, &data);
@@ -529,6 +565,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
             y0ode[jj] += dtc*dy_gate[jj];
         }
       }
+#endif // FROZEN_CELL_GATE
 
       if (!frozen)
       /**
@@ -554,9 +591,11 @@ static void gas_phase_reactions (double dtc, bool second_half)
         `ln(rho_start/rho_end)/dt`. */
 
 # ifdef VARPROP
+#  if GAS_CHEMISTRY_STRANG
       if (second_half)
         strang_second_half_expansion (point, ystart, y0ode);
       else
+#  endif
         accumulate_gas_sources (point, ystart, y0ode);
 # endif
 
@@ -567,6 +606,11 @@ static void gas_phase_reactions (double dtc, bool second_half)
       TG[] = y0ode[NGS]*(1. - f[]);
     }
   }
+
+# ifdef CHEMISTRY_LOG
+  if ((second_half || !GAS_CHEMISTRY_STRANG) && pid() == 0)
+    fprintf (stderr, "GATE %g %d\n", t, frozen_cell_gate_n);
+# endif
 }
 #endif // !BINNING && !TURN_OFF_GAS_REACTIONS
 
@@ -873,7 +917,7 @@ event chemistry (i++) {
   at 0. The pore gas of the solid branch is switched in `reactors.h`. */
 
 # if !TURN_OFF_GAS_REACTIONS
-  gas_phase_reactions (0.5*dt, false);
+  gas_phase_reactions (GAS_CHEMISTRY_STRANG ? 0.5*dt : dt, false);
 # endif // !TURN_OFF_GAS_REACTIONS
 #endif // BINNING
 
@@ -900,7 +944,7 @@ event chemistry (i++) {
 #endif
 }
 
-#if !defined(BINNING) && !TURN_OFF_GAS_REACTIONS
+#if GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
 /**
 ## The second half of the Strang split
 
@@ -939,6 +983,6 @@ event tracer_diffusion (i++) {
     fprintf (stderr, "S2 %g %g\n", t, s2time);
 # endif
 }
-#endif // !BINNING && !TURN_OFF_GAS_REACTIONS
+#endif // GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
 
 #endif // TURN_OFF_REACTIONS

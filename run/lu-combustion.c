@@ -146,9 +146,11 @@ int main() {
 
   if (pid() == 0)
     fprintf (stderr, "# lu: maxlevel=%d DT=%g Uin=%g tend=%g zeta=%d"
-                     " tol=%g nitermin=%d filter=%d snapevery=%d nranks=%d\n",
+                     " tol=%g nitermin=%d filter=%d strang=%d frozen=%d"
+                     " snapevery=%d nranks=%d\n",
              MAXLEVEL, DT, Uin, (double) TEND, (int) ZETA_POLICY, TOLERANCE,
-             NITERMIN, gas_source_filter_passes, SNAPSHOT_EVERY, npe());
+             NITERMIN, gas_source_filter_passes, GAS_CHEMISTRY_STRANG,
+             FROZEN_CELL_GATE, SNAPSHOT_EVERY, npe());
 
   run();
 }

@@ -342,10 +342,11 @@ int main() {
 
   if (pid() == 0)
     fprintf (stderr, "# laminarflame: maxlevel=%d DT=%g CFL=%g Uair=%g"
-                     " tend=%g corrCFL=%g frozen=%d kin=%s nranks=%d\n",
+                     " tend=%g corrCFL=%g frozen=%d strang=%d kin=%s"
+                     " nranks=%d\n",
              MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, U_AIR,
              (double) TEND, (double) CORRECTIVE_CFL, FROZEN_CELL_GATE,
-             KINFOLDER, npe());
+             GAS_CHEMISTRY_STRANG, KINFOLDER, npe());
 
   /**
   The initial thermodynamic state of the gas. `TS0` is the solid temperature.

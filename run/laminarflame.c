@@ -715,6 +715,10 @@ static void radial_profile (const char * name, double xp, double ymax, int n)
 
   if (pid() == 0) {
     FILE * fp = fopen (name, "w");
+    if (fp == NULL) {
+      fprintf (stderr, "Error opening %s\n", name);
+      exit (1);
+    }
     fprintf (fp, "#y(1) T(2) xH2(3) xO2(4) xH2O(5)\n");
     for (int j = 0; j < n; j++)
       fprintf (fp, "%g %g %g %g %g\n", buf[5*j], buf[5*j + 1],
@@ -750,6 +754,10 @@ event profiles (t = tend) {
   if (pid() == 0) {
     sprintf (name, "AxialProfiles-%d", maxlevel);
     FILE * fp = fopen (name, "w");
+    if (fp == NULL) {
+      fprintf (stderr, "Error opening %s\n", name);
+      exit (1);
+    }
     fprintf (fp, "#x(1) T(2) H2(3) H2O(4) O2(5) N2(6)\n");
     for (int j = 0; j < n; j++)
       fprintf (fp, "%g %g %g %g %g %g\n", buf[6*j], buf[6*j + 1],

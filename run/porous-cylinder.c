@@ -17,14 +17,12 @@ which *u.x* along the centerline (y=0) becomes zero again after the cylinder.
 As in Yu et al., the domain is 60 diameters wide and the simulation is run
 until steady state.
 */
-#define DARCY_EXACT_ODE
-
 int maxlevel = 11;        // Maximum refinement level
 double Re = 20;           // Reynolds number
 double R0 = 0.5;          // Cylinder radius
 double U0 = 1.;           // Inflow velocity
 double epsi0 = 0.7;       // Porosity
-double side_length = 60.; // Domain length in terms of R0
+double side_length = 60.; // Domain length in cylinder diameters
 double tend = 150.;       // End time
 
 #include "navier-stokes/centered.h"

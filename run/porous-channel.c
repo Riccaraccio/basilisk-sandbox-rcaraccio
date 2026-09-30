@@ -15,12 +15,6 @@ the average velocity in the free fluid region at the outlet, as done in the
 `stop` event.
 */
 
-/** 
-"POROUS_ADVECTION" overloads some steps of the Navier-Stokes solver to account for a porous medium. In this case this effect is minimal and using [centered.h](/src/navier-stokes/centered.h) work fine aswell.
-*/
-
-#define POROUS_ADVECTION 1
-
 int maxlevel = 10;        // Maximum refinement level
 double H = 1.;            // Channel height
 double U0 = 1.17;       // Inflow velocity for Da = 1e-2

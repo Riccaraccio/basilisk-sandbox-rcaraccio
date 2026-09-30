@@ -52,7 +52,7 @@ scalar rhot[];
 static void interface_fluxes (Point point) {
 
   // Calculate interfacial area and normal vector
-  coord n = facet_normal (point, fS, fsS), p;
+  coord n = interface_source_normal (point, fS, fsS), p;
   double alpha = plane_alpha (fS[], n);
   double area = plane_area_center (n, alpha, &p);
   normalize (&n);
@@ -176,10 +176,19 @@ static void compute_balances(void) {
     mb.sol_mass[jj] = 0.;
 #endif
 
-  foreach()
+  /**
+  Keep the two phases together. This event rebuilds `fS` and `fsS` from the
+  freshly advected `f`, so `fG` and `fsG` must follow. If only one pair is
+  rebuilt, `ebmgrad` reads one side of the interface at this step and the
+  other side at the last one, and the diffusive fluxes are wrong. */
+
+  foreach() {
     fS[] = f[];
+    fG[] = 1. - f[];
+  }
 
   face_fraction (fS, fsS);
+  face_fraction (fG, fsG);
 
   #ifdef MULTICOMPONENT
   // We need to lose tracer form for YGList_G as it is used for the diffusive fluxes

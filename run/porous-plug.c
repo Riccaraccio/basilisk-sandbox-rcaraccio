@@ -8,7 +8,6 @@ boundary. The velocity profile and pressure drop across the plug are compared
 with the analytical solution.
 */
 
-#define POROUS_ADVECTION 1
 #define NO_DARCY_CORRECTION 1
 #include "navier-stokes/centered-phasechange.h"
 #include "fractions.h"

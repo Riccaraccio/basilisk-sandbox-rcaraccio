@@ -77,7 +77,7 @@ int EqTemperature (const gsl_vector * xdata, void * params, gsl_vector * fdata) 
   double gradTGn = ebmgrad(point, TG, fS, fG, fsS, fsG, true, TInti, &success);
   double gradTSn = ebmgrad(point, TS, fS, fG, fsS, fsG, false, TInti, &success);
 
-  coord n = facet_normal(point, fS, fsS);
+  coord n = interface_source_normal (point, fS, fsS);
   normalize(&n);
   n.x = fabs(n.x); n.y = fabs(n.y);
 

@@ -84,6 +84,20 @@ void fsolve_gsl (nls_fun fun,
         gsl_multiroot_test_residual (s->f, FSOLVE_ABSTOL);
   }
 
+  /**
+  Clear the sticky status flags before the traps come back. The masked solve
+  above sets `FE_DIVBYZERO` and `FE_INVALID` in the status word, and
+  `feenableexcept()` does not clear them. On x86 the SSE unit tests the
+  condition of each instruction, thus a stale flag raises no signal there.
+  The x87 unit does not: `fldcw` unmasks the exception, and the next x87
+  instruction then traps, with the code of the stale flag and at a place that
+  has no relation to the cause. Basilisk builds use SSE for the doubles, thus
+  this is improbable, but the clear costs nothing and it removes the doubt.
+
+  This also makes the signal code trustworthy again. A SIGFPE after this
+  point reports the operation that raised it. */
+
+  feclearexcept (FE_ALL_EXCEPT);
   enable_fpe (FE_DIVBYZERO|FE_INVALID);
 
   /**

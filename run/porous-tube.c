@@ -1,4 +1,3 @@
-#define POROUS_ADVECTION 1
 #define F_ERR 1e-10
 
 #include "grid/multigrid.h"

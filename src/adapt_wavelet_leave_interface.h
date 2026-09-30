@@ -14,12 +14,28 @@ equal to the other parts of this sandbox.
 
 We also restrict 'vol_frac'. Basilisk's 'adapt_wavelet' restricts 'slist' only.
 See the note in the code below.
+
+## The interior of the particle
+
+The function keeps at 'maxlevel' only the cells that hold an interface. The
+wavelet criterion may coarsen the body of the particle. The restriction of
+'vol_frac' together with 'slist' removes the artificial interface cells in
+the body of the particle. Before that restriction, they caused the SIGFPE
+at '1./rhomix' in 'src/variable-properties.h'.
+
+Caution: without a pin of the interior, the coarsening of the body is
+different for each case. A comparison of two cases then measures the grid
+as much as the physics. The tag 'oscillation-campaign-2026-09' keeps the
+option 'PIN_SOLID_INTERIOR', which kept every cell with 'vf[] > F_ERR' at
+'maxlevel'. It cost 13 to 18 % more cells at level 10 before the front
+lit, and 74 % at level 11.
 */
 #if TREE
 
 #ifndef F_ERR
 # define F_ERR 1.e-10
 #endif
+
 
 astats adapt_wavelet_leave_interface(scalar *slist,      // list of scalars
                                      scalar *vol_frac,   // the volume fraction scalar
@@ -144,7 +160,9 @@ astats adapt_wavelet_leave_interface(scalar *slist,      // list of scalars
               }
               // arnbo: always set interface cells to the finest level
               for (scalar vf in vol_frac) {
-                if (vf[] > F_ERR && vf[] < 1. - F_ERR && level < maxlevel) {
+                bool condition = (vf[] > F_ERR && vf[] < 1. - F_ERR &&
+                                  level < maxlevel);
+                if (condition) {
                   cell.flags |= too_coarse;
                   cell.flags &= ~too_fine;
                   cell.flags &= ~just_fine;

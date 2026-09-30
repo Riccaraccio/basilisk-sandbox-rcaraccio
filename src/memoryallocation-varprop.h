@@ -43,6 +43,10 @@ double TS0 = 300.; double TG0 = 300.; // initial temperatures [K]
 scalar TInt[]; // interface temperature
 scalar TS, TG; // solid and gas temperatures
 scalar sST[], sGT[]; // source terms for solid and gas temperatures
+
+
+
+
 face vector lambda1f[], lambda2f[]; // face vector thermal conductivities for porous and gas phases
 vector lambda1v[], lambda2v[]; // thermal conductivities for porous and gas phases
 
@@ -313,6 +317,10 @@ for (int jj=0; jj<NGS; jj++) {
 
   sST.nodump = true;
   sGT.nodump = true;
+
+
+
+
 
   f.tracers = list_append (f.tracers, TS);
   f.tracers = list_append (f.tracers, TG);

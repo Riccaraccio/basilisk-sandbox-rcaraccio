@@ -155,6 +155,8 @@ event chemistry(i++);
 After the chemistry event, we compute the gas source term based on the 
 reaction rate 'omega'. The solid phase velocity field 'ubf' is computed
 through the solution of a Poisson equation for the velocity potential 'psi'.
+At the end, the event computes 'zeta' for the next step. So 'zeta' lags
+'omega' by one step.
 */
 
 event phasechange(i++) {
@@ -168,8 +170,6 @@ event phasechange(i++) {
     porosity[] = clamp (porosity[], 0., 1.);
     porosity[] = (f[] > F_ERR) ? porosity[] : 0.;
   }
-
-  set_zeta(zeta_policy);
 
   mgpsf = project_sv (ubf, psi, fm, mgpsf.nrelax);
 
@@ -185,6 +185,21 @@ event phasechange(i++) {
 #endif
     }
   }
+
+  /**
+  The chemistry of this step used `zeta` for the porosity part
+  $(1-\zeta)$, and `project_sv()` used the same `zeta` for the shrinkage
+  part $\zeta$. The two parts add to 1, so the mass balance of the solid
+  closes. We compute `zeta` for the next step only now, from the `omega` of
+  this step.
+
+  Do not move this call before `project_sv()` or into `reset_sources`. Before
+  `project_sv()`, the two parts use two values of `zeta`, and the solid loses
+  $f\,\omega\,(1-\varepsilon)\,\Delta t\,(\zeta^{n} - \zeta^{n-1})$ per step.
+  In `reset_sources`, `chemistry.h` has already set `omega` to zero, and
+  `ZETA_REACTION` then gives zero everywhere. */
+
+  set_zeta (zeta_policy);
 }
 
 /**
@@ -195,10 +210,19 @@ the interface in the presence of phase change.
 */
 
 face vector ufsave[];
+
+/**
+`ubf` moves the tracers of `f` only on the faces next to a cell with solid.
+A face between two pure gas cells gets 0: the gas there moves with `ufsave`
+in the `tracer_diffusion` event of `multicomponent-varprop.h`, and a second
+transport with `ubf` counts that flow two times. In a cut cell the `ubf`
+transport stays, because it fills the gas volume that the interface frees.
+`multicomponent-varprop.h` gives the full description. */
+
 event vof (i++) {
   foreach_face() {
     ufsave.x[] = uf.x[];
-    uf.x[] = ubf.x[];
+    uf.x[] = (f[] > F_ERR || f[-1] > F_ERR) ? ubf.x[] : 0.;
   }
 @if _MPI
   boundary ((scalar *){uf});

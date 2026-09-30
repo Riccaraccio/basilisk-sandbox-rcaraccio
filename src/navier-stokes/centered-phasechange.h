@@ -25,11 +25,9 @@ scalar div_source[];
 /**
 ## Filter of the divergence source
 
-`GAS_SOURCE_EXACT` enables two changes to the expansion source. The first one
-lives in `chemistry.h`: the chemistry part of `drhodt` becomes the exact step
-mean of the expansion, `ln(rho_start/rho_end)/dt`. The second one lives here: a
-short diffusion filter acts on the sum `gas_source + drhodt` before the
-projection. Compile with `-DGAS_SOURCE_EXACT=1` to select both.
+A short diffusion filter acts on the sum `gas_source + drhodt` before the
+projection. It goes with the exact form of the chemistry part of `drhodt` in
+`chemistry.h`, `ln(rho_start/rho_end)/dt`.
 
 Why a filter: in a stiff flame the reaction sheet is one cell thick, so the
 source that reaches the Poisson solver is a delta on one cell. That cell hops
@@ -61,7 +59,6 @@ the conservation on a tree with a level jump.
 The source of `psi` in `velocity-potential.h` is not filtered. The interface
 must move with the local consumption of the solid. */
 
-#if GAS_SOURCE_EXACT
 # ifndef GAS_SOURCE_FILTER_PASSES
 #  define GAS_SOURCE_FILTER_PASSES 4
 # endif
@@ -96,7 +93,6 @@ static void filter_divergence_source (scalar s)
   foreach()
     s[] = q[]*cm[];
 }
-#endif
 
 /**
 ## Projection method with gas source term
@@ -113,7 +109,7 @@ mgstats project_sf (face vector uf, scalar p,
 
   /**
   The gas source term and the expansion term enter the divergence together.
-  With `GAS_SOURCE_EXACT` the filter above acts on their sum. */
+  The filter above acts on their sum. */
 
   foreach() {
     div_source[] = gas_source[];
@@ -121,10 +117,8 @@ mgstats project_sf (face vector uf, scalar p,
     div_source[] += drhodt[];
 #endif
   }
-#if GAS_SOURCE_EXACT
   if (gas_source_filter_passes > 0)
     filter_divergence_source (div_source);
-#endif
 
   scalar div[];
   foreach() {
@@ -265,8 +259,13 @@ event advection_term (i++, last) {
     double ef = face_value(eps, 0);
     ufn.x[] = uf.x[]/ef;
   }
-  
-  advection ((scalar *){u}, ufn, dt, (scalar *){g});
+
+  /**
+  Call `advection_div` by its name. The macro `advection` does not exist
+  here: the file removes it after `centered.h`. The name `advection` calls
+  the function of `bcg.h`, which ignores `NO_ADVECTION_DIV`. */
+
+  advection_div ((scalar *){u}, ufn, dt, (scalar *){g});
 }
 
 /** 

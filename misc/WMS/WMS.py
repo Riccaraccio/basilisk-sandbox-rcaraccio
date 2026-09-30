@@ -17,6 +17,18 @@ Based on:
   - Qu et al., Optics Express 23(12), 16492 (2015)
   - Qu & Schmidt, Appl. Phys. B 119, 45-53 (2015)
 
+v5 changes:
+  - FIXED: compute_column_density now integrates the full one-sided profile
+    (trapz) instead of only the interval containing x=0
+  - FIXED: T_arith is now the H2O-density-weighted path average
+    T = sum(x_H2O)/sum(x_H2O/T)  (weight ~ n_H2O ~ x/T), matching the
+    measured quantity in Fatehi 2018 / Qu 2015 and the CFD-side diagnostic
+  - FIXED: experimental-data path expansion (~) and missing-file guard
+  - Output header updated to describe what columns 4/5/8 actually contain
+  - NOTE: the sensor-equivalent fit is a direct-absorbance (DAS-style) fit;
+    the real instrument fits 1f-normalized 2f-WMS spectra (MA 0.13 cm-1).
+    Identical for a uniform medium, slightly different LOS weighting for
+    nonuniform profiles.
 v4 changes:
   - FIXED: Partition function updated from user-provided Partfun_H16OH.txt
     (old TIPS-2011 had 10-21% errors at combustion temperatures)
@@ -342,14 +354,13 @@ def extract_effective_T_c(nu, alpha_synth, L_assumed, P=1.0,
 
 
 def compute_column_density(x_path, c_prof):
-    """Compute the integrated column density of H2O along the path."""
-    c_density = 0.0
-    for i in range(len(x_path) - 1):
-        if x_path[i] <= 0 <= x_path[i+1]:
-            c_interp = np.interp(0, [x_path[i], x_path[i+1]], [c_prof[i], c_prof[i+1]])
-            c_density += c_interp * (x_path[i+1] - x_path[i])
+    """One-sided line integral of the H2O mole fraction along the beam [cm].
 
-    return c_density
+    The CFD profiles are one-sided (symmetry axis -> outer edge), so this
+    matches the experimental convention c_exp * L with the one-sided path
+    length L (e.g. L = 1.5 cm for the 30 mm flame in Fatehi 2018).
+    """
+    return np.trapz(c_prof, x_path)
 
 # =============================================================================
 # DATA I/O
@@ -439,9 +450,7 @@ DATA FILE FORMAT (whitespace-separated, # for comments):
                         help='Number of wavenumber grid points')
     parser.add_argument('--plot-every', type=int, default=1,
                         help='Plot every N timesteps (0=no plots)')
-    parser.add_argument('--T-threshold', type=float, default=500.0,
-                        help='Hot-region threshold [K] for arithmetic avg')
-    parser.add_argument('--xmin', type=float, default=0.01,
+    parser.add_argument('--xmin', type=float, default=0.00,
                         help='H2O mole-fraction threshold defining the flame '
                              'body for the absorbance integration. The beam is '
                              'integrated from the first sample outward only up '
@@ -531,23 +540,14 @@ DATA FILE FORMAT (whitespace-separated, # for comments):
             if np.isfinite(T_eff) and np.isfinite(c_eff):
                 T_g, c_g = T_eff, c_eff
 
-        # hot = T_prof > args.T_threshold
-        # if np.any(hot):
-        #     T_arith = np.mean(T_prof[hot])
-        #     c_arith = np.mean(c_prof[hot])
-        #     x_hot = x_path[hot]
-        #     L_hot = x_hot[-1] - x_hot[0] if len(x_hot) > 1 else 0.0
-        # else:
-        #     T_arith = np.mean(T_prof)
-        #     c_arith = np.mean(c_prof)
-        #     L_hot = 0.0
-
-        # C_mean: mean over the L region
-        # T_mean: h2o-weighted mean over the L region
+        # c_arith: mean H2O mole fraction over the [0, L] window
+        # T_arith: H2O-density-weighted mean T over the window,
+        #          T = sum(x_H2O)/sum(x_H2O/T)  (weight ~ n_H2O ~ x/T),
+        #          the path-averaged quantity reported in Fatehi 2018 / Qu 2015
         inside = (x_path >= 0) & (x_path <= args.L)
         if np.any(inside):
             c_arith = np.mean(c_prof[inside])
-            T_arith = np.sum(T_prof[inside] * c_prof[inside]) / np.sum(c_prof[inside]) \
+            T_arith = np.sum(c_prof[inside]) / np.sum(c_prof[inside] / T_prof[inside]) \
                       if np.sum(c_prof[inside]) > 1e-10 else np.mean(T_prof[inside])
             L_hot = args.L
         else:
@@ -609,22 +609,21 @@ DATA FILE FORMAT (whitespace-separated, # for comments):
     # --- Save results ---
     results = np.array(results)
     file_header = (
-        f"Synthetic WMS diagnostic results (v4 - corrected partition function)\n"
+        f"Synthetic WMS diagnostic results (v5)\n"
         f"T file: {args.temp}\n"
         f"H2O file: {args.h2o}\n"
         f"L_assumed = {args.L} cm, P = {args.P} atm\n"
-        f"T_threshold = {args.T_threshold} K\n"
         f"space_unit = {args.space_unit}\n"
         f"\n"
         f"Columns:\n"
         f"  1: time\n"
         f"  2: T_eff [K]       - effective temperature (sensor equivalent)\n"
         f"  3: c_eff [%]       - effective H2O mole fraction (sensor equiv)\n"
-        f"  4: T_arith [K]     - arithmetic mean T (hot region)\n"
-        f"  5: c_arith [%]     - arithmetic mean c (hot region)\n"
+        f"  4: T_arith [K]     - H2O-density-weighted mean T over x in [0, L]\n"
+        f"  5: c_arith [%]     - mean H2O mole fraction over x in [0, L]\n"
         f"  6: T_peak [K]      - peak T in CFD profile\n"
         f"  7: c_peak [%]      - peak c in CFD profile\n"
-        f"  8: L_hot [cm]      - extent of hot region (T > threshold)\n"
+        f"  8: L_win [cm]      - averaging window length (= L_assumed)\n"
         f"  9: RMS_residual    - fit quality"
     )
     outfile = os.path.join(args.output, 'effective_values.dat')
@@ -638,7 +637,7 @@ DATA FILE FORMAT (whitespace-separated, # for comments):
         ax1.plot(results[valid, 0], results[valid, 1], 'ro-', ms=3,
                  label='T$_{eff}$ (sensor equivalent)')
         ax1.plot(results[valid, 0], results[valid, 3], 'b^--', ms=3,
-                 label=f'T$_{{arith}}$ (T>{args.T_threshold:.0f}K)')
+                 label='T$_{arith}$ (H$_2$O-density-weighted)')
         ax1.plot(results[valid, 0], results[valid, 5], 'g+:', ms=4,
                  label='T$_{peak}$ (CFD max)')
         ax1.set_ylabel('Temperature [K]')
@@ -649,7 +648,7 @@ DATA FILE FORMAT (whitespace-separated, # for comments):
         ax2.plot(results[valid, 0], results[valid, 2], 'ro-', ms=3,
                  label='c$_{eff}$ (sensor equivalent)')
         ax2.plot(results[valid, 0], results[valid, 4], 'b^--', ms=3,
-                 label=f'c$_{{arith}}$ (T>{args.T_threshold:.0f}K)')
+                 label='c$_{arith}$ (mean over [0, L])')
         ax2.plot(results[valid, 0], results[valid, 6], 'g+:', ms=4,
                  label='c$_{peak}$ (CFD max)')
         ax2.set_ylabel('H$_2$O [%]')
@@ -663,27 +662,25 @@ DATA FILE FORMAT (whitespace-separated, # for comments):
         plt.close()
         print(f"Time history plot: {figfile}")
 
-        # Integrated column density plot
+        # Integrated column density plot (one-sided integral on each
+        # timestep's own grid; profiles are already sorted by load_data)
         fig, ax = plt.subplots(figsize=(10, 4))
-        column_densities = []
-        for t in common_times:
-            x_c = spaces_c[t] * scale
-            c_prof = vals_c[t].copy()
-            if len(x_c) != len(x_T) or not np.allclose(x_c, x_T, atol=1e-8):
-                x_common = np.union1d(x_T, x_c)
-                c_prof = np.interp(x_common, x_c, c_prof)
-                x_path = x_common
-            else:
-                x_path = x_c
-            column_density = compute_column_density(x_path, c_prof)
-            column_densities.append(column_density)
-        
-        # Load the experimental data
-        exp_times, exp_c = np.loadtxt("~/basilisk/basilisk-sandbox-rcaraccio/data/fatehi/yH2O-2mm", unpack=True)
+        column_densities = [compute_column_density(spaces_c[t] * scale, vals_c[t])
+                            for t in common_times]
 
         ax.plot(common_times, column_densities, 'ms-', ms=4,
                 label='Integrated column density of H$_2$O')
-        ax.plot(exp_times, exp_c*args.L, 'ko', ms=4, label='Experimental data')
+
+        # Experimental data: path-averaged mole fraction * one-sided L
+        exp_file = os.path.expanduser(
+            "~/basilisk/basilisk-sandbox-rcaraccio/data/fatehi/yH2O-2mm")
+        if os.path.isfile(exp_file):
+            exp_times, exp_c = np.loadtxt(exp_file, unpack=True)
+            ax.plot(exp_times, exp_c*args.L, 'ko', ms=4,
+                    label='Experimental data')
+        else:
+            print(f"  WARNING: experimental data not found ({exp_file}), "
+                  f"skipping overlay")
         ax.set_xlabel('Time')
         ax.set_ylabel('Column density [cm]')
         ax.legend()

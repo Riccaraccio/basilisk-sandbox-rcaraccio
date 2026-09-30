@@ -55,48 +55,26 @@ We overwrite the properties for the Navier-Stokes solver with the variable prope
 
 /**
 Caution: `rhov[]` holds `cm[]*rhomix`, so it already carries the metric. Do
-not give it metric-aware tree operators. Commit `f44028d` added
+not give it metric-aware tree operators (`refine_linear`,
+`restriction_volume_average`). They apply the metric a second time, and near
+the axis the coarse value becomes non-positive. `viscosity.h` then stops
+with SIGFPE at `dt/rho[]` on a coarse level, which a leaf loop never visits.
+`two-phase-generic.h` gives the same field the default operators. Keep that
+choice.
 
-    rhov.refine = refine_linear;
-    set_restriction (rhov, restriction_volume_average);
+This event runs in the `adapt` event of `centered.h`, through
+`event ("properties")`, after `adapt_wavelet` changes the grid. The chain
+calls `update_properties()` first (`qcc -events` shows the order), so the
+densities here come from the prolongated state of the new grid.
 
-in a `defaults` event, and from that commit no case of this sandbox started
-from scratch: every one stopped at step 1 with SIGFPE at `viscosity.h:167`,
-which computes `dt/rho[]`. Both operators apply the metric a second time to a
-field that already has it. `restriction_volume_average` sums `cm[]*s[]` over
-the children and divides by the `cm[]` of the parent. Near the axis `cm` is
-`y`, and `y` changes by a factor of 3 between sibling cells, so the coarse
-value becomes non-positive. The block below is commented out for this reason.
-Do not restore it. `two-phase-generic.h` gives the same field the default
-operators, in the same axisymmetric cases. Keep that choice.
+`update_properties()` sets both densities to 0 and fills each one only where
+its gate passes, for example `TG[] > 0`. If a cell gets `rhomix` of 0, the
+run stops at `1./rhomix` below, because Basilisk arms the floating point
+traps. This event is then not the cause. The measured case was a runaway of
+the gas temperature in a sliver cell: see the interface heat source in
+`multicomponent-varprop.h`. Fix the cause. Do not add a guard here that
+hides it. */
 
-The symptom hides on the leaves. This event rewrites every leaf from
-`rhoGv_G`, `rhoGv_S` and `f` on each timestep, so a `foreach()` loop finds
-`rhov` positive everywhere. The measurement on the failing run gave a minimum
-of 9.8e-5 and no cell at or below zero, out of 65536. But `viscosity.h`
-solves on a multigrid with `foreach_level_or_leaf`, so it reads the coarse
-levels too, and a leaf loop never visits those. Examine the coarse levels
-before you conclude that the density is good.
-
-This event carried three guards until 2026-09-03: a fallback that read the
-density back from `rhov[]/cm[]`, a test before `1./rhomix`, and a test before
-the write of `rhov[]`. They are gone, and they are not needed. `rhomix` stays
-positive in every configuration of this sandbox. A guard on `rhov[]` also
-does not work: it stops a good value from becoming 0, and it cannot repair a
-cell whose stored value is already bad. That was measured on the from-scratch
-start, and the crash did not change.
-
-If a later change does make `rhomix` reach 0, the run stops at `1./rhomix`
-in the loop below, because Basilisk arms the floating point traps. Fix the
-cause in `update_properties()`, which sets both densities to 0 and refills
-them only where its gates pass. Do not add a guard here that hides it.
-
-Caution: the signal code of such a SIGFPE reads 7 (invalid), not 3 (divide by
-zero). `fsolve-gsl.h` masks the traps around the GSL solve, the invalid
-operations there set a sticky flag, and the kernel reads that flag first. Do
-not identify the operation from the signal code after the first interface
-solve of a run.
-*/
 event properties (i++) {
 
   scalar alphacenter[], mucenter[];

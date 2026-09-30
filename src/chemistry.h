@@ -26,6 +26,34 @@ user-provided field list `sourcesList`. */
 extern scalar * sourcesList;
 #endif
 
+/**
+`GAS_CHEMISTRY_STRANG` selects the Strang split of the gas chemistry, and
+`FROZEN_CELL_GATE` selects the frozen-cell gate of the gas branch. Both are 1
+by default. Set one to 0 to get the reference path for a comparison. See "The
+Strang split of the gas chemistry" and "The gate that skips the cells the
+step cannot change" below. The defaults stay outside `TURN_OFF_REACTIONS`, so
+a case can print the flags in every build.
+
+The `BINNING` path keeps the Lie split. There the default of
+`GAS_CHEMISTRY_STRANG` is 0, and the value 1 stops the build. */
+
+#ifndef GAS_CHEMISTRY_STRANG
+# ifdef BINNING
+#  define GAS_CHEMISTRY_STRANG 0
+# else
+#  define GAS_CHEMISTRY_STRANG 1
+# endif
+#endif
+
+#if GAS_CHEMISTRY_STRANG && defined(BINNING)
+# error "GAS_CHEMISTRY_STRANG is not available with BINNING."
+#endif
+
+#ifndef FROZEN_CELL_GATE
+# define FROZEN_CELL_GATE 1
+#endif
+
+
 #ifndef TURN_OFF_REACTIONS
 
 /**
@@ -124,40 +152,9 @@ event cleanup (t = end) {
   OpenSMOKE_CleanODESolver ();
 }
 
-/**
-## Diagnostics of the solid source
-
-`SOLID_SOURCE_DIAG` adds two fields that explain a flicker of `gas_source`.
-
-`solid_diag[]` records what the solid branch did with the cell: 0 no solid,
-1 the reactor ran, 2 a guard skipped the cell, 3 the solve returned a
-non-finite state. `omega[]` starts every step at zero, and only the case 1
-writes it. The cases 2 and 3 therefore remove the source of that cell for one
-step, and the cell returns the next step. That is a switch, not a rate.
-
-`dTS_step[]` records `|TS_end - TS_start|` over the step, per unit of `f`. It
-decides whether the end-state sampling of `omega` matters. `omega` is read at
-the converged end state, and the Arrhenius factor is exponential in `TS`. With
-`Ea/R = 15000` K at `TS = 800` K, a rise of 10 K changes that factor by about
-26 percent, and a rise of 1 K by about 2 percent. Below 1 K the sampling of
-`omega` cannot explain a visible flicker, because the solid conversion is much
-slower than the step that the gas phase imposes. */
-
-#ifndef SOLID_SOURCE_DIAG
-# define SOLID_SOURCE_DIAG 0
-#endif
-
-#if SOLID_SOURCE_DIAG
-scalar solid_diag[], dTS_step[];
-#endif
-
 event reset_sources (i++) {
   foreach() {
     omega[] = 0.;
-#if SOLID_SOURCE_DIAG
-    solid_diag[] = 0.;
-    dTS_step[] = 0.;
-#endif
   }
 }
 
@@ -182,165 +179,44 @@ static void scale_gas_tracers (Point point, double factor) {
 
 #ifdef VARPROP
 /**
-## Gas-phase reaction source for the low-Mach divergence
+## The gas-phase reaction source of the low-Mach divergence
 
-`DYDtG_G` [kg/m3/s] and `DTDtG` [W/m3] carry the gas-phase reaction
-contribution into `drhodt`, and therefore into the right-hand side of the
-pressure Poisson equation. Two forms are available.
-
-`gas_source_averaged = false` re-evaluates the reactor right-hand side at the
-converged end-of-step state. That is the rate at one single state. Near a stiff
-flame a cell alternates between "reacting" and "burnt out" from one step to the
-next, so this rate flickers, and the flicker goes directly into the velocity
-field. The velocity field then moves the flame, which changes the rate again.
-
-`gas_source_averaged = true` (the default) uses the step-averaged rate,
-`(state_end - state_start)/dt`. The integrator already produced both states, so
-this costs one subtraction and no extra call to the reactor. It is the exact
-mean of the same quantity over the step, it is conservative, and it removes the
-end-state sensitivity.
-
-`rhoGv_G` and `cpGv_G` do not change during the chemistry event. The same
-values therefore weight the start state and the end state, and the source stays
-an exact `rhoGv_G*dY/dt` and `rhoGv_G*cpGv_G*dT/dt`. This is what `divu2` in
-`multicomponent-properties.h` needs: it divides by the same two fields, so the
-result is the mole-number change rate and the thermal expansion rate.
-
-## The weight of the increment
-
-The exact quantity is not `rho*(Y_end - Y_start)/dt`. It is
-
-    (1/dt) * integral of rho(tau)*dY/dtau dtau
-
-so the weight must represent `rho` over the whole step, not at one end of it.
-`gas_source_rho_mean = false` (the default) uses `rhoGv_G`, the value at the
-step start. In a burning cell the gas expands and `rho` falls by about 30% in
-one step, so the start value weights the increment too much.
-
-`gas_source_rho_mean = true` uses the mean of the start and the end values,
-`0.5*(rho_start + rho_end)`. `test/gas-source-cell.c` measures both against a
-sub-stepped reference over 13 states, with `T` from 1200 to 2100 K, the fuel
-mass fraction from 0.02 to 0.20, and `dt` from 2e-6 to 2e-4 s:
-
-    weight       mean ratio to the reference    worst
-    rho_start              1.174                1.234
-    mean                   1.012                1.025
-
-`cp` stays at the start value. The mean of `cp` changes the result by 0.2%,
-which does not pay for the extra call to the property library. The mean of
-`rho` needs no call at all: `1/MW = sum_j Y_j/MW_j` gives `rho` from the ideal
-gas law with pure arithmetic.
-
-Caution: do not read the end-state density from `data.rhog` after the solve.
-`reactors.h` starts the reactor with `UserDataODE data = *(UserDataODE *)args`,
-so the reactor writes `rhog` and `cpg` in a local copy and the caller keeps the
-old values. `data.sources` behaves differently because it is a pointer. Even
-with a pointer, the last evaluation of the right-hand side is a trial point of
-the stiff solver, not the converged end state.
-
-Caution: with the averaged form, `TURN_OFF_HEAT_OF_REACTION` also removes the
-heat release from the expansion source. The instantaneous form keeps it, because
-it fills `sources[NGS]` before it zeroes `dy[NGS]`.
-
-Compile with `-DGAS_SOURCE_AVERAGED=0` to select the instantaneous form and
-with `-DGAS_SOURCE_RHO_MEAN=1` to select the mean weight, or assign
-`gas_source_averaged` and `gas_source_rho_mean` in `main()` to override the
-compiled defaults. The mean weight applies to the averaged form only. The
-instantaneous form ignores it.
-
-## The exact expansion
-
-Both forms above feed `divu2` in `update_divergence()`, which divides them by
-`T`, `rho`, `cp` and `MWmixG_G`. `T` is the end value, the other three are the
-values that the last `update_properties()` wrote, so the start values.
-`test/gas-source-cell.c` measures the effect of these frozen denominators: in
-a burning cell at `dt = 2e-4` s the result sits 8 to 27 percent under the
-exact expansion. `gas_source_rho_mean` does not repair that, because the error
-is in the denominators and not in the weight.
-
-The exact step mean of the expansion at constant pressure needs no
-denominators. The expansion rate is `-d(ln rho)/dt`, so its mean over the step
-is the closed form
+At constant pressure the expansion rate of the gas is `-d(ln rho)/dt`, so
+its exact mean over the step is
 
     ln(rho_start/rho_end)/dt
 
-and both densities follow from the ideal gas law with `1/MW = sum_j Y_j/MW_j`.
-The pressure cancels in the ratio. `GAS_SOURCE_EXACT` selects this form. The
-chemistry event then writes `cm[]*ln(rho_start/rho_end)/dt` to `drhodt_chem`,
-per unit volume of gas, and `update_divergence()` adds it to `divu2` with the
-same `(1-f)` weight as the other terms. The reaction part no longer passes
-through `DYDtG_G` and `DTDtG`. With this flag `gas_source_averaged` and
-`gas_source_rho_mean` have no effect.
+Both densities follow from the ideal gas law with `1/MW = sum_j Y_j/MW_j`.
+The form thus needs no call to the property library, and it has no
+denominator from another time level. The chemistry event writes
+`cm[]*ln(rho_start/rho_end)/dt` to `drhodt_chem`, per unit volume of gas.
+`update_divergence()` adds it to `divu2` with the same `(1-f)` weight as the
+other terms. `test/gas-source-cell.c` compares it with a sub-stepped
+reference.
 
-The same flag switches on the filter of the divergence source in
-`navier-stokes/centered-phasechange.h`. Set `gas_source_filter_passes = 0`
-there to keep the exact source and remove the filter.
+The filter of the divergence source in `navier-stokes/centered-phasechange.h`
+goes with this form. Set `gas_source_filter_passes = 0` to remove the filter.
 
-The exact form covers the gas-phase reactions of the external gas only. The
-pore gas inside the solid keeps the source vector of the reactor, because its
-temperature equation carries the heat capacity of the solid and of the gas
-together, and the closed form does not apply there.
+The exact form covers the external gas only. The pore gas inside the solid
+keeps the source vector of the reactor, because its temperature equation
+carries the heat capacity of the solid and of the gas together.
 
 Caution: `TURN_OFF_HEAT_OF_REACTION` zeroes the temperature increment of the
-reactor, so with the exact form the heat release also leaves the expansion.
-This matches the averaged form.
-*/
+reactor, so the heat release also leaves the expansion.
 
-#ifndef GAS_SOURCE_EXACT
-# define GAS_SOURCE_EXACT 0
-#endif
+Caution: do not read the end-state density from `data.rhog` after the solve.
+`reactors.h` starts the reactor with `UserDataODE data = *(UserDataODE *)args`,
+so the reactor writes `rhog` in a local copy and the caller keeps the old
+value.
 
-#if defined(BINNING) && GAS_SOURCE_EXACT
-# error "GAS_SOURCE_EXACT is not available with BINNING. The binning path\
- does not keep the start state of each cell."
-#endif
+The `BINNING` path does not keep the start state of each cell, so it cannot
+use the exact form. It keeps the step-averaged form
+`rho*(state_end - state_start)/dt` (the default) or, with
+`gas_source_averaged = false`, the rate at the end state. */
 
-#ifndef GAS_SOURCE_AVERAGED
-# define GAS_SOURCE_AVERAGED 1
-#endif
+#ifdef BINNING
+bool gas_source_averaged = true;
 
-#ifndef GAS_SOURCE_RHO_MEAN
-# define GAS_SOURCE_RHO_MEAN 0
-#endif
-
-#if defined(BINNING) && GAS_SOURCE_RHO_MEAN
-# error "GAS_SOURCE_RHO_MEAN needs the end state at the time of the start-state\
- subtraction. The binning path subtracts the start state before the solve and\
- does not keep it, so the mean weight is not available there yet."
-#endif
-
-bool gas_source_averaged = GAS_SOURCE_AVERAGED;
-bool gas_source_rho_mean = GAS_SOURCE_RHO_MEAN;
-
-/**
-The gas density at the end state, from the ideal gas law. `1/MW` is the sum of
-`Y_j/MW_j`, so this needs no call to the property library. Returns 0 if the
-state is not usable, and the caller then keeps the start value. */
-
-static double gas_end_state_density (Point point, const double * yend) {
-  double invMW = 0.;
-  for (int jj = 0; jj < NGS; jj++)
-    invMW += (yend[jj] > 0. ? yend[jj] : 0.)/gas_MWs[jj];
-  double T = yend[NGS];
-  if (!(invMW > 0.) || !(T > 0.))
-    return 0.;
-  return (Pref + p[])/(R_GAS*1000.*T*invMW);
-}
-
-#if GAS_SOURCE_EXACT
-/**
-The exact step mean of the expansion, `ln(rho_start/rho_end)`, from the two
-states of the reactor. Returns 0 if one of the states is not usable. */
-
-static double gas_log_expansion (Point point, const double * ystart,
-                                 const double * yend) {
-  double rho_start = gas_end_state_density (point, ystart);
-  double rho_end = gas_end_state_density (point, yend);
-  if (!(rho_start > 0.) || !(rho_end > 0.))
-    return 0.;
-  return log (rho_start/rho_end);
-}
-#else // !GAS_SOURCE_EXACT
 /**
 Instantaneous form: one extra evaluation of the reactor at the state `ys`. */
 
@@ -384,7 +260,35 @@ static void gas_sources_accumulate_state (Point point, const double * ys,
   }
   DTDtG[] += rho*cp*ys[NGS]*w;
 }
-#endif // GAS_SOURCE_EXACT
+#endif // BINNING
+
+/**
+The gas density at the end state, from the ideal gas law. `1/MW` is the sum of
+`Y_j/MW_j`, so this needs no call to the property library. Returns 0 if the
+state is not usable, and the caller then keeps the start value. */
+
+static double gas_end_state_density (Point point, const double * yend) {
+  double invMW = 0.;
+  for (int jj = 0; jj < NGS; jj++)
+    invMW += (yend[jj] > 0. ? yend[jj] : 0.)/gas_MWs[jj];
+  double T = yend[NGS];
+  if (!(invMW > 0.) || !(T > 0.))
+    return 0.;
+  return (Pref + p[])/(R_GAS*1000.*T*invMW);
+}
+
+/**
+The exact step mean of the expansion, `ln(rho_start/rho_end)`, from the two
+states of the reactor. Returns 0 if one of the states is not usable. */
+
+static double gas_log_expansion (Point point, const double * ystart,
+                                 const double * yend) {
+  double rho_start = gas_end_state_density (point, ystart);
+  double rho_end = gas_end_state_density (point, yend);
+  if (!(rho_start > 0.) || !(rho_end > 0.))
+    return 0.;
+  return log (rho_start/rho_end);
+}
 
 /**
 Convenience wrapper for the per-cell path, which holds both states and where
@@ -392,32 +296,323 @@ Convenience wrapper for the per-cell path, which holds both states and where
 
 static void accumulate_gas_sources (Point point, const double * ystart,
                                     const double * yend) {
-#if GAS_SOURCE_EXACT
   if (dt > 0.)
     drhodt_chem[] += cm[]*gas_log_expansion (point, ystart, yend)/dt;
-#else
-  if (gas_source_averaged) {
-    double rho = rhoGv_G[], cp = cpGv_G[];
-
-    /**
-    The mean weight. Both calls below still use one common `rho`, which is
-    what keeps the result an increment of `Y` and not an increment of
-    `rho*Y`. */
-
-    if (gas_source_rho_mean) {
-      double rho_end = gas_end_state_density (point, yend);
-      if (rho_end > 0.)
-        rho = 0.5*(rho + rho_end);
-    }
-
-    gas_sources_accumulate_state (point, ystart, rho, cp, -1.);
-    gas_sources_accumulate_state (point, yend,   rho, cp, +1.);
-  }
-  else
-    gas_sources_instantaneous (point, yend);
-#endif
 }
 #endif
+
+/**
+## The gate that skips the cells the step cannot change
+
+The gate spends **one** evaluation of the reactor right-hand side to decide
+whether the stiff solve of a gas cell can change the state over the step.
+With `biomass/Solid-gas-88` the gas branch solves 88 equations in every cell
+that holds gas. In the free stream the mixture is air that does not react,
+but the stiff solve still costs 1.8 to 3.8 ms, about 100 evaluations. When
+the change of the step is below the tolerances, the gate applies the explicit
+update, which is exact at that size, and skips the solve.
+
+The margin is large. Air at 1123 K gives `max|dY|` of 2e-17 and `|dT|` of
+3e-13 K over a step of 2.4e-4 s. Hot air with 0.5 per cent of CO and 0.5 per
+cent of tar gives 2e-4 and 3e-2 K.
+
+An ignition does not close the gate. `test/gate-ignition.c` marches a batch
+reactor with the pyrolysis gas in air from 800 K to 1300 K. The gate stays
+open on every one of the 3000 steps, and the gated trajectory is equal to the
+ungated one to the last bit, also through an induction of 0.48 s at 800 K.
+
+The tolerances are the size of the state that the gate throws away on one
+step, thus of the perturbation that it feeds to the solver. At
+`FROZEN_CELL_YTOL` = 1e-10 a 2-D run at level 8 kept the mass, `Tmax` and
+`dt`, but the projection residual moved by 5e-5 from t = 0.33 s. At 1e-15 the
+run is equal to the ungated run in every column. The tolerances below are
+40 times above the rate of the free stream, so the gate keeps its work and
+the trajectory stays reproducible.
+
+`FROZEN_CELL_GATE` 0 removes the gate. Every gas cell then goes to the stiff
+solve.
+
+A 2-D `fatehi-combustion` at level 7 with 88 species reaches 1.28 times the
+simulated time of the ungated case over a fixed wall budget (1.43 times at
+`FROZEN_CELL_YTOL` = 1e-10). Caution: compare two builds only inside one batch
+of runs. The absolute time swings 15 per cent from one run to the next. */
+
+#ifndef FROZEN_CELL_YTOL
+# define FROZEN_CELL_YTOL 1e-15
+#endif
+
+#ifndef FROZEN_CELL_TTOL
+# define FROZEN_CELL_TTOL 1e-11
+#endif
+
+/**
+The number of cells that the gate skipped over the last step, over both
+halves of the Strang split. The value is the total over every rank and every
+thread. With `CHEMISTRY_LOG` the last sweep of the step prints it on a line
+that starts with `GATE`. A case can also print it in its own log. */
+
+int frozen_cell_gate_n = 0;
+
+/**
+## The Strang split of the gas chemistry
+
+A Lie split integrates the gas reactor over the full `dt` at the start of
+the step, and the advection and the implicit diffusion follow. At level 10
+this split carries the whole `Tmax(dt)` law: the jump of `Tmax` over the
+chemistry is 50.9, 28.8, 15.7 and 8.4 K at `dt` 4e-4, 2e-4, 1e-4 and 5e-5 s,
+thus first order in `dt`.
+
+The gas chemistry therefore uses a symmetric (Strang) split when
+`GAS_CHEMISTRY_STRANG` is 1 (the default):
+
+    R(dt/2)   the `chemistry` event, first in the step
+    T(dt)     VOF, advection, interface, species and temperature solves
+    R(dt/2)   the `tracer_diffusion` event below, after the solves
+
+The second half runs before `shrinking.h` puts `uf` back, before the
+momentum and the projection, and before `end_timestep` and `adapt`. So the
+output, the probes of `end_timestep` and the refinement criterion all read
+the state after the second half.
+
+What the split covers:
+
+* The gas-phase reactions of the external gas (`YGList_G`, `TG`). This is
+  where the flame is.
+* NOT the solid reactor. The solid, the pore gas (`YGList_S`, `TS`) and
+  `porosity` stay on the full `dt` in the first call. The pore gas
+  reacts inside the same stiff system as the solid, with the heat capacity of
+  the solid in the temperature equation, so a split of the pore gas needs a
+  split of the whole solid reactor. The solid changes slowly: `TS` changes
+  by 0.05 to 0.11 K per step, and the split error of the solid is 0.1 to
+  0.3 % of `omega`. So `omega`, `zeta`, `prod`, `ubf` and `gas_source` come
+  from one full-dt solve at the start of the step. The projection of the
+  step reads the same `gas_source`.
+
+The expansion of the gas reactions (the chemistry part of `drhodt`):
+
+* Both halves use the exact form `ln(rho_start/rho_end)/dt` of the half.
+  The form divides by the step `dt`, not by `dt/2`, so the increment of
+  each half becomes its share of the mean rate of the step.
+* The first half adds its increment to `drhodt_chem`.
+  `update_divergence()` then puts it into `drhodt`, with no change.
+* The second half runs after `update_divergence()`. It therefore adds its
+  share directly to `drhodt`, with the weight `(1-f)` and the factor `cm`
+  that `update_divergence()` gives the chemistry part. The projection of the
+  same step reads `drhodt` in `advection_term` and in `projection`, and both
+  run after this event. So the projection of step n receives the sum of the
+  two half increments divided by `dt`. No increment enters two
+  projections, and no increment is lost.
+
+The heat of reaction is not counted two times. The gas reactor puts its heat
+into `TG` only. `data.sources` of the gas branch stays `NULL`, and the
+expansion source of each half comes from the state change of that half only.
+
+The state that the second half reads:
+
+* `TG` and `YGList_G` in tracer form, `* (1 - f)`, with `f` after the VOF
+  sweep. The `tracer_diffusion` event of `multicomponent-varprop.h` has put
+  them back into tracer form and has set `T = TS + TG`. The reactor divides
+  by the same `1 - f`, and this event sets `T = TS + TG` again at its end.
+* `p` of the start of the step, because the projection has not run.
+* `rhoGv_G` and `cpGv_G` of the `update_properties()` call before the solves.
+  The reactor recomputes `rho` and `cp` from the state at each evaluation
+  under `VARPROP`, so these are start values only. The expansion of the
+  second half does not use them.
+* The properties are not recomputed after the second half. The momentum of
+  this step reads the properties of the start of the step. `adapt`
+  then computes the properties from the state after the second half, so the
+  next step starts with consistent properties.
+
+What the split can change, and what it cannot:
+
+* At a constant `dt` the Strang sequence is the Lie sequence with one more
+  half step at the end: `R_h T R_h R_h T R_h = R_h T R T R_h`. So the state
+  at the end of a Strang step is `R(dt/2)` applied to the state after the
+  transport of a Lie run. The split changes the time level at which the
+  output, `adapt` and the probes read the state. It also moves the
+  expansion of each half into the projection of its own step. It does not
+  change the sequence of the reactor and the transport. So expect a
+  smaller `Tmax(dt)` law with the split, not zero.
+* The transport is first order in time: the diffusion solves are backward
+  Euler. The whole step therefore stays first order. The split removes only
+  the first-order error of the splitting.
+* `test/strang-cell.c` (one stirred cell, exact transport) gives, against a
+  fine reference: Lie -42.8, -21.2, -10.5, -5.2 K at `dt` 8e-4, 4e-4,
+  2e-4, 1e-4 (first order), and Strang +1.76, +0.50, +0.19, +0.11 K. Below
+  about 0.1 K the tolerance of the stiff solver sets the error.
+
+Cost: the gas reactor runs two times in each step, each time over `dt/2`.
+Each call of the Gear solver has a fixed start cost, so a cell that does
+not react costs about 2 times. A burning cell costs about 1.1 times (0.4 to
+1.8, `test/strang-cell.c`), because the solver takes fewer internal steps
+over a shorter interval. At level 8 before the ignition, the chemistry cost
+1.64 times the Lie split. The solid reactor does not change. With
+`CHEMISTRY_LOG` the second half prints its time on a line that starts with
+`S2`.
+
+Restart: the split adds no field.
+
+The gate tests each half with its own `dt/2`. The `BINNING` path keeps the
+Lie split.
+
+`GAS_CHEMISTRY_STRANG` 0 gives the Lie split: the `chemistry` event
+integrates the gas reactor over the full `dt`, and the build has no second
+half. */
+
+#if GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
+# ifdef VARPROP
+/**
+The expansion of the second half, per unit volume of the cell. See the list
+above for the form. */
+
+static void strang_second_half_expansion (Point point, const double * ystart,
+                                          const double * yend)
+{
+#  ifndef NO_EXPANSION
+  if (!(dt > 0.))
+    return;
+  double rate = 0.;
+  rate = gas_log_expansion (point, ystart, yend);
+  drhodt[] -= (1. - f[])*cm[]*rate/dt;
+#  endif // !NO_EXPANSION
+}
+# endif // VARPROP
+#endif // GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
+
+#if !defined(BINNING) && !TURN_OFF_GAS_REACTIONS
+/**
+## The sweep of the gas-phase reactions
+
+This function holds the loop of the gas-phase reactions of the external gas.
+`dtc` is the time over which the reactor integrates: `dt/2` for each half
+of the Strang split, `dt` for the Lie split. The expansion source
+always divides by the step `dt`, so each half gives its part of the mean of
+the step. `second_half` is true only for the second half of the Strang split.
+That half writes its expansion directly into `drhodt`, because
+`update_divergence()` has already run. See "The Strang split of the gas
+chemistry" above. */
+
+static void gas_phase_reactions (double dtc, bool second_half)
+{
+  foreach (reduction(+:frozen_cell_gate_n)) {
+    if (f[] < 1. - F_ERR) {
+      double temperature = TG[]/(1. - f[]);
+      if (!(temperature > 273.) || !(temperature < 3500.))
+        continue;
+
+      // Freshly-uncovered cells can carry an all-zero composition: the RHS
+      // clamps each species to >= 0, so an empty vector reaches the
+      // mole-fraction conversion as MW = 1/0 (mirrors the solid-branch gate).
+      double ygsum_seed = 0.;
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        ygsum_seed += YG[];
+      }
+      if (!(ygsum_seed > 0.))
+        continue;
+
+      double y0ode[NGS + 1]; // NGS + T
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        y0ode[jj] = YG[]/(1. - f[]);
+      }
+      y0ode[NGS] = temperature;
+
+      /**
+      Keep the pre-reaction state: the step-averaged expansion source needs
+      both ends of the step. The copy is local and is discarded below. */
+
+#ifdef VARPROP
+      double ystart[NGS + 1];
+      for (int jj = 0; jj < NGS + 1; jj++)
+        ystart[jj] = y0ode[jj];
+#endif
+
+      UserDataODE data;
+      data.P = Pref + p[];
+      data.T = y0ode[NGS];
+      data.sources = NULL; // do not fill sources during integration; predict after the solve
+# ifdef VARPROP
+      data.rhog = rhoGv_G[];
+      data.cpg = cpGv_G[];
+# else
+      data.rhog = rhoG;
+      data.cpg = cpG;
+# endif
+
+      /**
+      One evaluation decides whether this cell reacts at all. When it does not,
+      the explicit update carries the whole change of the step, and the stiff
+      solve has nothing to add. The gate then continues to the write-back
+      below, so the expansion source and the fields stay on the same path as a
+      solved cell. */
+
+      bool frozen = false;
+#if FROZEN_CELL_GATE
+      if (dtc > 0.) {
+        double dy_gate[NGS + 1];
+        gas_batch_nonisothermal_constantpressure (y0ode, dtc, dy_gate, &data);
+
+        double dYmax = 0.;
+        for (int jj = 0; jj < NGS; jj++)
+          dYmax = fmax (dYmax, fabs (dy_gate[jj]));
+
+        if (dYmax*dtc < FROZEN_CELL_YTOL &&
+            fabs (dy_gate[NGS])*dtc < FROZEN_CELL_TTOL) {
+          frozen = true;
+          frozen_cell_gate_n++;
+          for (int jj = 0; jj < NGS + 1; jj++)
+            y0ode[jj] += dtc*dy_gate[jj];
+        }
+      }
+#endif // FROZEN_CELL_GATE
+
+      if (!frozen)
+      /**
+        Using an explicit solver for gas-phase reactions is not
+        recommended as they are usually stiff.
+        */
+      OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dtc, y0ode, &data);
+
+      /**
+      Keep the pre-integration state if the solve diverged (see the solid
+      branch above). */
+
+      bool valid = true;
+      for (int jj = 0; jj < NGS + 1; jj++)
+        if (!isfinite (y0ode[jj]))
+          valid = false;
+
+      if (!valid)
+        continue;
+
+      /**
+        The expansion source comes from the two ends of the half,
+        `ln(rho_start/rho_end)/dt`. */
+
+# ifdef VARPROP
+#  if GAS_CHEMISTRY_STRANG
+      if (second_half)
+        strang_second_half_expansion (point, ystart, y0ode);
+      else
+#  endif
+        accumulate_gas_sources (point, ystart, y0ode);
+# endif
+
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1. - f[]) : 0.;
+      }
+      TG[] = y0ode[NGS]*(1. - f[]);
+    }
+  }
+
+# ifdef CHEMISTRY_LOG
+  if ((second_half || !GAS_CHEMISTRY_STRANG) && pid() == 0)
+    fprintf (stderr, "GATE %g %d\n", t, frozen_cell_gate_n);
+# endif
+}
+#endif // !BINNING && !TURN_OFF_GAS_REACTIONS
 
 event chemistry (i++) {
 
@@ -431,6 +626,8 @@ event chemistry (i++) {
   struct timespec start, end;
   clock_gettime (CLOCK_MONOTONIC, &start);
 #endif
+
+  frozen_cell_gate_n = 0;
 
 #ifdef SOLVE_TEMPERATURE
   odefunction batch = &solid_batch_nonisothermal_constantpressure;
@@ -448,9 +645,6 @@ event chemistry (i++) {
   foreach ()
     if (f[] > F_ERR) {
       double temperature = TS[]/f[];
-#if SOLID_SOURCE_DIAG
-      solid_diag[] = 2.;   // a guard below can still skip this cell
-#endif
       // Reject two FPE triggers before mutating state, both of which make the
       // gas-species mole-fraction conversion in the RHS divide by sum(y/MW)==0:
       //  - sliver-garbage temperature (TS/f outside a physical window);
@@ -471,9 +665,6 @@ event chemistry (i++) {
         continue;
 
       porosity[] /= f[];
-#if SOLID_SOURCE_DIAG
-      solid_diag[] = 1.;
-#endif
 
       double y0ode[NEQ];
       UserDataODE data;
@@ -548,15 +739,8 @@ event chemistry (i++) {
 
       if (!valid) {
         porosity[] *= f[]; // undo the tracer-form conversion above
-#if SOLID_SOURCE_DIAG
-        solid_diag[] = 3.;
-#endif
         continue;
       }
-
-#if SOLID_SOURCE_DIAG && defined(SOLVE_TEMPERATURE)
-      dTS_step[] = fabs (y0ode[NGS+NSS+1] - temperature);
-#endif
 
       /**
       The source term is predicted once, at the converged end-of-step state
@@ -727,86 +911,14 @@ event chemistry (i++) {
   }
 #else // !BINNING
 
-  foreach() {
-    if (f[] < 1. - F_ERR) {
-      double temperature = TG[]/(1. - f[]);
-      if (!(temperature > 273.) || !(temperature < 3500.))
-        continue;
+  /**
+  `TURN_OFF_GAS_REACTIONS` removes this whole loop, so no gas cell reacts.
+  The gas sources that the loop feeds are reset in every step, so they stay
+  at 0. The pore gas of the solid branch is switched in `reactors.h`. */
 
-      // Freshly-uncovered cells can carry an all-zero composition: the RHS
-      // clamps each species to >= 0, so an empty vector reaches the
-      // mole-fraction conversion as MW = 1/0 (mirrors the solid-branch gate).
-      double ygsum_seed = 0.;
-      for (int jj = 0; jj < NGS; jj++) {
-        scalar YG = YGList_G[jj];
-        ygsum_seed += YG[];
-      }
-      if (!(ygsum_seed > 0.))
-        continue;
-
-      double y0ode[NGS + 1]; // NGS + T
-      for (int jj = 0; jj < NGS; jj++) {
-        scalar YG = YGList_G[jj];
-        y0ode[jj] = YG[]/(1. - f[]);
-      }
-      y0ode[NGS] = temperature;
-
-      /**
-      Keep the pre-reaction state: the step-averaged expansion source needs
-      both ends of the step. The copy is local and is discarded below. */
-
-#ifdef VARPROP
-      double ystart[NGS + 1];
-      for (int jj = 0; jj < NGS + 1; jj++)
-        ystart[jj] = y0ode[jj];
-#endif
-
-      UserDataODE data;
-      data.P = Pref + p[];
-      data.T = y0ode[NGS];
-      data.sources = NULL; // do not fill sources during integration; predict after the solve
-# ifdef VARPROP
-      data.rhog = rhoGv_G[];
-      data.cpg = cpGv_G[];
-# else
-      data.rhog = rhoG;
-      data.cpg = cpG;
-# endif
-      /**
-        Using an explicit solver for gas-phase reactions is not
-        recommended as they are usually stiff.
-        */
-      OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dt, y0ode, &data);
-
-      /**
-      Keep the pre-integration state if the solve diverged (see the solid
-      branch above). */
-
-      bool valid = true;
-      for (int jj = 0; jj < NGS + 1; jj++)
-        if (!isfinite (y0ode[jj]))
-          valid = false;
-
-      if (!valid)
-        continue;
-
-      /**
-        The expansion source is taken over the whole step, as
-        `(state_end - state_start)/dt`, which is conservative. Set
-        `gas_source_averaged = false` to recover the older instantaneous form,
-        evaluated at the converged end-of-step state. */
-
-# ifdef VARPROP
-      accumulate_gas_sources (point, ystart, y0ode);
-# endif
-
-      for (int jj = 0; jj < NGS; jj++) {
-        scalar YG = YGList_G[jj];
-        YG[] = (y0ode[jj] > 0.) ? y0ode[jj]*(1. - f[]) : 0.;
-      }
-      TG[] = y0ode[NGS]*(1. - f[]);
-    }
-  }
+# if !TURN_OFF_GAS_REACTIONS
+  gas_phase_reactions (GAS_CHEMISTRY_STRANG ? 0.5*dt : dt, false);
+# endif // !TURN_OFF_GAS_REACTIONS
 #endif // BINNING
 
 #ifdef CHEMISTRY_LOG
@@ -831,4 +943,46 @@ event chemistry (i++) {
   fprintf (stderr, "\n");
 #endif
 }
+
+#if GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
+/**
+## The second half of the Strang split
+
+This event runs after the `tracer_diffusion` events of
+`multicomponent-varprop.h`, because `chemistry.h` comes before them and
+same-name events run in reverse order of the declaration. It runs before the
+`tracer_diffusion` event of `shrinking.h`, which the case includes before
+`multicomponent-varprop.h`. Check the order with `qcc -events`. */
+
+event tracer_diffusion (i++) {
+
+  if (!(dt > 0.))
+    return 0;
+
+# ifdef CHEMISTRY_LOG
+  struct timespec s2start, s2end;
+  clock_gettime (CLOCK_MONOTONIC, &s2start);
+# endif
+
+  gas_phase_reactions (0.5*dt, true);
+
+  /**
+  The output and `adapt` read `T`. The gas reactor changes `TG` only. */
+
+# ifdef SOLVE_TEMPERATURE
+  foreach()
+    T[] = TS[] + TG[];
+# endif
+
+# ifdef CHEMISTRY_LOG
+  clock_gettime (CLOCK_MONOTONIC, &s2end);
+  double s2time = (s2end.tv_sec - s2start.tv_sec) +
+                  (s2end.tv_nsec - s2start.tv_nsec)*1e-9;
+  mpi_all_reduce (s2time, MPI_DOUBLE, MPI_SUM);
+  if (pid() == 0)
+    fprintf (stderr, "S2 %g %g\n", t, s2time);
+# endif
+}
+#endif // GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
+
 #endif // TURN_OFF_REACTIONS

@@ -300,6 +300,116 @@ static inline void dri_weights (double ff, double * wS, double * wG)
 
 #endif // DRI_ON
 
+#ifdef FICK_CORRECTED
+/**
+## The Fick correction of one gas phase
+
+The function applies the Fick correction to the species `YList` of one gas
+phase: the external gas (`_G`) or the pore gas (`_S`). `XList`, `DmixList`,
+`MWmix`, `rhoGv` and `fs` are the fields of the same phase. The function
+returns the largest `|u_c|/Delta` of the phase, where `u_c = phic/rho` is the
+corrective velocity. The `tracer_diffusion` event below calls it once for
+each phase. The correction of one phase does not read the fields of the other
+phase. */
+
+static double fick_correct_species (scalar * YList, scalar * XList,
+                                    scalar * DmixList, scalar MWmix,
+                                    scalar rhoGv, face vector fs)
+{
+  double uodx = 0.;
+  face vector phictot[];
+  foreach_face() {
+    phictot.x[] = 0.;
+    for (int jj=0; jj<NGS; jj++) {
+      scalar DmixG = DmixList[jj];
+      double DmixGf = face_value(DmixG, 0);
+      double rhoGf;
+# ifdef VARPROP
+      rhoGf = face_value(rhoGv, 0);
+# else
+      rhoGf = rhoG;
+# endif
+
+# ifdef MOLAR_DIFFUSION
+      scalar XG = XList[jj];
+      double MWmixf = face_value(MWmix, 0);
+      phictot.x[] += (MWmixf > 0.) ? rhoGf*DmixGf*face_gradient_x (XG, 0)*gas_MWs[jj]/MWmixf : 0.;
+# else
+      scalar YG = YList[jj];
+      phictot.x[] += rhoGf*DmixGf*face_gradient_x (YG, 0);
+# endif
+    }
+    phictot.x[] *= fs.x[]*fm.x[];
+  }
+
+  //Apply the Fick's law correction
+  for (int jj=0; jj<NGS; jj++) {
+    face vector phicjj[];
+    foreach_face() {
+      phicjj.x[] = phictot.x[];
+#ifdef MOLAR_DIFFUSION
+      scalar DmixG = DmixList[jj];
+      double DmixGf = face_value(DmixG, 0);
+      double MWmixf = face_value(MWmix, 0);
+
+      double rhoGf;
+# ifdef VARPROP
+      rhoGf = face_value(rhoGv, 0);
+# else
+      rhoGf = rhoG;
+# endif
+      phicjj.x[] -= (MWmixf > 0.) ? rhoGf*DmixGf/MWmixf*face_gradient_x (MWmix, 0)*fs.x[]*fm.x[] : 0.;
+#endif
+    }
+
+    /**
+    Convert the corrective mass flux into a velocity before the transport.
+
+    `tracer_fluxes()` reads its second argument as a velocity: it builds the
+    Courant number `un = dt*uf/(fm*Delta)` from it, and it limits the slope
+    with the factor `(1 - s*un)`. `phicjj` is a mass flux in kg/m2/s, so
+    divide it by the face density here, and multiply the flux back after the
+    call.
+
+    Caution: `gradients()` reads a `NULL` gradient as the unlimited centred
+    slope, not as no slope. `minmod2` is the limited one. */
+
+    scalar YG = YList[jj];
+
+    face vector rhocjj[];
+    foreach_face (reduction(max:uodx)) {
+      double rhoGf;
+#ifdef VARPROP
+      rhoGf = face_value (rhoGv, 0);
+#else
+      rhoGf = rhoG;
+#endif
+      rhocjj.x[] = rhoGf;
+      phicjj.x[] = (rhoGf > 0.) ? phicjj.x[]/rhoGf : 0.;
+      if (fm.x[] > 0.)
+        uodx = max (uodx, fabs (phicjj.x[])/(fm.x[]*Delta));
+    }
+
+    double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
+    YG.gradient = minmod2; // NULL means the unlimited centred slope, not no slope
+    face vector flux[];
+    tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
+    YG.gradient = gradient_backup; // restore the gradient function
+
+    // back to a mass flux, so that the balance is untouched
+    foreach_face()
+      flux.x[] *= rhocjj.x[];
+
+    // apply the corrective fluxes
+    foreach()
+      foreach_dimension()
+        YG[] += (rhoGv[] > 0.) ? dt/(rhoGv[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.;
+  }
+
+  return uodx;
+}
+#endif // FICK_CORRECTED
+
 
 /**
 ## The time level of the properties
@@ -732,189 +842,16 @@ event tracer_diffusion (i++) {
 #ifdef FICK_CORRECTED
 
   /**
-  The largest `|u_c|/Delta` of this step, where `u_c = phic/rho` is the
-  corrective velocity. The `stability` event of the next step reads it. */
+  The largest `|u_c|/Delta` of this step over both phases, where
+  `u_c = phic/rho` is the corrective velocity. The `stability` event of the
+  next step reads it. */
 
-  double uodx = 0.;
-  face vector phicGtot[];
-  foreach_face() {
-    phicGtot.x[] = 0.;
-    for (int jj=0; jj<NGS; jj++) {
-      scalar DmixG = DmixGList_G[jj];
-      double DmixGf = face_value(DmixG, 0);
-      double rhoGf;
-# ifdef VARPROP
-      rhoGf = face_value(rhoGv_G, 0);
-# else
-      rhoGf = rhoG;
-# endif
-
-# ifdef MOLAR_DIFFUSION
-      scalar XG = XGList_G[jj];
-      double MWmixf = face_value(MWmixG_G, 0);
-      phicGtot.x[] += (MWmixf > 0.) ? rhoGf*DmixGf*face_gradient_x (XG, 0)*gas_MWs[jj]/MWmixf : 0.;
-# else
-      scalar YG = YGList_G[jj];
-      phicGtot.x[] += rhoGf*DmixGf*face_gradient_x (YG, 0);
-# endif
-    }
-    phicGtot.x[] *= fsG.x[]*fm.x[];
-  }
-
-  face vector phicStot[];
-  foreach_face() {
-    phicStot.x[] = 0.;
-    for (int jj=0; jj<NGS; jj++) {
-      scalar DmixG = DmixGList_S[jj];
-      double DmixGf = face_value(DmixG, 0);
-      double rhoGf;
-# ifdef VARPROP
-      rhoGf = face_value(rhoGv_S, 0);
-# else
-      rhoGf = rhoG;
-# endif
-
-# ifdef MOLAR_DIFFUSION
-      scalar XG = XGList_S[jj];
-      double MWmixf = face_value(MWmixG_S, 0);
-      phicStot.x[] += (MWmixf > 0.) ? rhoGf*DmixGf*face_gradient_x (XG, 0)*gas_MWs[jj]/MWmixf : 0.;
-# else
-      scalar YG = YGList_S[jj];
-      phicStot.x[] += rhoGf*DmixGf*face_gradient_x (YG, 0);
-# endif
-    }
-    phicStot.x[] *= fsS.x[]*fm.x[];
-  }
-
-  //Apply the Fick's law correction
-  for (int jj=0; jj<NGS; jj++) {
-    face vector phicjj[];
-    foreach_face() {
-      phicjj.x[] = phicGtot.x[];
-#ifdef MOLAR_DIFFUSION
-      scalar DmixG = DmixGList_G[jj];
-      double DmixGf = face_value(DmixG, 0);
-      double MWmixf = face_value(MWmixG_G, 0);
-
-      double rhoGf;
-# ifdef VARPROP
-      rhoGf = face_value(rhoGv_G, 0);
-# else
-      rhoGf = rhoG;
-# endif
-      phicjj.x[] -= (MWmixf > 0.) ? rhoGf*DmixGf/MWmixf*face_gradient_x (MWmixG_G, 0)*fsG.x[]*fm.x[] : 0.;
-#endif
-    }
-
-    /**
-    Convert the corrective mass flux into a velocity before the transport.
-
-    `tracer_fluxes()` reads its second argument as a velocity: it builds the
-    Courant number `un = dt*uf/(fm*Delta)` from it, and it limits the slope
-    with the factor `(1 - s*un)`. `phicjj` is a mass flux in kg/m2/s, so
-    divide it by the face density here, and multiply the flux back after the
-    call.
-
-    Caution: `gradients()` reads a `NULL` gradient as the unlimited centred
-    slope, not as no slope. `minmod2` is the limited one. */
-
-    scalar YG = YGList_G[jj];
-
-    face vector rhocjj[];
-    foreach_face (reduction(max:uodx)) {
-      double rhoGf;
-#ifdef VARPROP
-      rhoGf = face_value (rhoGv_G, 0);
-#else
-      rhoGf = rhoG;
-#endif
-      rhocjj.x[] = rhoGf;
-      phicjj.x[] = (rhoGf > 0.) ? phicjj.x[]/rhoGf : 0.;
-      if (fm.x[] > 0.)
-        uodx = max (uodx, fabs (phicjj.x[])/(fm.x[]*Delta));
-    }
-
-    double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
-    YG.gradient = minmod2; // NULL means the unlimited centred slope, not no slope
-    face vector flux[];
-    tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
-    YG.gradient = gradient_backup; // restore the gradient function
-
-    // back to a mass flux, so that the balance is untouched
-    foreach_face()
-      flux.x[] *= rhocjj.x[];
-
-    // apply the corrective fluxes
-    foreach()
-      foreach_dimension()
-        YG[] += (rhoGv_G[] > 0.) ? dt/(rhoGv_G[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.;
-  }
-
-  for (int jj=0; jj<NGS; jj++) {
-    face vector phicjj[];
-    foreach_face() {
-      phicjj.x[] = phicStot.x[];
-#ifdef MOLAR_DIFFUSION
-      scalar DmixG = DmixGList_S[jj];
-      double DmixGf = face_value(DmixG, 0);
-      double MWmixf = face_value(MWmixG_S, 0);
-
-      double rhoGf;
-# ifdef VARPROP
-      rhoGf = face_value(rhoGv_S, 0);
-# else
-      rhoGf = rhoG;
-# endif
-      phicjj.x[] -= (MWmixf > 0.) ? rhoGf*DmixGf/MWmixf*face_gradient_x (MWmixG_S, 0)*fsS.x[]*fm.x[] : 0.;
-#endif
-  }
-
-    /**
-    Convert the corrective mass flux into a velocity before the transport.
-
-    `tracer_fluxes()` reads its second argument as a velocity: it builds the
-    Courant number `un = dt*uf/(fm*Delta)` from it, and it limits the slope
-    with the factor `(1 - s*un)`. `phicjj` is a mass flux in kg/m2/s, so
-    divide it by the face density here, and multiply the flux back after the
-    call.
-
-    Caution: `gradients()` reads a `NULL` gradient as the unlimited centred
-    slope, not as no slope. `minmod2` is the limited one. */
-
-    scalar YG = YGList_S[jj];
-
-    face vector rhocjj[];
-    foreach_face (reduction(max:uodx)) {
-      double rhoGf;
-#ifdef VARPROP
-      rhoGf = face_value (rhoGv_S, 0);
-#else
-      rhoGf = rhoG;
-#endif
-      rhocjj.x[] = rhoGf;
-      phicjj.x[] = (rhoGf > 0.) ? phicjj.x[]/rhoGf : 0.;
-      if (fm.x[] > 0.)
-        uodx = max (uodx, fabs (phicjj.x[])/(fm.x[]*Delta));
-    }
-
-    double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
-    YG.gradient = minmod2; // NULL means the unlimited centred slope, not no slope
-    face vector flux[];
-    tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
-    YG.gradient = gradient_backup; // restore the gradient function
-
-    // back to a mass flux, so that the balance is untouched
-    foreach_face()
-      flux.x[] *= rhocjj.x[];
-
-    // apply the corrective fluxes
-    foreach()
-      foreach_dimension()
-        YG[] += (rhoGv_S[] > 0.) ? dt/(rhoGv_S[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.;
-  }
-
+  double uodx = fick_correct_species (YGList_G, XGList_G, DmixGList_G,
+                                      MWmixG_G, rhoGv_G, fsG);
+  uodx = max (uodx, fick_correct_species (YGList_S, XGList_S, DmixGList_S,
+                                          MWmixG_S, rhoGv_S, fsS));
   corrective_uodx = uodx;
-  #endif //FICK_CORRECTED
+#endif // FICK_CORRECTED
 
   scalar theta1[], theta2[];
 

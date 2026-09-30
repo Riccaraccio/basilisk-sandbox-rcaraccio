@@ -82,22 +82,27 @@ double ITT_tolS, ITT_tolG;
 double ITT_iS, ITT_iG, ITT_nrelaxS, ITT_nrelaxG, ITT_resaS, ITT_resaG;
 
 event tsolve_output (i++, last) {
-  static FILE * fp = NULL;
-  if (!fp) {
-    fp = fopen ("tsolve.dat", restarted ? "a" : "w");
+
+  /**
+  Basilisk closes `stderr` and `stdout` of the ranks above 0, but not a file
+  that a rank opens itself. Only rank 0 writes this file. */
+
+  if (pid() == 0) {
+    static FILE * fp = NULL;
     if (!fp) {
-      fprintf (stderr, "Error opening tsolve.dat\n");
-      return 0;
+      fp = fopen ("tsolve.dat", restarted ? "a" : "w");
+      if (!fp) {
+        fprintf (stderr, "Error opening tsolve.dat\n");
+        return 0;
+      }
+      if (!restarted)
+        fprintf (fp, "#t(1) dt(2) tolS(3) iS(4) nrelaxS(5) resaS(6)"
+                     " tolG(7) iG(8) nrelaxG(9) resaG(10)\n");
     }
-    if (!restarted)
-      fprintf (fp, "#t(1) dt(2) tolS(3) iS(4) nrelaxS(5) resaS(6)"
-                   " tolG(7) iG(8) nrelaxG(9) resaG(10)\n");
+
+    fprintf (fp, "%g %g %g %g %g %g %g %g %g %g\n",
+             t, dt, ITT_tolS, ITT_iS, ITT_nrelaxS, ITT_resaS,
+             ITT_tolG, ITT_iG, ITT_nrelaxG, ITT_resaG);
+    fflush (fp);
   }
-
-  fprintf (fp, "%g %g %g %g %g %g %g %g %g %g\n",
-           t, dt, ITT_tolS, ITT_iS, ITT_nrelaxS, ITT_resaS,
-           ITT_tolG, ITT_iG, ITT_nrelaxG, ITT_resaG);
-  fflush (fp);
-
-  return 0;
 }

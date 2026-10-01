@@ -71,6 +71,8 @@ per-cell sweep and the case gets no binning, so stop the build. */
 
 #define BINNING
 
+#include <stdint.h>
+
 /**
 ## Bin and bin table
 
@@ -82,12 +84,12 @@ typedef struct {
   long ncells;
   double mass, volume;
   double * phi, * phi0;
-  long * key;
+  int64_t * key;
 } Bin;
 
 typedef struct {
   int ntargets, nfields;
-  long L;
+  int64_t L;
   int nbins, capacity;
   long nmask; // the cells of the mask on this rank
   Bin * bins;
@@ -98,17 +100,23 @@ typedef struct {
 ## The hash table of the tuples
 
 Open addressing with linear probing. The size is a power of 2 with at least
-two slots for each key, so a probe sequence is short. */
+two slots for each key, so a probe sequence is short.
 
-static unsigned long binning_key_hash (const long * key, int n)
+The hash is 64-bit FNV-1a over the indices (offset basis
+14695981039346656037, prime 1099511628211), then the final mix of
+MurmurHash3, so that the low bits that select the slot depend on all bits.
+The keys and the hash use `int64_t` and `uint64_t`, not `long`: `long` has
+32 bits on 64-bit Windows, and `L` can be 1e12. */
+
+static uint64_t binning_key_hash (const int64_t * key, int n)
 {
-  unsigned long h = 1469598103934665603UL;
+  uint64_t h = UINT64_C(14695981039346656037);
   for (int l = 0; l < n; l++) {
-    h ^= (unsigned long) key[l];
-    h *= 1099511628211UL;
+    h ^= (uint64_t) key[l];
+    h *= UINT64_C(1099511628211);
   }
   h ^= h >> 33;
-  h *= 0xff51afd7ed558ccdUL;
+  h *= UINT64_C(0xff51afd7ed558ccd);
   h ^= h >> 33;
   return h;
 }
@@ -125,12 +133,12 @@ static int binning_slots_size (long nkeys)
 Return the slot of `key` in `slots` (the slot holds an index into `keys`,
 or -1 if it is empty). */
 
-static int binning_slot (const int * slots, int size, const long * keys,
-                         int n, const long * key)
+static int binning_slot (const int * slots, int size, const int64_t * keys,
+                         int n, const int64_t * key)
 {
   int s = binning_key_hash (key, n) & (size - 1);
   while (slots[s] >= 0) {
-    const long * k = keys + (long) slots[s]*n;
+    const int64_t * k = keys + (int64_t) slots[s]*n;
     bool same = true;
     for (int l = 0; l < n && same; l++)
       if (k[l] != key[l])
@@ -142,7 +150,7 @@ static int binning_slot (const int * slots, int size, const long * keys,
   return s;
 }
 
-static Bin * binning_add_bin (BinTable * table, const long * key)
+static Bin * binning_add_bin (BinTable * table, const int64_t * key)
 {
   if (table->nbins == table->capacity) {
     table->capacity = table->capacity ? 2*table->capacity : 64;
@@ -154,7 +162,7 @@ static Bin * binning_add_bin (BinTable * table, const long * key)
   bin->mass = bin->volume = 0.;
   bin->phi = calloc (2*table->nfields, sizeof (double));
   bin->phi0 = bin->phi + table->nfields;
-  bin->key = malloc (table->ntargets*sizeof (long));
+  bin->key = malloc (table->ntargets*sizeof (int64_t));
   for (int l = 0; l < table->ntargets; l++)
     bin->key[l] = key[l];
   return bin;
@@ -199,10 +207,10 @@ BinTable * binning (scalar * fields, scalar * targets, double tol,
   BinTable * table = calloc (1, sizeof (BinTable));
   table->ntargets = M;
   table->nfields = nf;
-  table->L = (long) (1./max (tol, 1e-12) + 0.5);
+  table->L = (int64_t) (1./max (tol, 1e-12) + 0.5);
   if (table->L < 1)
     table->L = 1;
-  long L = table->L;
+  int64_t L = table->L;
 
   scalar id = new scalar;
   table->id = id;
@@ -235,18 +243,18 @@ BinTable * binning (scalar * fields, scalar * targets, double tol,
   int * slots = malloc (size*sizeof (int));
   for (int s = 0; s < size; s++)
     slots[s] = -1;
-  long * keys = malloc ((nmask > 0 ? nmask : 1)*(M > 0 ? M : 1)*sizeof (long));
+  int64_t * keys = malloc ((nmask > 0 ? nmask : 1)*(M > 0 ? M : 1)*sizeof (int64_t));
 
   foreach (serial) {
     id[] = -1;
     if (mask[]) {
-      long key[M + 1];
+      int64_t key[M + 1];
       int m = 0;
       for (scalar t in targets) {
         double range = tmax[m] - tmin[m];
-        long il = 0;
+        int64_t il = 0;
         if (range > 0. && isfinite (t[]))
-          il = (long) floor ((t[] - tmin[m])/range*L);
+          il = (int64_t) floor ((t[] - tmin[m])/range*L);
         key[m] = il < 0 ? 0 : il > L ? L : il;
         m++;
       }
@@ -254,7 +262,7 @@ BinTable * binning (scalar * fields, scalar * targets, double tol,
       if (slots[s] < 0) {
         slots[s] = table->nbins;
         for (int k = 0; k < M; k++)
-          keys[(long) table->nbins*M + k] = key[k];
+          keys[(int64_t) table->nbins*M + k] = key[k];
         binning_add_bin (table, key);
       }
       id[] = slots[s];
@@ -406,13 +414,13 @@ void binning_mpi_report (const BinTable * table, const double * cost,
     counts = malloc (np*sizeof (int));
   MPI_Gather (&nb, 1, MPI_INT, counts, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-  long * keys = malloc ((nb > 0 ? nb : 1)*(M > 0 ? M : 1)*sizeof (long));
+  int64_t * keys = malloc ((nb > 0 ? nb : 1)*(M > 0 ? M : 1)*sizeof (int64_t));
   for (int i = 0; i < nb; i++)
     for (int l = 0; l < M; l++)
-      keys[(long) i*M + l] = table->bins[i].key[l];
+      keys[(int64_t) i*M + l] = table->bins[i].key[l];
 
   int * kcounts = NULL, * kdispl = NULL, * ccounts = NULL, * cdispl = NULL;
-  long * allkeys = NULL;
+  int64_t * allkeys = NULL;
   double * allcost = NULL;
   long ntot = 0;
   if (pid() == 0) {
@@ -423,10 +431,10 @@ void binning_mpi_report (const BinTable * table, const double * cost,
       kcounts[r] = counts[r]*M, kdispl[r] = ntot*M;
       ntot += counts[r];
     }
-    allkeys = malloc ((ntot > 0 ? ntot : 1)*(M > 0 ? M : 1)*sizeof (long));
+    allkeys = malloc ((ntot > 0 ? ntot : 1)*(M > 0 ? M : 1)*sizeof (int64_t));
     allcost = malloc ((ntot > 0 ? ntot : 1)*sizeof (double));
   }
-  MPI_Gatherv (keys, nb*M, MPI_LONG, allkeys, kcounts, kdispl, MPI_LONG,
+  MPI_Gatherv (keys, nb*M, MPI_INT64_T, allkeys, kcounts, kdispl, MPI_INT64_T,
                0, MPI_COMM_WORLD);
   MPI_Gatherv ((void *) cost, nb, MPI_DOUBLE, allcost, ccounts, cdispl,
                MPI_DOUBLE, 0, MPI_COMM_WORLD);
@@ -440,17 +448,17 @@ void binning_mpi_report (const BinTable * table, const double * cost,
     int * slots = malloc (size*sizeof (int));
     for (int s = 0; s < size; s++)
       slots[s] = -1;
-    long * ukeys = malloc ((ntot > 0 ? ntot : 1)*(M > 0 ? M : 1)*sizeof (long));
+    int64_t * ukeys = malloc ((ntot > 0 ? ntot : 1)*(M > 0 ? M : 1)*sizeof (int64_t));
     double * ucost = calloc (ntot > 0 ? ntot : 1, sizeof (double));
     int * ucount = calloc (ntot > 0 ? ntot : 1, sizeof (int));
     int nkeys = 0;
     for (long i = 0; i < ntot; i++) {
-      const long * key = allkeys + i*M;
+      const int64_t * key = allkeys + i*M;
       int s = binning_slot (slots, size, ukeys, M, key);
       if (slots[s] < 0) {
         slots[s] = nkeys;
         for (int l = 0; l < M; l++)
-          ukeys[(long) nkeys*M + l] = key[l];
+          ukeys[(int64_t) nkeys*M + l] = key[l];
         nkeys++;
       }
       ucost[slots[s]] += allcost[i];

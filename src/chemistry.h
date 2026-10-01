@@ -593,9 +593,11 @@ work in the same way.
 The reaction step follows section 2 of Goldin, Ren and Zahirovic, Combust.
 Theory Model. 13 (2009) 721 (`papers/Goldin2009.md`):
 
-1. `binning()` puts the cells with a similar state into one bin. The case
-   gives the `targets` and a tolerance `eps` for each target (see
-   `binning.h`).
+1. `binning()` puts the cells with a similar state into one bin (section 3
+   of the paper, see `binning.h`). The coordinates of the bins are
+   `binning_M` targets: T, then the species of `binning_forced`, then the
+   species with the largest gas mass. `binning_tol` is the tolerance,
+   relative to the current range of each target.
 2. The state of a bin is the mean of the cells, with the weight of the gas
    mass `rho*(1-f)*dV` (Eq. 3). The mean covers the mass fractions and the
    total enthalpy `h`, not the temperature. The temperature of the bin comes
@@ -747,11 +749,129 @@ species than one of its cells has) still gives `alpha < 1`. Set
 #endif
 long binning_nlimited = 0, binning_nbadbin = 0, binning_nbadcell = 0;
 
+/**
+## The parameters of the binning
+
+Set them in an `init` event of the case (or `defaults`):
+
+* `binning_tol`: the tolerance of the paper. Each coordinate is cut into
+  `1/binning_tol` equal intervals of its current range (Eq. 7). The paper
+  uses 0.01, 0.05 and 0.1.
+* `binning_M`: the number of coordinates. The paper uses 4 and 11. A value
+  above `NGS + 1` counts as `NGS + 1`.
+* `binning_temperature`: T is the first coordinate (the paper does this by
+  default; exclude it only for an isothermal system).
+* `binning_forced`: the names of the minor species that the case forces into
+  the coordinates, before the most abundant species. A NULL entry ends the
+  list. The paper forces NO and CO in its cases A to C and no species in D
+  and E. The default is no forced species. A forced species counts only when
+  its gas mass in the domain is above 0 at that step.
+
+The pressure is not a coordinate (the paper excludes it by default). */
+
+double binning_tol = 0.05;
+int binning_M = 4;
+bool binning_temperature = true;
+#define BINNING_MAXFORCED 16
+const char * binning_forced[BINNING_MAXFORCED + 1] = {NULL};
+
+/**
+## The coordinates of the bins (section 3 of the paper)
+
+At each call: T, then the forced species, then the species with the largest
+total gas mass `sum Y w dV` over the cells of the mask, until there are
+`binning_M` coordinates. `w` is the gas mass of the cell per unit volume.
+With `CHEMISTRY_LOG`, rank 0 writes the coordinates to `bin-coords` when
+they change. */
+
+static scalar * binning_select_targets (scalar mask, scalar w)
+{
+  double gasmass[NGS];
+  for (int jj = 0; jj < NGS; jj++)
+    gasmass[jj] = 0.;
+  foreach (serial)
+    if (mask[]) {
+      double m = w[]*dv();
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        gasmass[jj] += YG[]*m;
+      }
+    }
+  mpi_all_reduce_array (gasmass, MPI_DOUBLE, MPI_SUM, NGS);
+
+  int M = min (binning_M, NGS + (binning_temperature ? 1 : 0));
+  bool used[NGS];
+  for (int jj = 0; jj < NGS; jj++)
+    used[jj] = false;
+  int chosen[NGS + 1], n = 0;
+
+  scalar * list = NULL;
+  if (binning_temperature && n < M) {
+    list = list_append (list, TG);
+    chosen[n++] = -1;
+  }
+
+  for (int k = 0; k < BINNING_MAXFORCED && binning_forced[k] && n < M; k++) {
+    int jj = OpenSMOKE_IndexOfSpecies (binning_forced[k]);
+    if (jj < 0 || jj >= NGS) {
+      static bool warned = false;
+      if (!warned && pid() == 0)
+        fprintf (stderr, "WARNING: binning_forced: no gas species %s\n",
+                 binning_forced[k]);
+      warned = true;
+      continue;
+    }
+    if (!used[jj] && gasmass[jj] > 0.) {
+      list = list_append (list, YGList_G[jj]);
+      used[jj] = true;
+      chosen[n++] = jj;
+    }
+  }
+
+  while (n < M) {
+    int best = -1;
+    for (int jj = 0; jj < NGS; jj++)
+      if (!used[jj] && gasmass[jj] > 0. &&
+          (best < 0 || gasmass[jj] > gasmass[best]))
+        best = jj;
+    if (best < 0)
+      break;
+    list = list_append (list, YGList_G[best]);
+    used[best] = true;
+    chosen[n++] = best;
+  }
+
+# ifdef CHEMISTRY_LOG
+  static int * last = NULL, nlast = -1;
+  if (!last)
+    last = malloc ((NGS + 1)*sizeof (int));
+  bool changed = (n != nlast);
+  for (int k = 0; k < n && !changed; k++)
+    if (chosen[k] != last[k])
+      changed = true;
+  if (changed) {
+    if (pid() == 0) {
+      static FILE * fc = NULL;
+      if (!fc)
+        fc = fopen ("bin-coords", "w");
+      fprintf (fc, "%g", t);
+      for (int k = 0; k < n; k++)
+        fprintf (fc, " %s", chosen[k] < 0 ? "T" :
+                 OpenSMOKE_NamesOfSpecies (chosen[k]));
+      fprintf (fc, "\n");
+      fflush (fc);
+    }
+    for (int k = 0; k < n; k++)
+      last[k] = chosen[k];
+    nlast = n;
+  }
+# endif
+
+  return list;
+}
+
 static void gas_phase_reactions (double dtc, bool second_half)
 {
-  extern scalar * targets;
-  extern double * eps;
-
   /**
   Flag the cells where the reactor runs. Change their gas fields from the
   tracer form to the actual values. Keep the start density of each cell for
@@ -777,20 +897,28 @@ static void gas_phase_reactions (double dtc, bool second_half)
 
   /**
   The entries of `bin->phi`: `[0..NGS-1]` the mass fractions, `[NGS]` the
-  total enthalpy, `[NGS+1]` the temperature. The mean temperature is only the
-  first guess of the Newton solve of the bin. The sweep then sets
-  `bin->phi0[NGS+1]` to the temperature of the bin. */
+  total enthalpy, `[NGS+1]` the temperature, `[NGS+2]` the pressure `p`.
+  The mean temperature is only the first guess of the Newton solve of the
+  bin. The sweep then sets `bin->phi0[NGS+1]` to the temperature of the
+  bin. */
 
-  const int ih = NGS, iT = NGS + 1;
-  scalar * fields = list_concat (YGList_G, {hG, TG});
+  const int ih = NGS, iT = NGS + 1, ip = NGS + 2;
+  scalar * fields = list_concat (YGList_G, {hG, TG, p});
+  scalar * targets = binning_select_targets (gasmask, wG);
 
-  BinTable * table = binning (fields, targets, eps, wG, unity, gasmask);
+  BinTable * table = binning (fields, targets, binning_tol, wG, gasmask);
+  scalar binid = table->id;
 
   /**
   `alpha` of each bin. A bin with `alpha < 0` is a bin that the sweep does
   not change. */
 
-  double * alpha = malloc ((table->nbins > 0 ? table->nbins : 1)*sizeof (double));
+  int nb = table->nbins;
+  double * alpha = malloc ((nb > 0 ? nb : 1)*sizeof (double));
+
+# ifdef BINNING_MPI_DIAG
+  double * cost = calloc (nb > 0 ? nb : 1, sizeof (double));
+# endif
 
   foreach_bin (table) {
     alpha[i] = -1.;
@@ -815,7 +943,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
     of `data`. So do not read them back from `data` after the solve. */
 
     UserDataODE data;
-    data.P = Pref + bin_average (bin, p);
+    data.P = Pref + bin->phi[ip];
     data.T = Tbar;
     data.sources = NULL;
     double invMW = 0.;
@@ -827,8 +955,16 @@ static void gas_phase_reactions (double dtc, bool second_half)
     OpenSMOKE_GasProp_SetTemperature (Tbar);
     data.cpg = OpenSMOKE_GasProp_HeatCapacity (xbar);
 
+# ifdef BINNING_MPI_DIAG
+    struct timespec c0, c1;
+    clock_gettime (CLOCK_MONOTONIC, &c0);
+# endif
     OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
         NGS + 1, dtc, y0ode, &data);
+# ifdef BINNING_MPI_DIAG
+    clock_gettime (CLOCK_MONOTONIC, &c1);
+    cost[i] = (c1.tv_sec - c0.tv_sec) + (c1.tv_nsec - c0.tv_nsec)*1e-9;
+# endif
 
     /**
     If the solve diverged, the sweep does not change the cells of this bin,
@@ -862,32 +998,43 @@ static void gas_phase_reactions (double dtc, bool second_half)
 
   First the largest `alpha` that keeps every mass fraction of every cell of
   the bin in [`-BINNING_YTOL`, `1 + BINNING_YTOL`], then the change of each
-  cell, with a clamp to [0, 1]. See `BINNING_YTOL` for the margin. */
+  cell, with a clamp to [0, 1]. See `BINNING_YTOL` for the margin. Each
+  cell lowers the `alpha` of its bin to its own limit, so the result is the
+  minimum over the cells and does not depend on their order.
 
-  double amin = 1.;
-  long nlimited = 0, nbadbin = 0, nbadcell = 0;
-  foreach_bin (table) {
-    if (alpha[i] < 0.) {
-      nbadbin++;
-      continue;
-    }
+  A cell can arrive with a mass fraction out of [0, 1] by more than the
+  margin (the transport can make it slightly negative). Its bounds are then
+  `min (Y, 0) - BINNING_YTOL` and `max (Y, 1) + BINNING_YTOL`: the reaction
+  must not move it further out, but it does not have to bring it back. The
+  clamp to [0, 1] then removes the excess, as the per-cell sweep does. Without
+  this, the condition is false from the start and gave `alpha = 1.5e16` in
+  the air bin of `fatehi-combustion`. */
 
-    double a = 1.;
-    foreach_bin_cell (bin)
+  foreach (serial) {
+    int b = binid[];
+    if (b >= 0 && alpha[b] > 0.) {
+      Bin * bin = table->bins + b;
+      double a = alpha[b];
       for (int jj = 0; jj < NGS; jj++) {
         scalar YG = YGList_G[jj];
         double dY = bin->phi[jj] - bin->phi0[jj];
-        if (dY < 0. && YG[] + a*dY < - BINNING_YTOL)
-          a = (max (YG[], 0.) + BINNING_YTOL)/(- dY);
-        else if (dY > 0. && YG[] + a*dY > 1. + BINNING_YTOL)
-          a = (1. + BINNING_YTOL - min (YG[], 1.))/dY;
+        double lower = min (YG[], 0.) - BINNING_YTOL;
+        double upper = max (YG[], 1.) + BINNING_YTOL;
+        if (dY < 0. && YG[] + a*dY < lower)
+          a = min (a, (YG[] - lower)/(- dY));
+        else if (dY > 0. && YG[] + a*dY > upper)
+          a = min (a, (upper - YG[])/dY);
       }
-    alpha[i] = a;
-    amin = min (amin, a);
-    if (a < 1. - BINNING_ALPHA_ROUNDOFF)
-      nlimited++;
+      alpha[b] = max (a, 0.);
+    }
+  }
 
-    foreach_bin_cell (bin) {
+  long nbadcell = 0;
+  foreach (reduction(+:nbadcell)) {
+    int b = binid[];
+    if (b >= 0 && alpha[b] >= 0.) {
+      Bin * bin = table->bins + b;
+      double a = alpha[b];
       double ycell[NGS];
       for (int jj = 0; jj < NGS; jj++) {
         scalar YG = YGList_G[jj];
@@ -905,15 +1052,28 @@ static void gas_phase_reactions (double dtc, bool second_half)
 #endif
     }
   }
+
+  double amin = 1.;
+  long nlimited = 0, nbadbin = 0;
+  for (int b = 0; b < nb; b++) {
+    if (alpha[b] < 0.)
+      nbadbin++;
+    else {
+      amin = min (amin, alpha[b]);
+      if (alpha[b] < 1. - BINNING_ALPHA_ROUNDOFF)
+        nlimited++;
+    }
+  }
   free (alpha);
 
 # ifdef CHEMISTRY_LOG
   /**
   The file `bin-<pid>` gets one line for each call: the time, the number of
-  cells, the number of bins, 1 for the second half of the Strang split (else
-  0), the smallest `alpha`, the number of bins with `alpha < 1`, the number
-  of bins that the sweep did not change, and the number of cells where the
-  Newton solve did not converge. All values are those of this rank. */
+  cells of the mask (`N_c` of the paper), the number of bins (`N_CA`), 1 for
+  the second half of the Strang split (else 0), the smallest `alpha`, the
+  number of bins with `alpha < 1`, the number of bins that the sweep did not
+  change, and the number of cells where the Newton solve did not converge.
+  All values are those of this rank, apart from the last one (all ranks). */
 
   static FILE * fp = NULL;
   if (!fp) {
@@ -921,16 +1081,29 @@ static void gas_phase_reactions (double dtc, bool second_half)
     sprintf (name, "bin-%d", pid());
     fp = fopen (name, "w");
   }
-  fprintf (fp, "%g %ld %zu %d %g %ld %ld %ld\n", t, grid->n,
-           binning_stats (table).nactive, second_half ? 1 : 0,
-           amin, nlimited, nbadbin, nbadcell);
+  fprintf (fp, "%g %ld %d %d %g %ld %ld %ld\n", t, table->nmask, nb,
+           second_half ? 1 : 0, amin, nlimited, nbadbin, nbadcell);
   fflush (fp);
+# endif
+
+# ifdef BINNING_MPI_DIAG
+  /**
+  With `BINNING_MPI_DIAG` (and MPI), rank 0 writes the comparison of local
+  and global bins to `binning-mpi` (see `binning_mpi_report()` in
+  `binning.h`). */
+
+@if _MPI
+  static FILE * fmpi = NULL;
+  if (!fmpi && pid() == 0)
+    fmpi = fopen ("binning-mpi", "w");
+  binning_mpi_report (table, cost, t, second_half ? 1 : 0, fmpi);
+@endif
+  free (cost);
 # endif
 
   mpi_all_reduce (amin, MPI_DOUBLE, MPI_MIN);
   mpi_all_reduce (nlimited, MPI_LONG, MPI_SUM);
   mpi_all_reduce (nbadbin, MPI_LONG, MPI_SUM);
-  mpi_all_reduce (nbadcell, MPI_LONG, MPI_SUM);
   binning_alpha_min = amin;
   binning_nlimited = nlimited;
   binning_nbadbin = nbadbin;
@@ -938,6 +1111,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
 
   binning_cleanup (table);
   free (fields), fields = NULL;
+  free (targets), targets = NULL;
 
   /**
   Add the expansion of each cell from its two densities. Then change the gas

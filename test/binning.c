@@ -43,7 +43,7 @@ event init (i = 0) {
   /**
   We create the binning table, diving the domain in a number of bins. */
 
-  BinTable * table = binning (fields, targets, (double[]){eps,eps}, mask = mask);
+  BinTable * table = binning (fields, targets, eps, mask = mask);
 
   /**
   We fill a scalar fields with the bin indeces, in order to visualize the
@@ -60,11 +60,11 @@ event init (i = 0) {
   fprintf (stderr, "Average number of cells in the bins = %zu\n", bs.navg);
   fprintf (stderr, "Maximum number of cells in the bins = %zu\n", bs.nmax);
   fprintf (stderr, "Minimum number of cells in the bins = %zu\n", bs.nmin);
-  fprintf (stderr, "Number of masked/excluded cells     = %zu\n", bs.nmask);
+  fprintf (stderr, "Number of cells in the mask         = %zu\n", bs.ncells);
   fprintf (stderr, "\n");
 
   foreach_bin (table)
-    fprintf (stderr, "BIN[%3zu] has %zu cells\n", bin->id, bin->ncells);
+    fprintf (stderr, "BIN[%3d] has %ld cells\n", i, bin->ncells);
   fprintf (stderr, "\n");
 
   /**
@@ -73,7 +73,7 @@ event init (i = 0) {
 
   foreach_bin (table) {
     foreach_bin_field (bin)
-      fprintf (stderr, "BIN[%zu] has phi[%zu] = %g\n", i, j, phi);
+      fprintf (stderr, "BIN[%d] has phi[%d] = %g\n", i, j, phi);
     fprintf (stderr, "\n");
   }
 

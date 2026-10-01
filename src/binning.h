@@ -5,55 +5,65 @@ We wish to accelerate the direct integration of the reactive step by grouping
 together cells with similar thermodynamic states in *bins*.  Finally, the bins
 are integrated as if they were a single computational cell, and the results are
 then re-mapped into the cell values in a conservative manner.  We follow the
-algorithm proposed by [Goldin et al. 2009](#goldin2009cell).
+algorithm proposed by [Goldin et al. 2009](#goldin2009cell) (a copy is in
+`papers/Goldin2009.md`).
+
+This module is generic: it knows fields, targets and weights, not species
+or enthalpy. `chemistry.h` uses it for the gas-phase reactions, and it does
+the reaction step and the remap of section 2 of the paper itself.
 
 ## Usage
 
-This algorithm can be written in a few lines of code using the functions and the
-smart iterators defined in this module. The logic is:
-
-* *binning*: divide the domain in a number of bins are return the table
-* *integration*: integrate the ODE system each bin
-* *remap*: map the bin values back to the cells
-
-This procedure corresponds to the following code:
-
 ~~~literatec
-BinTable * table = binning (fields, targets, eps, rho);
+BinTable * table = binning (fields, targets, tol, w, mask);
 
 foreach_bin (table) {
-  // ...
+  // integrate the state bin->phi[0..nfields-1]
 }
 binning_remap (table, fields);
 binning_cleanup (table);
 ~~~
 
-### Missing features
+## The algorithm (section 3 of the paper)
 
-1. ~~A different tolerance for each species~~
-1. ~~Avoid empty bins to save memory~~
-1. Energy-conserving remap: `chemistry.h` does the remap of Goldin et al.
-   (Eq. 5 and 6), not `binning_remap()`
-1. ~~Parallel simulations (each binning is local to the pid)~~
+1. Each target `k` is normalized over the cells of the mask, with the min
+   and max of all MPI ranks (Eq. 7):
+   `phi_hat = (phi - phi_min)/(phi_max - phi_min)`.
+2. Each normalized target is cut into `L = 1/tol` equal intervals. The index
+   of a cell in target `l` is `i_l = floor (phi_hat*L)`, in [0, L], as in
+   Eq. 8. The cells exactly at the maximum (`phi_hat = 1`) thus get the
+   index L and a bin of their own. Keep this: in an ignition the hottest
+   cell ignites first. In `test/opensmoke-binning.c` the peak error of the
+   temperature is 7e-4 K with the index L, and 757 K with a clamp to L-1
+   (the hottest cell then goes into the bin below). The tolerance is
+   relative to the current range of each target, and it is the same for
+   all targets.
+3. The cells with the same tuple `(i_0, ..., i_{M-1})` make one bin. Eq. 8
+   of the paper writes the tuple as one integer `sum_l i_l L^l`. That
+   integer does not fit in 64 bits for M = 11 and L = 100, so a hash table
+   (Eq. 9) stores the tuple itself. Two different tuples never make one
+   bin.
+4. The state of a bin is the mean of `fields` over its cells, with the weight
+   `w*dV` (Eq. 3). If the weights of a bin sum to 0, the mean uses the
+   volume.
 
-*/
+The table keeps the bin number of each cell in the field `table->id` (-1 for
+the cells out of the mask). The mean and the remap are then one `foreach`
+each.
 
-/**
-## Bin
+Each MPI rank makes its own bins. Two cells on different ranks never make
+one bin, also with the same tuple. The normalization uses the min and max of
+all ranks, so a tuple means the same state on every rank.
+`binning_mpi_report()` measures what one global bin map would save.
 
-A bin is an aggregate of cells. In practice, it is a structure containing a
-global ID, the number of fields, the number of cells within the bin, and the
-arrays `phi` and `phi0` which are the mass-averaged scalar field value within
-the bin (with dimension equal to `nfields`).  The cells are stored using the
-coordinate of the centroids, stored in the `cells` list of coordinates. */
+Caution: build the table, use it and clean it in the same step. The field
+`table->id` does not follow a change of the grid (`adapt`). */
 
 /**
 `BINNING` makes `chemistry.h` use the binning sweep for the gas-phase
 reactions. A case must include this file before `chemistry.h`, thus before
 `multicomponent-varprop.h`. If the order is wrong, `chemistry.h` builds the
-per-cell sweep and the case gets no binning, so stop the build. The case must
-also define `scalar * targets` and `double * eps` (one tolerance for each
-target). */
+per-cell sweep and the case gets no binning, so stop the build. */
 
 #ifdef CHEMISTRY_H
 # error "Include binning.h before chemistry.h (thus before multicomponent-varprop.h)."
@@ -61,332 +71,266 @@ target). */
 
 #define BINNING
 
+/**
+## Bin and bin table
+
+`phi` and `phi0` are the mean of each field in the bin, after and before the
+integration. `key` is the tuple of the bin (one index for each target). */
+
 typedef struct {
-  size_t id;
-  size_t nfields;
-  size_t ncells;
+  int nfields;
+  long ncells;
+  double mass, volume;
   double * phi, * phi0;
-  coord * cells;
-  double rho, rho0;
-  double cp, cp0;
+  long * key;
 } Bin;
 
-Bin * new_bin (size_t id) {
-  Bin * bin = malloc (sizeof (Bin));
-  bin->id = id;
-  bin->nfields = 0;
-  bin->ncells = 0;
-  bin->cells = NULL;
-  bin->rho = 0.;
-  bin->rho0 = 0.;
-  bin->cp = 0.;
-  bin->cp0 = 0.;
-  return bin;
+typedef struct {
+  int ntargets, nfields;
+  long L;
+  int nbins, capacity;
+  long nmask;
+  Bin * bins;
+  scalar id;
+} BinTable;
+
+/**
+## The hash table of the tuples
+
+Open addressing with linear probing. The size is a power of 2 with at least
+two slots for each key, so a probe sequence is short. */
+
+static unsigned long binning_key_hash (const long * key, int n)
+{
+  unsigned long h = 1469598103934665603UL;
+  for (int l = 0; l < n; l++) {
+    h ^= (unsigned long) key[l];
+    h *= 1099511628211UL;
+  }
+  h ^= h >> 33;
+  h *= 0xff51afd7ed558ccdUL;
+  h ^= h >> 33;
+  return h;
 }
 
-void free_bin (Bin * bin) {
-  free (bin->phi);
-  free (bin->phi0);
-  free (bin->cells);
-  free (bin);
-}
-
-void bin_append_cell (Point point, Bin * bin) {
-  bin->ncells++;
-  bin->cells = realloc (bin->cells, bin->ncells*sizeof (coord));
-
-  coord o = {x,y,z};
-  foreach_dimension()
-    bin->cells[bin->ncells-1].x = o.x;
+static int binning_slots_size (long nkeys)
+{
+  int size = 16;
+  while (size < 2*nkeys + 2)
+    size *= 2;
+  return size;
 }
 
 /**
-## Bin Table
+Return the slot of `key` in `slots` (the slot holds an index into `keys`,
+or -1 if it is empty). */
 
-A bin table collects all the bins in the domain, and it facilitates loops and
-operations over the bins. */
-
-typedef struct {
-  size_t ntargets;
-  size_t nbins;
-  Bin ** bins;
-} BinTable;
-
-BinTable * new_bintable_empty (size_t ntargets) {
-  BinTable * table = malloc (sizeof (BinTable));
-  table->ntargets = ntargets;
-  table->nbins = 0;
-  table->bins = NULL;
-  return table;
-}
-
-BinTable * new_bintable (size_t ntargets, size_t nbins) {
-  BinTable * table = new_bintable_empty (ntargets);
-  table->nbins = nbins;
-  table->bins = malloc (nbins*sizeof (Bin *));
-  for (size_t i = 0; i < nbins; i++)
-    table->bins[i] = new_bin (i);
-  return table;
-}
-
-void free_bintable (BinTable * table) {
-  for (size_t i = 0; i < table->nbins; i++)
-    free_bin (table->bins[i]);
-  free (table->bins);
-  free (table);
-}
-
-size_t bintable_index (BinTable * table, size_t bin_id, bool * exist) {
-  for (size_t i = 0; i < table->nbins; i++) {
-    Bin * bin = table->bins[i];
-    if (bin->id == bin_id) {
-      *exist = true;
-      return i;
-    }
+static int binning_slot (const int * slots, int size, const long * keys,
+                         int n, const long * key)
+{
+  int s = binning_key_hash (key, n) & (size - 1);
+  while (slots[s] >= 0) {
+    const long * k = keys + (long) slots[s]*n;
+    bool same = true;
+    for (int l = 0; l < n && same; l++)
+      if (k[l] != key[l])
+        same = false;
+    if (same)
+      return s;
+    s = (s + 1) & (size - 1);
   }
-  return table->nbins-1;
+  return s;
 }
 
-Bin * bintable_append (BinTable * table, size_t global_id) {
-  bool exist = false;
-  size_t local_id = bintable_index (table, global_id, &exist);
-  if (exist) {
-    Bin * bin = table->bins[local_id];
-    bin->id = global_id;
-    return bin;
+static Bin * binning_add_bin (BinTable * table, const long * key)
+{
+  if (table->nbins == table->capacity) {
+    table->capacity = table->capacity ? 2*table->capacity : 64;
+    table->bins = realloc (table->bins, table->capacity*sizeof (Bin));
   }
-  else {
-    table->nbins++;
-    table->bins = realloc (table->bins, table->nbins*sizeof (Bin *));
-    table->bins[table->nbins-1] = new_bin (table->nbins-1);
-    Bin * bin = table->bins[table->nbins-1];
-    bin->id = global_id;
-    return bin;
-  }
+  Bin * bin = table->bins + table->nbins++;
+  bin->nfields = table->nfields;
+  bin->ncells = 0;
+  bin->mass = bin->volume = 0.;
+  bin->phi = calloc (2*table->nfields, sizeof (double));
+  bin->phi0 = bin->phi + table->nfields;
+  bin->key = malloc (table->ntargets*sizeof (long));
+  for (int l = 0; l < table->ntargets; l++)
+    bin->key[l] = key[l];
+  return bin;
 }
 
 /**
 ## Iterators
 
-We define useful iterators to simplify loops over the bins and their cells.  In
-particular `foreach_bin` loops over each bin in the bin table;
-`foreach_bin_field` iterates over the fields of a bin; `foreach_bin_cell`
-iterates over the cells of a bin. */
+`foreach_bin` loops over the bins of the table, with the index `i` and the
+pointer `bin`. `foreach_bin_field` loops over the fields of a bin, with the
+index `j` and the values `phi` and `phi0`. */
 
 macro foreach_bin (BinTable * table) {
-  for (size_t i = 0; i < table->nbins; i++) {
-    Bin * bin = table->bins[i]; NOT_UNUSED (bin);
-    //if (bin->ncells > 0) // active bin
-      {...}
+  for (int i = 0; i < table->nbins; i++) {
+    Bin * bin = table->bins + i; NOT_UNUSED (bin);
+    {...}
   }
 }
 
 macro foreach_bin_field (Bin * bin) {
-  for (size_t j = 0; j < bin->nfields; j++) {
+  for (int j = 0; j < bin->nfields; j++) {
     double phi = bin->phi[j], phi0 = bin->phi0[j];
     {...}
     bin->phi[j] = phi, bin->phi0[j] = phi0;
   }
 }
 
-macro foreach_bin_cell (Bin * bin) {
-  for (size_t _k = 0; _k < bin->ncells; _k++) {
-    coord o = bin->cells[_k];
-    foreach_point (o.x,o.y,o.z, serial) {
-      {...}
-    }
-  }
-}
-
 /**
 ## Program interface
 
-The following functions can be called by the user to perform the binning,
-remap the bins, and clean the memory. */
-
-/**
-Normalize a list of targets in order to obtain fields with fractional values
-bounded between 0 and 1. */
-
-void binning_normalize (scalar * targets) {
-  int len = list_len (targets);
-  double * tmax = malloc (len*sizeof (double));
-  double * tmin = malloc (len*sizeof (double));
-
-  for (int i = 0; i < len; i++) {
-    scalar t = targets[i];
-    tmax[i] = statsf (t).max;
-    tmin[i] = statsf (t).min;
-  }
-
-  foreach() {
-    for (int i = 0; i < len; i++) {
-      scalar t = targets[i];
-      t[] = (t[] - tmin[i])/(tmax[i] - tmin[i]);
-    }
-  }
-
-  free (tmax);
-  free (tmin);
-}
-
-/**
-Create the bin table based on the list of (normalized) targets and the
-user-defined tolerance.  The table creates the maximum potential bins, and
-assigns the global index to each bin. Cells with null mask values are not added
-to the bin, in order to exclude them from the averaging procedure. */
-
-BinTable * binning_build_table (scalar * targets, double * eps,
-    (const) scalar mask = unity)
-{
-  size_t len  = (size_t)list_len (targets);
-
-#if 0
-  // All the possible combinations
-  size_t nbins = 1;
-  for (size_t i = 0; i < len; i++)
-    nbins *= (L + 1);
-#endif
-
-  BinTable * table = new_bintable_empty (len);
-
-  foreach() {
-    size_t bin_j = 0;
-    for (size_t i = 0; i < len; i++) {
-      double L = 1./eps[i];
-      scalar t = targets[i];
-      size_t bin_i = (size_t)(t[]*L);
-      if (bin_i > L) bin_i = L;
-      bin_j += bin_i * pow (L + 1, i);
-    }
-
-    if (mask[]) {
-      Bin * bin = bintable_append (table, bin_j);
-      bin_append_cell (point, bin);
-    }
-  }
-  return table;
-}
-
-/**
-Populate the scalar fields of the bin based on the number of fields provided.
-This is different from the list of targets, which does not necessarily have the
-same dimensions of the list of fields. Fields are used for mass-averaging and
-successive integration, while targets are used only for the binning. */
-
-void binning_populate (BinTable * table, scalar * fields) {
-  size_t nfields = list_len (fields);
-  foreach_bin (table) {
-    bin->nfields = nfields;
-    bin->phi = malloc (nfields*sizeof (double));
-    bin->phi0 = malloc (nfields*sizeof (double));
-  }
-}
-
-/**
-Calculate the value of the fields within the bins using a mass-averaged
-approach. */
-
-void binning_average (BinTable * table, scalar * fields,
-    (const) scalar rho = unity)
-{
-  foreach_bin (table) {
-    foreach_bin_field (bin) {
-      scalar t = fields[j];
-      double num = 0., den = 0.;
-      foreach_bin_cell (bin) {
-        num += t[]*rho[]*dv();
-        den += rho[]*dv();
-      }
-      phi = (den > 0.) ? num / den : 0;
-      phi0 = phi;
-    }
-  }
-}
-
-/**
-Calculate the average of a given field in a bin. */
-
-double bin_average (const Bin * bin, (const) scalar field) {
-  double num = 0.;
-  foreach_bin_cell (bin)
-    num += field[];
-  return bin->ncells ? num / bin->ncells : 0;
-}
-
-double bin_volaverage (const Bin * bin, (const) scalar field) {
-  double num = 0., den = 0.;
-  foreach_bin_cell (bin) {
-    num += field[]*dv();
-    den += dv();
-  }
-  return (den > 0.) ? num / den : 0.;
-}
-
-/**
-This function automatically normalizes the list of fields, splits the domain in
-bins with the correct mass-averaged field value, and returns the bin table. If
-a density field `rho` is not provided, the averaging step is volume-averaged.
-The mask field is an Heaviside function which excludes cells with null values.
-This is useful in multiphase codes, when we want to integrate the systems just
-in specific cells. */
+`binning()` builds the table: the bin of each cell of `mask`, and the mean
+of `fields` in each bin. `tol` is the tolerance of the paper (`L = 1/tol`
+intervals for each target, with `tol` at least 1e-12). */
 
 trace
-BinTable * binning (scalar * fields, scalar * targets, double * eps,
-    (const) scalar rho = unity, (const) scalar cp = unity,
-    (const) scalar mask = unity)
+BinTable * binning (scalar * fields, scalar * targets, double tol,
+                    (const) scalar w = unity, (const) scalar mask = unity)
 {
-  scalar * tnorm = list_clone (targets);
-  foreach()
-    for (size_t i = 0; i < list_len (targets); i++) {
-      scalar tn = tnorm[i], t = targets[i];
-      tn[] = t[];
-    }
-  binning_normalize (tnorm);
-  BinTable * table = binning_build_table (tnorm, eps, mask);
-  binning_populate (table, fields);
-  binning_average (table, fields, rho);
-  foreach_bin (table) {
-    bin->rho = bin_volaverage (bin, rho);
-    bin->cp = bin_average (bin, cp);
-    bin->rho0 = bin->rho;
-    bin->cp0 = bin->cp;
+  int M = list_len (targets);
+  int nf = list_len (fields);
+
+  BinTable * table = calloc (1, sizeof (BinTable));
+  table->ntargets = M;
+  table->nfields = nf;
+  table->L = (long) (1./max (tol, 1e-12) + 0.5);
+  if (table->L < 1)
+    table->L = 1;
+  long L = table->L;
+
+  scalar id = new scalar;
+  table->id = id;
+
+  /**
+  The min and max of each target over the mask, on all ranks (Eq. 7). */
+
+  double tmin[M + 1], tmax[M + 1];
+  int l = 0;
+  for (scalar t in targets) {
+    double mn = HUGE, mx = - HUGE;
+    foreach (reduction(min:mn) reduction(max:mx))
+      if (mask[]) {
+        if (t[] < mn) mn = t[];
+        if (t[] > mx) mx = t[];
+      }
+    tmin[l] = mn, tmax[l] = mx;
+    l++;
   }
-  delete (tnorm), free (tnorm);
+
+  /**
+  The bin of each cell (Eq. 8 and 9). */
+
+  long nmask = 0;
+  foreach (reduction(+:nmask))
+    if (mask[])
+      nmask++;
+
+  int size = binning_slots_size (nmask);
+  int * slots = malloc (size*sizeof (int));
+  for (int s = 0; s < size; s++)
+    slots[s] = -1;
+  long * keys = malloc ((nmask > 0 ? nmask : 1)*(M > 0 ? M : 1)*sizeof (long));
+
+  foreach (serial) {
+    id[] = -1;
+    if (mask[]) {
+      long key[M + 1];
+      int m = 0;
+      for (scalar t in targets) {
+        double range = tmax[m] - tmin[m];
+        long il = 0;
+        if (range > 0. && isfinite (t[]))
+          il = (long) floor ((t[] - tmin[m])/range*L);
+        key[m] = il < 0 ? 0 : il > L ? L : il;
+        m++;
+      }
+      int s = binning_slot (slots, size, keys, M, key);
+      if (slots[s] < 0) {
+        slots[s] = table->nbins;
+        for (int k = 0; k < M; k++)
+          keys[(long) table->nbins*M + k] = key[k];
+        binning_add_bin (table, key);
+      }
+      id[] = slots[s];
+      table->bins[slots[s]].ncells++;
+    }
+  }
+  free (slots);
+  free (keys);
+  table->nmask = nmask;
+
+  /**
+  The mean of each field (Eq. 3). `phi0` holds the volume sum first, for a
+  bin whose weights sum to 0. */
+
+  foreach (serial) {
+    int b = id[];
+    if (b >= 0) {
+      Bin * bin = table->bins + b;
+      double v = dv(), m = w[]*v;
+      bin->mass += m;
+      bin->volume += v;
+      int j = 0;
+      for (scalar s in fields) {
+        bin->phi[j] += s[]*m;
+        bin->phi0[j] += s[]*v;
+        j++;
+      }
+    }
+  }
+  foreach_bin (table)
+    for (int j = 0; j < nf; j++) {
+      bin->phi[j] = bin->mass > 0. ? bin->phi[j]/bin->mass :
+        bin->volume > 0. ? bin->phi0[j]/bin->volume : 0.;
+      bin->phi0[j] = bin->phi[j];
+    }
+
   return table;
 }
 
 /**
-The bin field values are mapped-back to the original list of fields depending on
-the variation of the bin field value. */
+The simple remap of the paper (Eq. 5): each cell gets the change of its bin.
+`chemistry.h` does not use it: it scales the change to keep the cells
+realizable, and it remaps the energy as enthalpy. */
 
-void binning_remap (BinTable * table, scalar * fields,
-    (const) scalar rho = unity, (const) scalar cp = unity)
+void binning_remap (BinTable * table, scalar * fields)
 {
-  foreach_bin (table) {
-    foreach_bin_cell (bin) {
-      foreach_bin_field (bin) {
-        scalar t = fields[j];
-        t[] += (phi - phi0);
+  scalar id = table->id;
+  foreach() {
+    int b = id[];
+    if (b >= 0) {
+      Bin * bin = table->bins + b;
+      int j = 0;
+      for (scalar s in fields) {
+        s[] += bin->phi[j] - bin->phi0[j];
+        j++;
       }
-      if (!is_constant (rho)) rho[] += (bin->rho - bin->rho0);
-      if (!is_constant (cp)) cp[] += (bin->cp - bin->cp0);
     }
   }
 }
 
-/**
-Clean bin and bin table from memory. */
-
-void binning_cleanup (BinTable * table) {
-  free_bintable (table);
+void binning_cleanup (BinTable * table)
+{
+  for (int i = 0; i < table->nbins; i++) {
+    free (table->bins[i].phi);
+    free (table->bins[i].key);
+  }
+  free (table->bins);
+  scalar id = table->id;
+  delete ({id});
+  free (table);
 }
 
 /**
 ### Post-Processing
 
-The following functions allow the user to monitor the statistics of the binning
-process. */
+The statistics of the table of this rank. */
 
 typedef struct {
   // total number of (active/non-empty) bins
@@ -397,40 +341,135 @@ typedef struct {
   size_t nmax;
   // minimum number of cells in a bin
   size_t nmin;
-  // number of masked cells
-  size_t nmask;
+  // number of cells in the mask
+  size_t ncells;
 } bstats;
 
-bstats binning_stats (const BinTable * table) {
+bstats binning_stats (const BinTable * table)
+{
   bstats s = {0};
-  s.nmax = 0, s.nmin = 1e9;
-
+  s.nmin = table->nbins > 0 ? (size_t) 1e9 : 0;
   size_t nreal = 0;
-  foreach_bin (table) {
-    foreach_bin_cell (bin) {
-      nreal++;
-    }
+  for (int i = 0; i < table->nbins; i++) {
+    size_t n = table->bins[i].ncells;
+    nreal += n;
+    s.nmax = max (s.nmax, n);
+    s.nmin = min (s.nmin, n);
   }
-  s.nmask = grid->n - nreal;
-
-  foreach_bin (table) {
-    s.nactive++;
-    s.nmax = max (s.nmax, bin->ncells);
-    s.nmin = min (s.nmin, bin->ncells);
-  }
-  s.navg = (s.nactive > 0) ? nreal / s.nactive : 0;
+  s.nactive = table->nbins;
+  s.ncells = nreal;
+  s.navg = s.nactive > 0 ? nreal/s.nactive : 0;
   return s;
 }
 
-void binning_ids (const BinTable * table, scalar ids) {
+void binning_ids (const BinTable * table, scalar ids)
+{
+  scalar id = table->id;
   foreach()
-    ids[] = nodata;
-  foreach_bin (table) {
-    foreach_bin_cell (bin) {
-      ids[] = bin->id;
-    }
-  }
+    ids[] = id[] >= 0 ? id[] : nodata;
 }
+
+/**
+## Local or global bins: the MPI diagnostic
+
+Each rank makes its own bins. One global bin map would integrate each tuple
+one time, and it could give each rank an equal share of the bins. This
+function measures what that would save, before anyone writes the global map.
+
+`cost[i]` is the time of the integration of the bin `i` of this rank. The
+function gathers the tuples and the costs on rank 0, and writes to `fp` (on
+rank 0 only):
+
+    t half nbins_sum nkeys Tlocal_max Tlocal_mean Tglobal_ideal
+
+* `nbins_sum`: the bins of all ranks (the solves with local bins);
+* `nkeys`: the different tuples of all ranks (the solves with a global map);
+* `Tlocal_max`, `Tlocal_mean`: the max and the mean over the ranks of the
+  sum of `cost`. The step waits for the max;
+* `Tglobal_ideal`: the sum over the different tuples of the mean cost of the
+  tuple, divided by the number of ranks. This is the time of a global map
+  with a perfect share and no communication.
+
+The gather costs communication, so call it only for a measurement. */
+
+@if _MPI
+void binning_mpi_report (const BinTable * table, const double * cost,
+                         double t, int half, FILE * fp)
+{
+  int np = npe(), M = table->ntargets, nb = table->nbins;
+  double tlocal = 0.;
+  for (int i = 0; i < nb; i++)
+    tlocal += cost[i];
+
+  int * counts = NULL;
+  if (pid() == 0)
+    counts = malloc (np*sizeof (int));
+  MPI_Gather (&nb, 1, MPI_INT, counts, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+  long * keys = malloc ((nb > 0 ? nb : 1)*(M > 0 ? M : 1)*sizeof (long));
+  for (int i = 0; i < nb; i++)
+    for (int l = 0; l < M; l++)
+      keys[(long) i*M + l] = table->bins[i].key[l];
+
+  int * kcounts = NULL, * kdispl = NULL, * ccounts = NULL, * cdispl = NULL;
+  long * allkeys = NULL;
+  double * allcost = NULL;
+  long ntot = 0;
+  if (pid() == 0) {
+    kcounts = malloc (np*sizeof (int)), kdispl = malloc (np*sizeof (int));
+    ccounts = malloc (np*sizeof (int)), cdispl = malloc (np*sizeof (int));
+    for (int r = 0; r < np; r++) {
+      ccounts[r] = counts[r], cdispl[r] = ntot;
+      kcounts[r] = counts[r]*M, kdispl[r] = ntot*M;
+      ntot += counts[r];
+    }
+    allkeys = malloc ((ntot > 0 ? ntot : 1)*(M > 0 ? M : 1)*sizeof (long));
+    allcost = malloc ((ntot > 0 ? ntot : 1)*sizeof (double));
+  }
+  MPI_Gatherv (keys, nb*M, MPI_LONG, allkeys, kcounts, kdispl, MPI_LONG,
+               0, MPI_COMM_WORLD);
+  MPI_Gatherv ((void *) cost, nb, MPI_DOUBLE, allcost, ccounts, cdispl,
+               MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  double tmax = tlocal, tsum = tlocal;
+  MPI_Reduce (&tlocal, &tmax, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+  MPI_Reduce (&tlocal, &tsum, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+  if (pid() == 0) {
+    int size = binning_slots_size (ntot);
+    int * slots = malloc (size*sizeof (int));
+    for (int s = 0; s < size; s++)
+      slots[s] = -1;
+    long * ukeys = malloc ((ntot > 0 ? ntot : 1)*(M > 0 ? M : 1)*sizeof (long));
+    double * ucost = calloc (ntot > 0 ? ntot : 1, sizeof (double));
+    int * ucount = calloc (ntot > 0 ? ntot : 1, sizeof (int));
+    int nkeys = 0;
+    for (long i = 0; i < ntot; i++) {
+      const long * key = allkeys + i*M;
+      int s = binning_slot (slots, size, ukeys, M, key);
+      if (slots[s] < 0) {
+        slots[s] = nkeys;
+        for (int l = 0; l < M; l++)
+          ukeys[(long) nkeys*M + l] = key[l];
+        nkeys++;
+      }
+      ucost[slots[s]] += allcost[i];
+      ucount[slots[s]]++;
+    }
+    double tglobal = 0.;
+    for (int k = 0; k < nkeys; k++)
+      tglobal += ucost[k]/ucount[k];
+    tglobal /= np;
+    fprintf (fp, "%g %d %ld %d %g %g %g\n", t, half, ntot, nkeys,
+             tmax, tsum/np, tglobal);
+    fflush (fp);
+    free (slots), free (ukeys), free (ucost), free (ucount);
+    free (counts), free (kcounts), free (kdispl), free (ccounts), free (cdispl);
+    free (allkeys), free (allcost);
+  }
+  free (keys);
+}
+@endif
 
 /**
 ## References

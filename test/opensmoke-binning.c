@@ -167,9 +167,8 @@ event init (i = 0) {
   The binning *targets* are the thermochemical state variables used to group
   cells: the temperature and the fuel mass fraction. Cells whose (T, Y_CH3OH)
   fall in the same eps-cell of this normalized 2D space are agglomerated into
-  one bin and integrated together. We deliberately keep this set small: the bin
-  id is built as a mixed-radix number over the targets, so too many target
-  dimensions would overflow. */
+  one bin and integrated together. `binning.h` keeps the tuple of indices in
+  a hash table, so more targets do not overflow, but each target adds bins. */
 
   targets = list_append (targets, T);
   targets = list_append (targets, YList[OpenSMOKE_IndexOfSpecies("CH3OH")]);
@@ -242,8 +241,7 @@ event chemistry (i++) {
   bin carries the mass-averaged field values (`fields` = species + T, in that
   order) together with the mass-averaged density and heat capacity. */
 
-  BinTable * table = binning (fields, targets, (double[]){eps, eps, eps},
-                              rho, cp, mask);
+  BinTable * table = binning (fields, targets, eps, rho, mask);
 
   /**
   Integrate the stiff chemistry ODE **once per bin** instead of once per cell.
@@ -253,23 +251,24 @@ event chemistry (i++) {
 
   foreach_bin (table) {
     double y0ode[NGS + 1];
-    for (size_t j = 0; j < bin->nfields; j++)
+    for (int j = 0; j < bin->nfields; j++)
       y0ode[j] = bin->phi[j];
+
+    /**
+    The reactor of this test computes `rhog` and `cpg` from the state at
+    each evaluation, in a local copy of `data`, so these are placeholders. */
 
     UserDataODE data;
     data.P = P;
     data.sources = NULL;
-    data.rhog = bin->rho;
-    data.cpg = bin->cp;
+    data.rhog = 1.;
+    data.cpg = 1.;
 
     OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
                          NGS + 1, dt, y0ode, &data);
 
-    for (size_t j = 0; j < bin->nfields; j++)
-      bin->phi[j] = (j < (size_t)NGS) ? fmax (0., y0ode[j]) : y0ode[j];
-
-    bin->rho = data.rhog;
-    bin->cp = data.cpg;
+    for (int j = 0; j < bin->nfields; j++)
+      bin->phi[j] = (j < NGS) ? fmax (0., y0ode[j]) : y0ode[j];
   }
 
   /**
@@ -278,7 +277,7 @@ event chemistry (i++) {
 
   binning_ids (table, binid);
   nactive_bins = binning_stats (table).nactive;
-  binning_remap (table, fields, rho, cp);
+  binning_remap (table, fields);
   binning_cleanup (table);
 }
 

@@ -27,15 +27,10 @@ read the flag in every build, also in a build without chemistry.
 `GAS_PHASE_REACTIONS` does not replace it. No source file reads that name,
 so the gas kinetics always run unless this flag is 1.
 
-Caution: the flag does not cover the `BINNING` path of `chemistry.h`, and
-that path must not be extended. The two cannot be combined. */
+The flag covers the per-cell path and the `BINNING` path of `chemistry.h`. */
 
 #ifndef TURN_OFF_GAS_REACTIONS
 # define TURN_OFF_GAS_REACTIONS 0
-#endif
-
-#if TURN_OFF_GAS_REACTIONS && defined(BINNING)
-# error "TURN_OFF_GAS_REACTIONS does not cover the BINNING path of chemistry.h. Use one."
 #endif
 
 #define R_GAS 8.31446261815324

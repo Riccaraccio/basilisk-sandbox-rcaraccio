@@ -247,7 +247,7 @@ static void one_cell (double T0, double yfuel, double yO2, double dtstep,
 
   /**
   Instantaneous form: one more call to the reactor at the converged end
-  state, exactly as `gas_sources_instantaneous()` does. The call resets the
+  state, as the old `gas_sources_instantaneous()` of `chemistry.h` did. The call resets the
   temperature and the pressure of the property library, so read `cp_end`
   before it, as above. */
 

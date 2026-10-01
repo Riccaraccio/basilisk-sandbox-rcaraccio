@@ -46,6 +46,18 @@ arrays `phi` and `phi0` which are the mass-averaged scalar field value within
 the bin (with dimension equal to `nfields`).  The cells are stored using the
 coordinate of the centroids, stored in the `cells` list of coordinates. */
 
+/**
+`BINNING` makes `chemistry.h` use the binning sweep for the gas-phase
+reactions. A case must include this file before `chemistry.h`, thus before
+`multicomponent-varprop.h`. If the order is wrong, `chemistry.h` builds the
+per-cell sweep and the case gets no binning, so stop the build. The case must
+also define `scalar * targets` and `double * eps` (one tolerance for each
+target). */
+
+#ifdef CHEMISTRY_H
+# error "Include binning.h before chemistry.h (thus before multicomponent-varprop.h)."
+#endif
+
 #define BINNING
 
 typedef struct {

@@ -34,23 +34,23 @@ Strang split of the gas chemistry" and "The gate that skips the cells the
 step cannot change" below. The defaults stay outside `TURN_OFF_REACTIONS`, so
 a case can print the flags in every build.
 
-The `BINNING` path keeps the Lie split. There the default of
-`GAS_CHEMISTRY_STRANG` is 0, and the value 1 stops the build. */
+The `BINNING` path uses the same Strang split. It does not use the gate. */
 
 #ifndef GAS_CHEMISTRY_STRANG
-# ifdef BINNING
-#  define GAS_CHEMISTRY_STRANG 0
-# else
-#  define GAS_CHEMISTRY_STRANG 1
-# endif
-#endif
-
-#if GAS_CHEMISTRY_STRANG && defined(BINNING)
-# error "GAS_CHEMISTRY_STRANG is not available with BINNING."
+# define GAS_CHEMISTRY_STRANG 1
 #endif
 
 #ifndef FROZEN_CELL_GATE
 # define FROZEN_CELL_GATE 1
+#endif
+
+/**
+`binning.h` stops the build if a case includes it after this file. */
+
+#define CHEMISTRY_H 1
+
+#if defined(BINNING) && !defined(VARPROP)
+# error "BINNING requires VARPROP (it uses rhoGv_G/cpGv_G and drhodt_chem)"
 #endif
 
 
@@ -162,21 +162,6 @@ event reset_sources (i++) {
 scalar t_solid[], t_gas[];
 #endif
 
-#ifdef BINNING
-/**
-Scale the gas tracers (species + temperature) of the current cell by a common
-factor. `1/(1-f)` maps the VOF-tracer form (`Y*(1-f)`) to the actual mass
-fractions the reactor expects; `(1-f)` is the inverse. */
-
-static void scale_gas_tracers (Point point, double factor) {
-  for (int jj = 0; jj < NGS; jj++) {
-    scalar YG = YGList_G[jj];
-    YG[] *= factor;
-  }
-  TG[] *= factor;
-}
-#endif
-
 #ifdef VARPROP
 /**
 ## The gas-phase reaction source of the low-Mach divergence
@@ -209,97 +194,85 @@ Caution: do not read the end-state density from `data.rhog` after the solve.
 so the reactor writes `rhog` in a local copy and the caller keeps the old
 value.
 
-The `BINNING` path does not keep the start state of each cell, so it cannot
-use the exact form. It keeps the step-averaged form
-`rho*(state_end - state_start)/dt` (the default) or, with
-`gas_source_averaged = false`, the rate at the end state. */
+The `BINNING` path uses the same form. It keeps the start density of each
+cell in a field, because the reactor of a bin does not give the state of a
+cell.
 
-#ifdef BINNING
-bool gas_source_averaged = true;
+The functions below exist only when the gas reactor runs
+(`TURN_OFF_GAS_REACTIONS` 0). */
 
-/**
-Instantaneous form: one extra evaluation of the reactor at the state `ys`. */
-
-static void gas_sources_instantaneous (Point point, const double * ys) {
-  UserDataODE data;
-  data.P = Pref + p[];
-  data.T = ys[NGS];
-  double sources[NGS + 1];
-  data.sources = sources;
-
-  double dy_tmp[NGS + 1];
-  gas_batch_nonisothermal_constantpressure (ys, dt, dy_tmp, &data);
-
-  for (int jj = 0; jj < NGS; jj++) {
-    scalar DYDtGjj = DYDtG_G[jj];
-    DYDtGjj[] += sources[jj]*cm[];
-  }
-  DTDtG[] += sources[NGS]*cm[];
-}
+#if !TURN_OFF_GAS_REACTIONS
 
 /**
-One half of the averaged form. Call it with `sgn = -1` on the pre-reaction
-state and with `sgn = +1` on the post-reaction state. The split lets the
-binning path avoid a per-cell copy of the whole composition vector.
+The gas density from the ideal gas law, with `invMW = 1/MW = sum_j Y_j/MW_j`.
+This needs no call to the property library. Returns 0 if the state is not
+usable, and the caller then adds no expansion. */
 
-Caution: `rho` and `cp` are arguments, not reads of `rhoGv_G`/`cpGv_G`. The
-two calls must use the same values, otherwise the result is
-`rho_end*Y_end - rho_start*Y_start`, which folds the density change into the
-species source. In the binning path `binning_remap()` updates `rhoGv_G` and
-`cpGv_G` between the two calls, so the caller keeps the pre-reaction values. */
-
-static void gas_sources_accumulate_state (Point point, const double * ys,
-                                          double rho, double cp, double sgn) {
-  if (!(dt > 0.) || !(rho > 0.) || !(cp > 0.))
-    return;
-
-  double w = sgn*cm[]/dt;
-  for (int jj = 0; jj < NGS; jj++) {
-    scalar DYDtGjj = DYDtG_G[jj];
-    DYDtGjj[] += rho*ys[jj]*w;
-  }
-  DTDtG[] += rho*cp*ys[NGS]*w;
-}
-#endif // BINNING
-
-/**
-The gas density at the end state, from the ideal gas law. `1/MW` is the sum of
-`Y_j/MW_j`, so this needs no call to the property library. Returns 0 if the
-state is not usable, and the caller then keeps the start value. */
-
-static double gas_end_state_density (Point point, const double * yend) {
-  double invMW = 0.;
-  for (int jj = 0; jj < NGS; jj++)
-    invMW += (yend[jj] > 0. ? yend[jj] : 0.)/gas_MWs[jj];
-  double T = yend[NGS];
+static double gas_ideal_density (double P, double invMW, double T) {
   if (!(invMW > 0.) || !(T > 0.))
     return 0.;
-  return (Pref + p[])/(R_GAS*1000.*T*invMW);
+  return P/(R_GAS*1000.*T*invMW);
 }
 
+#ifndef BINNING
 /**
-The exact step mean of the expansion, `ln(rho_start/rho_end)`, from the two
-states of the reactor. Returns 0 if one of the states is not usable. */
+The gas density of the state `ys` (`NGS` mass fractions, then the
+temperature). */
 
-static double gas_log_expansion (Point point, const double * ystart,
-                                 const double * yend) {
-  double rho_start = gas_end_state_density (point, ystart);
-  double rho_end = gas_end_state_density (point, yend);
+static double gas_state_density (Point point, const double * ys) {
+  double invMW = 0.;
+  for (int jj = 0; jj < NGS; jj++)
+    invMW += (ys[jj] > 0. ? ys[jj] : 0.)/gas_MWs[jj];
+  return gas_ideal_density (Pref + p[], invMW, ys[NGS]);
+}
+#endif // !BINNING
+
+/**
+`ln(rho_start/rho_end)` from the two densities. Returns 0 if one of them is
+not usable. */
+
+static double gas_log_density_ratio (double rho_start, double rho_end) {
   if (!(rho_start > 0.) || !(rho_end > 0.))
     return 0.;
   return log (rho_start/rho_end);
 }
 
 /**
-Convenience wrapper for the per-cell path, which holds both states and where
-`rhoGv_G`/`cpGv_G` do not change over the chemistry event. */
+The exact step mean of the expansion, `ln(rho_start/rho_end)`, from the two
+states of the reactor. Returns 0 if one of the states is not usable. */
 
-static void accumulate_gas_sources (Point point, const double * ystart,
-                                    const double * yend) {
-  if (dt > 0.)
-    drhodt_chem[] += cm[]*gas_log_expansion (point, ystart, yend)/dt;
+#ifndef BINNING
+static double gas_log_expansion (Point point, const double * ystart,
+                                 const double * yend) {
+  return gas_log_density_ratio (gas_state_density (point, ystart),
+                                gas_state_density (point, yend));
 }
+#endif // !BINNING
+
+/**
+Add the increment `ln(rho_start/rho_end)` of one call of the gas reactor to
+the expansion of the step. The increment divides by the step `dt`, also when
+the reactor runs over `dt/2`. The first call of the step writes to
+`drhodt_chem`. The second half of the Strang split writes to `drhodt`,
+because `update_divergence()` has already run. See "The Strang split of the
+gas chemistry" below for the weights. */
+
+static void add_gas_expansion (Point point, double lnratio, bool second_half)
+{
+  if (!(dt > 0.))
+    return;
+#if GAS_CHEMISTRY_STRANG
+  if (second_half) {
+# ifndef NO_EXPANSION
+    drhodt[] -= (1. - f[])*cm[]*lnratio/dt;
+# endif
+    return;
+  }
 #endif
+  drhodt_chem[] += cm[]*lnratio/dt;
+}
+#endif // !TURN_OFF_GAS_REACTIONS
+#endif // VARPROP
 
 /**
 ## The gate that skips the cells the step cannot change
@@ -452,32 +425,42 @@ over a shorter interval. At level 8 before the ignition, the chemistry cost
 
 Restart: the split adds no field.
 
-The gate tests each half with its own `dt/2`. The `BINNING` path keeps the
-Lie split.
+The gate tests each half with its own `dt/2`. The `BINNING` path uses the
+same split, with no gate: it bins the cells again in each half.
 
 `GAS_CHEMISTRY_STRANG` 0 gives the Lie split: the `chemistry` event
 integrates the gas reactor over the full `dt`, and the build has no second
 half. */
 
-#if GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
-# ifdef VARPROP
+#if !TURN_OFF_GAS_REACTIONS
 /**
-The expansion of the second half, per unit volume of the cell. See the list
-above for the form. */
+## The cells where the gas reactor runs
 
-static void strang_second_half_expansion (Point point, const double * ystart,
-                                          const double * yend)
+The gas reactor runs in a cell that holds gas (`f < 1 - F_ERR`), when the
+temperature of the gas is in the window of the thermodynamic data and the
+gas composition is not empty. A cell that the interface has just uncovered
+can carry an all-zero composition. The right-hand side clamps each species
+to 0 or more, so an empty vector reaches the conversion to mole fractions as
+`MW = 1/0`. The solid branch has the same check. The per-cell path and the
+`BINNING` path use this function, so they select the same cells. */
+
+static bool gas_reactor_cell (Point point)
 {
-#  ifndef NO_EXPANSION
-  if (!(dt > 0.))
-    return;
-  double rate = 0.;
-  rate = gas_log_expansion (point, ystart, yend);
-  drhodt[] -= (1. - f[])*cm[]*rate/dt;
-#  endif // !NO_EXPANSION
+  if (!(f[] < 1. - F_ERR))
+    return false;
+
+  double temperature = TG[]/(1. - f[]);
+  if (!(temperature > 273.) || !(temperature < 3500.))
+    return false;
+
+  double ygsum = 0.;
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    ygsum += YG[];
+  }
+  return ygsum > 0.;
 }
-# endif // VARPROP
-#endif // GAS_CHEMISTRY_STRANG && !TURN_OFF_GAS_REACTIONS
+#endif // !TURN_OFF_GAS_REACTIONS
 
 #if !defined(BINNING) && !TURN_OFF_GAS_REACTIONS
 /**
@@ -495,21 +478,8 @@ chemistry" above. */
 static void gas_phase_reactions (double dtc, bool second_half)
 {
   foreach (reduction(+:frozen_cell_gate_n)) {
-    if (f[] < 1. - F_ERR) {
+    if (gas_reactor_cell (point)) {
       double temperature = TG[]/(1. - f[]);
-      if (!(temperature > 273.) || !(temperature < 3500.))
-        continue;
-
-      // Freshly-uncovered cells can carry an all-zero composition: the RHS
-      // clamps each species to >= 0, so an empty vector reaches the
-      // mole-fraction conversion as MW = 1/0 (mirrors the solid-branch gate).
-      double ygsum_seed = 0.;
-      for (int jj = 0; jj < NGS; jj++) {
-        scalar YG = YGList_G[jj];
-        ygsum_seed += YG[];
-      }
-      if (!(ygsum_seed > 0.))
-        continue;
 
       double y0ode[NGS + 1]; // NGS + T
       for (int jj = 0; jj < NGS; jj++) {
@@ -591,12 +561,8 @@ static void gas_phase_reactions (double dtc, bool second_half)
         `ln(rho_start/rho_end)/dt`. */
 
 # ifdef VARPROP
-#  if GAS_CHEMISTRY_STRANG
-      if (second_half)
-        strang_second_half_expansion (point, ystart, y0ode);
-      else
-#  endif
-        accumulate_gas_sources (point, ystart, y0ode);
+      add_gas_expansion (point, gas_log_expansion (point, ystart, y0ode),
+                         second_half);
 # endif
 
       for (int jj = 0; jj < NGS; jj++) {
@@ -613,6 +579,152 @@ static void gas_phase_reactions (double dtc, bool second_half)
 # endif
 }
 #endif // !BINNING && !TURN_OFF_GAS_REACTIONS
+
+#if defined(BINNING) && !TURN_OFF_GAS_REACTIONS
+/**
+## The sweep of the gas-phase reactions with binning
+
+This function replaces the per-cell sweep above when the case includes
+`binning.h`. It has the same arguments, the same cells
+(`gas_reactor_cell()`) and the same expansion source
+(`add_gas_expansion()`), so the Strang split and `TURN_OFF_GAS_REACTIONS`
+work in the same way.
+
+The case gives the thermochemical `targets` and a tolerance `eps` for each
+target. `binning()` puts the cells with a similar state into one bin (see
+`binning.h`), and the stiff solver integrates each bin one time.
+`bin->phi[j]` holds the mass average of `fields[j]`: the entries
+`[0..NGS-1]` are the gas species and the entry `[NGS]` is the temperature.
+`binning_remap()` adds the change of the bin to each of its cells.
+
+The gate of the per-cell sweep does not apply here. Thus
+`frozen_cell_gate_n` stays 0. */
+
+/**
+Scale the gas tracers (species + temperature) of the current cell by a common
+factor. `1/(1-f)` maps the VOF-tracer form (`Y*(1-f)`) to the actual mass
+fractions the reactor expects; `(1-f)` is the inverse. */
+
+static void scale_gas_tracers (Point point, double factor) {
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    YG[] *= factor;
+  }
+  TG[] *= factor;
+}
+
+/**
+The gas density of the current cell, from its fields. Call it only between
+the two calls of `scale_gas_tracers()`, where the fields hold the actual
+values.
+
+Caution: do not replace this function with a point function that copies the
+state of the cell into a local array, followed by a call of
+`gas_state_density()` on that array in the same `foreach`. That pattern
+makes `qcc` crash with a segmentation fault (in `replace_break()`). */
+
+static double gas_cell_density (Point point) {
+  double invMW = 0.;
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    invMW += (YG[] > 0. ? YG[] : 0.)/gas_MWs[jj];
+  }
+  return gas_ideal_density (Pref + p[], invMW, TG[]);
+}
+
+static void gas_phase_reactions (double dtc, bool second_half)
+{
+  extern scalar * targets;
+  extern double * eps;
+
+  /**
+  Flag the cells where the reactor runs. Change their gas fields from the
+  tracer form to the actual values, and keep the start density of each cell
+  for the expansion source. */
+
+  scalar gasmask[], rho0[];
+  foreach() {
+    gasmask[] = gas_reactor_cell (point) ? 1. : 0.;
+    rho0[] = 0.;
+    if (gasmask[]) {
+      scale_gas_tracers (point, 1./(1. - f[]));
+      rho0[] = gas_cell_density (point);
+    }
+  }
+
+  scalar * fields = list_concat (YGList_G, {TG});
+
+  BinTable * table = binning (fields, targets, eps, rhoGv_G, cpGv_G, gasmask);
+
+# ifdef CHEMISTRY_LOG
+  /**
+  The file `bin-<pid>` gets one line for each call: the time, the number of
+  cells, the number of bins, and 1 for the second half of the Strang split
+  (else 0). */
+
+  static FILE * fp = NULL;
+  if (!fp) {
+    char name[20];
+    sprintf (name, "bin-%d", pid());
+    fp = fopen (name, "w");
+  }
+  fprintf (fp, "%g %ld %zu %d\n", t, grid->n, binning_stats (table).nactive,
+           second_half ? 1 : 0);
+  fflush (fp);
+# endif
+
+  foreach_bin (table) {
+    double y0ode[NGS + 1];
+    for (size_t j = 0; j < bin->nfields; j++)
+      y0ode[j] = bin->phi[j];
+
+    /**
+    `rho` and `cp` are start values only. Under `VARPROP` the reactor
+    computes them again from the state at each evaluation, in a local copy
+    of `data`. So do not read them back from `data` after the solve. */
+
+    UserDataODE data;
+    data.P = Pref + bin_average (bin, p);
+    data.T = y0ode[NGS];
+    data.sources = NULL;
+    data.rhog = bin->rho;
+    data.cpg = bin->cp;
+
+    OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
+        NGS + 1, dtc, y0ode, &data);
+
+    /**
+    If the solve diverged, keep `phi` equal to `phi0`. Then the remap does
+    not change the cells of this bin, as in the per-cell sweep. */
+
+    bool valid = true;
+    for (size_t j = 0; j < bin->nfields; j++)
+      if (!isfinite (y0ode[j]))
+        valid = false;
+
+    if (valid)
+      for (size_t j = 0; j < bin->nfields; j++)
+        bin->phi[j] = (j < (size_t)NGS) ? fmax (0., y0ode[j]) : y0ode[j];
+  }
+
+  binning_remap (table, fields);
+  binning_cleanup (table);
+  free (fields), fields = NULL;
+
+  /**
+  Add the expansion of each cell from its two densities. Then change the gas
+  fields back to the tracer form. */
+
+  foreach() {
+    if (gasmask[]) {
+      double lnratio = gas_log_density_ratio (rho0[], gas_cell_density (point));
+      add_gas_expansion (point, lnratio, second_half);
+
+      scale_gas_tracers (point, 1. - f[]);
+    }
+  }
+}
+#endif // BINNING && !TURN_OFF_GAS_REACTIONS
 
 event chemistry (i++) {
 
@@ -797,129 +909,15 @@ event chemistry (i++) {
   ## Gas-phase reactions
   We solve the gas-phase reaction system in every cell that contains gas
   (i.e. f < 1 - F_ERR). The system is solved in terms of mass fraction.
-  */
+  With `BINNING` the solver integrates bins of cells, not single cells.
 
-#ifdef BINNING
-# ifndef VARPROP
-#   error "BINNING requires VARPROP (it uses rhoGv_G/cpGv_G and the DYDtG_G/DTDtG sources)"
-# endif
-
-  /**
-  The bin partitioning is driven by a case-provided list of thermochemical
-  `targets` and a per-target tolerance `eps` (mixed-radix bin id, see
-  binning.h). */
-
-  extern scalar * targets;
-  extern double * eps;
-
-  /**
-  Flag the pure-gas cells (the same set integrated by the non-binning branch)
-  and convert their gas fields from VOF-tracer form (`Y*(1-f)`) to the actual
-  mass fractions the reactor expects. */
-
-  scalar gasmask[], rho0[], cp0[];
-  foreach() {
-    gasmask[] = (f[] < 1. - F_ERR && TG[] > 0.) ? 1. : 0.;
-    rho0[] = rhoGv_G[], cp0[] = cpGv_G[];
-    if (gasmask[]) {
-      scale_gas_tracers (point, 1./(1. - f[]));
-
-      /**
-      First half of the step-averaged source: subtract the pre-reaction state.
-      The loop below adds the post-reaction state over the same `gasmask`, so
-      every cell that gets the subtraction also gets the addition. `rho0` and
-      `cp0` keep the weights that `binning_remap()` is about to overwrite. */
-
-      if (gas_source_averaged) {
-        double ystart[NGS + 1];
-        for (int jj = 0; jj < NGS; jj++) {
-          scalar YG = YGList_G[jj];
-          ystart[jj] = YG[];
-        }
-        ystart[NGS] = TG[];
-        gas_sources_accumulate_state (point, ystart, rho0[], cp0[], -1.);
-      }
-    }
-  }
-
-  /**
-  Agglomerate the flagged cells into bins of similar thermochemical state and
-  integrate the stiff chemistry ODE once per bin. `bin->phi[j]` holds the
-  mass-averaged value of `fields[j]`: entries `[0..NGS-1]` are the gas species
-  and entry `[NGS]` is the temperature. */
-
-  scalar * fields = list_concat (YGList_G, {TG});
-
-  BinTable * table = binning (fields, targets, eps, rhoGv_G, cpGv_G, gasmask);
-
-#ifdef CHEMISTRY_LOG
-  static FILE * fp = NULL;
-  if (!fp) {
-    char name[20];
-    sprintf (name, "bin-%d", pid());
-    fp = fopen (name, "w");
-  }
-  fprintf (fp, "%g %ld %ld\n", t, grid->n, binning_stats(table).nactive);
-  fflush (fp);
-#endif
-
-  foreach_bin (table) {
-    double y0ode[NGS + 1];
-    for (size_t j = 0; j < bin->nfields; j++)
-      y0ode[j] = bin->phi[j];
-
-    UserDataODE data;
-    data.P = Pref + bin_average (bin, p);
-    data.sources = NULL;
-    data.rhog = bin->rho;
-    data.cpg = bin->cp;
-
-    OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
-        NGS + 1, dt, y0ode, &data);
-
-    for (size_t j = 0; j < bin->nfields; j++)
-      bin->phi[j] = (j < (size_t)NGS) ? fmax (0., y0ode[j]) : y0ode[j];
-
-    bin->rho = data.rhog;
-    bin->cp = data.cpg;
-  }
-
-  binning_remap (table, fields, rhoGv_G, cpGv_G);
-  binning_cleanup (table);
-  free (fields), fields = NULL;
-
-  /**
-  Second half of the step-averaged source: add the post-reaction state. Then
-  restore the VOF-tracer form of the gas fields. */
-
-  foreach() {
-    if (gasmask[]) {
-      double y0ode[NGS + 1]; // NGS + T
-      for (int jj = 0; jj < NGS; jj++) {
-        scalar YG = YGList_G[jj];
-        y0ode[jj] = YG[];
-      }
-      y0ode[NGS] = TG[];
-
-      if (gas_source_averaged)
-        gas_sources_accumulate_state (point, y0ode, rho0[], cp0[], +1.);
-      else
-        gas_sources_instantaneous (point, y0ode);
-
-      scale_gas_tracers (point, 1. - f[]); // restore VOF-tracer form
-    }
-  }
-#else // !BINNING
-
-  /**
-  `TURN_OFF_GAS_REACTIONS` removes this whole loop, so no gas cell reacts.
-  The gas sources that the loop feeds are reset in every step, so they stay
+  `TURN_OFF_GAS_REACTIONS` removes this call, so no gas cell reacts.
+  The gas sources that the call feeds are reset in every step, so they stay
   at 0. The pore gas of the solid branch is switched in `reactors.h`. */
 
-# if !TURN_OFF_GAS_REACTIONS
+#if !TURN_OFF_GAS_REACTIONS
   gas_phase_reactions (GAS_CHEMISTRY_STRANG ? 0.5*dt : dt, false);
-# endif // !TURN_OFF_GAS_REACTIONS
-#endif // BINNING
+#endif // !TURN_OFF_GAS_REACTIONS
 
 #ifdef CHEMISTRY_LOG
   clock_gettime (CLOCK_MONOTONIC, &end);

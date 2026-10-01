@@ -1,0 +1,10 @@
+# binning-ignition: 256 cells, 80 steps of 0.00024 s, Solid-gas-88 (87 species)
+# reference: 184 cells ignite (T rises by 200 K), first at step 5, last at step 78
+# case tol M | NCA/Nc alpha_min | Eloc_max Eloc_mean | Eglob_max Eglob_end_mean | nign dk_max dk_mean
+# E = |T - Tref|/Tref (Eq. 10); nign: cells that ignite; dk: shift of the ignition in steps (80: one of the two does not ignite)
+A 0.01 4 | 0.71 0.00073 | 0.002 1.1e-05 | 0.55 0.0058 | 182 80 0.32
+B 0.05 4 | 0.36 8e-05 | 0.019 0.00021 | 0.99 0.07 | 154 80 4.6
+C 0.1 4 | 0.22 1.5e-05 | 0.24 0.00088 | 0.84 0.16 | 103 80 4
+E 0.05 11 | 0.51 0.00012 | 0.0056 2.9e-05 | 0.81 0.025 | 173 80 3.2
+F 0.05 4+H2O2,OH | 0.48 0.00012 | 0.018 3.7e-05 | 0.81 0.054 | 157 80 3.3
+one 1e-09 all | 1.00 1 | local error < 1e-3: yes | global error < 1e-2: yes | same ignition steps: yes

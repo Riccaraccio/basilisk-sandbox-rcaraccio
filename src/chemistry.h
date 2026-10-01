@@ -707,7 +707,9 @@ static bool gas_temperature_from_enthalpy (double h, const double * y,
 The statistics of the last call of the binning sweep, over all ranks:
 `binning_alpha_min` is the smallest `alpha` of the bins,
 `binning_nlimited` is the number of bins with `alpha < 1` (see
-`BINNING_ALPHA_ROUNDOFF` below), `binning_nbadbin`
+`BINNING_ALPHA_ROUNDOFF` below), `binning_ncells` and `binning_nbins` are
+the number of cells of the mask (`N_c` of the paper) and of bins (`N_CA`),
+`binning_nbadbin`
 is the number of bins that the sweep did not change (the solve diverged or
 the Newton solve of the bin did not converge), and `binning_nbadcell` is the
 number of cells where the Newton solve did not converge. With
@@ -748,6 +750,7 @@ species than one of its cells has) still gives `alpha < 1`. Set
 # define BINNING_YTOL 1e-10
 #endif
 long binning_nlimited = 0, binning_nbadbin = 0, binning_nbadcell = 0;
+long binning_ncells = 0, binning_nbins = 0;
 
 /**
 ## The parameters of the binning
@@ -804,6 +807,7 @@ static scalar * binning_select_targets (scalar mask, scalar w)
   for (int jj = 0; jj < NGS; jj++)
     used[jj] = false;
   int chosen[NGS + 1], n = 0;
+  NOT_UNUSED (chosen);
 
   scalar * list = NULL;
   if (binning_temperature && n < M) {
@@ -1101,9 +1105,14 @@ static void gas_phase_reactions (double dtc, bool second_half)
   free (cost);
 # endif
 
+  long ncells = table->nmask, nbins = nb;
   mpi_all_reduce (amin, MPI_DOUBLE, MPI_MIN);
   mpi_all_reduce (nlimited, MPI_LONG, MPI_SUM);
   mpi_all_reduce (nbadbin, MPI_LONG, MPI_SUM);
+  mpi_all_reduce (ncells, MPI_LONG, MPI_SUM);
+  mpi_all_reduce (nbins, MPI_LONG, MPI_SUM);
+  binning_ncells = ncells;
+  binning_nbins = nbins;
   binning_alpha_min = amin;
   binning_nlimited = nlimited;
   binning_nbadbin = nbadbin;

@@ -89,7 +89,7 @@ typedef struct {
   int ntargets, nfields;
   long L;
   int nbins, capacity;
-  long nmask;
+  long nmask; // the cells of the mask on this rank
   Bin * bins;
   scalar id;
 } BinTable;
@@ -227,7 +227,7 @@ BinTable * binning (scalar * fields, scalar * targets, double tol,
   The bin of each cell (Eq. 8 and 9). */
 
   long nmask = 0;
-  foreach (reduction(+:nmask))
+  foreach (serial)
     if (mask[])
       nmask++;
 

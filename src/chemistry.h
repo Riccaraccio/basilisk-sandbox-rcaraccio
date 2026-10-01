@@ -590,12 +590,31 @@ This function replaces the per-cell sweep above when the case includes
 (`add_gas_expansion()`), so the Strang split and `TURN_OFF_GAS_REACTIONS`
 work in the same way.
 
-The case gives the thermochemical `targets` and a tolerance `eps` for each
-target. `binning()` puts the cells with a similar state into one bin (see
-`binning.h`), and the stiff solver integrates each bin one time.
-`bin->phi[j]` holds the mass average of `fields[j]`: the entries
-`[0..NGS-1]` are the gas species and the entry `[NGS]` is the temperature.
-`binning_remap()` adds the change of the bin to each of its cells.
+The reaction step follows section 2 of Goldin, Ren and Zahirovic, Combust.
+Theory Model. 13 (2009) 721 (`papers/Goldin2009.md`):
+
+1. `binning()` puts the cells with a similar state into one bin. The case
+   gives the `targets` and a tolerance `eps` for each target (see
+   `binning.h`).
+2. The state of a bin is the mean of the cells, with the weight of the gas
+   mass `rho*(1-f)*dV` (Eq. 3). The mean covers the mass fractions and the
+   total enthalpy `h`, not the temperature. The temperature of the bin comes
+   from `h(T, Y) = h` with a Newton solve.
+3. The stiff solver integrates the bin over `dtc` (Eq. 4).
+4. Each cell gets the change of its bin (Eq. 5), scaled by one factor
+   `alpha` (0 to 1) for the whole bin. `alpha` is the largest value that
+   keeps every mass fraction of every cell of the bin in [0, 1]. One factor
+   for all species keeps the elements and the sum of the mass fractions.
+5. Each cell gets the change of the total enthalpy of its bin, also scaled
+   by `alpha`, and its temperature comes from a Newton solve. For an
+   adiabatic reactor the change is zero, and each cell keeps its own total
+   enthalpy: this is Eq. 6. The gas reactor of `reactors.h` also has the
+   optically thin radiation, so the change of a bin is its radiation loss.
+   With `TURN_OFF_HEAT_OF_REACTION` the reactor does not change the
+   temperature, so the cells keep their temperature.
+
+When the bins hold one cell each, the step is equal to the per-cell step,
+apart from the gate and the tolerance of the Newton solves.
 
 The gate of the per-cell sweep does not apply here. Thus
 `frozen_cell_gate_n` stays 0. */
@@ -632,6 +651,102 @@ static double gas_cell_density (Point point) {
   return gas_ideal_density (Pref + p[], invMW, TG[]);
 }
 
+/**
+The total (sensible plus formation) enthalpy in J/kg of the gas with the mass
+fractions `y` at the temperature `T`. A negative mass fraction counts as 0. */
+
+static double gas_mass_enthalpy (const double * y, double T)
+{
+  double yc[NGS], x[NGS], MW;
+  for (int jj = 0; jj < NGS; jj++)
+    yc[jj] = y[jj] > 0. ? y[jj] : 0.;
+  OpenSMOKE_MoleFractions_From_MassFractions (x, &MW, yc);
+  OpenSMOKE_GasProp_SetTemperature (T);
+  return OpenSMOKE_GasProp_Enthalpy (x);
+}
+
+/**
+The temperature at which the gas with the mass fractions `y` has the total
+enthalpy `h`, from a Newton solve that starts at `Tguess`. `dh/dT` is the
+`cp` of the mixture. The solve stays in [`TMIN_ODE`, `TMAX_ODE`], the range
+of the reactor. It returns false if it does not converge, and then `*T` is
+`Tguess`. */
+
+#define GAS_ENTHALPY_NEWTON_MAXIT 50
+#define GAS_ENTHALPY_NEWTON_RTOL 1e-10
+
+static bool gas_temperature_from_enthalpy (double h, const double * y,
+                                           double Tguess, double * T)
+{
+  double yc[NGS], x[NGS], MW;
+  for (int jj = 0; jj < NGS; jj++)
+    yc[jj] = y[jj] > 0. ? y[jj] : 0.;
+  OpenSMOKE_MoleFractions_From_MassFractions (x, &MW, yc);
+
+  double Tn = clamp_temperature (Tguess);
+  for (int it = 0; it < GAS_ENTHALPY_NEWTON_MAXIT; it++) {
+    OpenSMOKE_GasProp_SetTemperature (Tn);
+    double res = OpenSMOKE_GasProp_Enthalpy (x) - h;
+    double cp = OpenSMOKE_GasProp_HeatCapacity (x);
+    if (!(cp > 0.) || !isfinite (res))
+      break;
+    double dT = - res/cp;
+    Tn = clamp_temperature (Tn + dT);
+    if (fabs (dT) < GAS_ENTHALPY_NEWTON_RTOL*Tn) {
+      *T = Tn;
+      return true;
+    }
+  }
+  *T = Tguess;
+  return false;
+}
+
+/**
+The statistics of the last call of the binning sweep, over all ranks:
+`binning_alpha_min` is the smallest `alpha` of the bins,
+`binning_nlimited` is the number of bins with `alpha < 1` (see
+`BINNING_ALPHA_ROUNDOFF` below), `binning_nbadbin`
+is the number of bins that the sweep did not change (the solve diverged or
+the Newton solve of the bin did not converge), and `binning_nbadcell` is the
+number of cells where the Newton solve did not converge. With
+`CHEMISTRY_LOG` they go to `bin-<pid>` (values of that rank). */
+
+double binning_alpha_min = 1.;
+
+/**
+A bin with one cell, or with cells of equal state, can get `alpha` below 1
+by a rounding error only (the mean of the bin differs from the cell in the
+last bit). `binning_nlimited` does not count a bin with `alpha` above
+`1 - BINNING_ALPHA_ROUNDOFF`. */
+
+#define BINNING_ALPHA_ROUNDOFF 1e-10
+
+/**
+The margin of the realizability condition of `alpha`. Section 2 of Goldin et
+al. keeps every mass fraction of every cell in [0, 1]. With that strict
+condition, a change far below the tolerance of the stiff solver sets
+`alpha`:
+
+* In the free stream of `fatehi-combustion` (dummy mechanism, level 8),
+  one cell of the air bin has `H2O = 0` and the bin mean is 6e-14. The bin
+  takes about 1e-20 of H2O (the reverse reaction of `H2 + 0.5 O2 = H2O`), so
+  `alpha = 0` and the whole air bin does not react.
+* In a bin near the particle, H2 at 1.5e-20 in one cell gives `alpha = 0.70`,
+  so the heat release of the whole bin is 30 per cent too slow.
+
+The condition therefore lets a cell go out of [0, 1] by `BINNING_YTOL`, and
+the clamp removes the excess. The default is the absolute tolerance of the
+OpenSMOKE ODE solver (1e-10, `ODE_Parameters`). The per-cell sweep clamps
+the output of the solver to 0 in the same way, so both paths have an error of
+the same size in the conservation. A real limit (a bin that takes more of a
+species than one of its cells has) still gives `alpha < 1`. Set
+`BINNING_YTOL` to 0 for the strict condition of the paper. */
+
+#ifndef BINNING_YTOL
+# define BINNING_YTOL 1e-10
+#endif
+long binning_nlimited = 0, binning_nbadbin = 0, binning_nbadcell = 0;
+
 static void gas_phase_reactions (double dtc, bool second_half)
 {
   extern scalar * targets;
@@ -639,44 +754,60 @@ static void gas_phase_reactions (double dtc, bool second_half)
 
   /**
   Flag the cells where the reactor runs. Change their gas fields from the
-  tracer form to the actual values, and keep the start density of each cell
-  for the expansion source. */
+  tracer form to the actual values. Keep the start density of each cell for
+  the expansion source, the gas mass `wG` for the weight of the means, and
+  the total enthalpy `hG`. */
 
-  scalar gasmask[], rho0[];
+  scalar gasmask[], rho0[], wG[], hG[];
   foreach() {
     gasmask[] = gas_reactor_cell (point) ? 1. : 0.;
-    rho0[] = 0.;
+    rho0[] = 0., wG[] = 0., hG[] = 0.;
     if (gasmask[]) {
       scale_gas_tracers (point, 1./(1. - f[]));
       rho0[] = gas_cell_density (point);
+      wG[] = rho0[]*(1. - f[]);
+      double ys[NGS];
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        ys[jj] = YG[];
+      }
+      hG[] = gas_mass_enthalpy (ys, TG[]);
     }
   }
 
-  scalar * fields = list_concat (YGList_G, {TG});
-
-  BinTable * table = binning (fields, targets, eps, rhoGv_G, cpGv_G, gasmask);
-
-# ifdef CHEMISTRY_LOG
   /**
-  The file `bin-<pid>` gets one line for each call: the time, the number of
-  cells, the number of bins, and 1 for the second half of the Strang split
-  (else 0). */
+  The entries of `bin->phi`: `[0..NGS-1]` the mass fractions, `[NGS]` the
+  total enthalpy, `[NGS+1]` the temperature. The mean temperature is only the
+  first guess of the Newton solve of the bin. The sweep then sets
+  `bin->phi0[NGS+1]` to the temperature of the bin. */
 
-  static FILE * fp = NULL;
-  if (!fp) {
-    char name[20];
-    sprintf (name, "bin-%d", pid());
-    fp = fopen (name, "w");
-  }
-  fprintf (fp, "%g %ld %zu %d\n", t, grid->n, binning_stats (table).nactive,
-           second_half ? 1 : 0);
-  fflush (fp);
-# endif
+  const int ih = NGS, iT = NGS + 1;
+  scalar * fields = list_concat (YGList_G, {hG, TG});
+
+  BinTable * table = binning (fields, targets, eps, wG, unity, gasmask);
+
+  /**
+  `alpha` of each bin. A bin with `alpha < 0` is a bin that the sweep does
+  not change. */
+
+  double * alpha = malloc ((table->nbins > 0 ? table->nbins : 1)*sizeof (double));
 
   foreach_bin (table) {
+    alpha[i] = -1.;
+
+    double ybar[NGS];
+    for (int jj = 0; jj < NGS; jj++)
+      ybar[jj] = bin->phi[jj];
+    double Tbar;
+    if (!gas_temperature_from_enthalpy (bin->phi[ih], ybar, bin->phi[iT],
+                                        &Tbar))
+      continue;
+    bin->phi0[iT] = Tbar;
+
     double y0ode[NGS + 1];
-    for (size_t j = 0; j < bin->nfields; j++)
-      y0ode[j] = bin->phi[j];
+    for (int jj = 0; jj < NGS; jj++)
+      y0ode[jj] = ybar[jj];
+    y0ode[NGS] = Tbar;
 
     /**
     `rho` and `cp` are start values only. Under `VARPROP` the reactor
@@ -685,29 +816,126 @@ static void gas_phase_reactions (double dtc, bool second_half)
 
     UserDataODE data;
     data.P = Pref + bin_average (bin, p);
-    data.T = y0ode[NGS];
+    data.T = Tbar;
     data.sources = NULL;
-    data.rhog = bin->rho;
-    data.cpg = bin->cp;
+    double invMW = 0.;
+    for (int jj = 0; jj < NGS; jj++)
+      invMW += (ybar[jj] > 0. ? ybar[jj] : 0.)/gas_MWs[jj];
+    data.rhog = gas_ideal_density (data.P, invMW, Tbar);
+    double xbar[NGS], MWbar;
+    OpenSMOKE_MoleFractions_From_MassFractions (xbar, &MWbar, y0ode);
+    OpenSMOKE_GasProp_SetTemperature (Tbar);
+    data.cpg = OpenSMOKE_GasProp_HeatCapacity (xbar);
 
     OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
         NGS + 1, dtc, y0ode, &data);
 
     /**
-    If the solve diverged, keep `phi` equal to `phi0`. Then the remap does
-    not change the cells of this bin, as in the per-cell sweep. */
+    If the solve diverged, the sweep does not change the cells of this bin,
+    as in the per-cell sweep.
+
+    Clamp the mass fractions of the bin to 0 or more, as the per-cell sweep
+    does. The stiff solver can return a negative value of the size of its
+    tolerance for a species that is absent. Without the clamp, a cell where
+    that species is exactly 0 gives `alpha = 0`, and the whole bin does not
+    react. The clamp changes the sum of the mass fractions by the tolerance
+    of the solver only. */
 
     bool valid = true;
-    for (size_t j = 0; j < bin->nfields; j++)
-      if (!isfinite (y0ode[j]))
+    for (int jj = 0; jj < NGS + 1; jj++)
+      if (!isfinite (y0ode[jj]))
         valid = false;
+    if (!valid)
+      continue;
 
-    if (valid)
-      for (size_t j = 0; j < bin->nfields; j++)
-        bin->phi[j] = (j < (size_t)NGS) ? fmax (0., y0ode[j]) : y0ode[j];
+    for (int jj = 0; jj < NGS; jj++) {
+      y0ode[jj] = fmax (0., y0ode[jj]);
+      bin->phi[jj] = y0ode[jj];
+    }
+    bin->phi[ih] = gas_mass_enthalpy (y0ode, y0ode[NGS]);
+    bin->phi[iT] = y0ode[NGS];
+    alpha[i] = 1.;
   }
 
-  binning_remap (table, fields);
+  /**
+  ## The remap (Eq. 5 and 6)
+
+  First the largest `alpha` that keeps every mass fraction of every cell of
+  the bin in [`-BINNING_YTOL`, `1 + BINNING_YTOL`], then the change of each
+  cell, with a clamp to [0, 1]. See `BINNING_YTOL` for the margin. */
+
+  double amin = 1.;
+  long nlimited = 0, nbadbin = 0, nbadcell = 0;
+  foreach_bin (table) {
+    if (alpha[i] < 0.) {
+      nbadbin++;
+      continue;
+    }
+
+    double a = 1.;
+    foreach_bin_cell (bin)
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        double dY = bin->phi[jj] - bin->phi0[jj];
+        if (dY < 0. && YG[] + a*dY < - BINNING_YTOL)
+          a = (max (YG[], 0.) + BINNING_YTOL)/(- dY);
+        else if (dY > 0. && YG[] + a*dY > 1. + BINNING_YTOL)
+          a = (1. + BINNING_YTOL - min (YG[], 1.))/dY;
+      }
+    alpha[i] = a;
+    amin = min (amin, a);
+    if (a < 1. - BINNING_ALPHA_ROUNDOFF)
+      nlimited++;
+
+    foreach_bin_cell (bin) {
+      double ycell[NGS];
+      for (int jj = 0; jj < NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        YG[] += a*(bin->phi[jj] - bin->phi0[jj]);
+        YG[] = clamp (YG[], 0., 1.);
+        ycell[jj] = YG[];
+      }
+#ifndef TURN_OFF_HEAT_OF_REACTION
+      double hnew = hG[] + a*(bin->phi[ih] - bin->phi0[ih]);
+      double Tguess = TG[] + a*(bin->phi[iT] - bin->phi0[iT]);
+      double Tnew;
+      if (!gas_temperature_from_enthalpy (hnew, ycell, Tguess, &Tnew))
+        nbadcell++;
+      TG[] = Tnew;
+#endif
+    }
+  }
+  free (alpha);
+
+# ifdef CHEMISTRY_LOG
+  /**
+  The file `bin-<pid>` gets one line for each call: the time, the number of
+  cells, the number of bins, 1 for the second half of the Strang split (else
+  0), the smallest `alpha`, the number of bins with `alpha < 1`, the number
+  of bins that the sweep did not change, and the number of cells where the
+  Newton solve did not converge. All values are those of this rank. */
+
+  static FILE * fp = NULL;
+  if (!fp) {
+    char name[20];
+    sprintf (name, "bin-%d", pid());
+    fp = fopen (name, "w");
+  }
+  fprintf (fp, "%g %ld %zu %d %g %ld %ld %ld\n", t, grid->n,
+           binning_stats (table).nactive, second_half ? 1 : 0,
+           amin, nlimited, nbadbin, nbadcell);
+  fflush (fp);
+# endif
+
+  mpi_all_reduce (amin, MPI_DOUBLE, MPI_MIN);
+  mpi_all_reduce (nlimited, MPI_LONG, MPI_SUM);
+  mpi_all_reduce (nbadbin, MPI_LONG, MPI_SUM);
+  mpi_all_reduce (nbadcell, MPI_LONG, MPI_SUM);
+  binning_alpha_min = amin;
+  binning_nlimited = nlimited;
+  binning_nbadbin = nbadbin;
+  binning_nbadcell = nbadcell;
+
   binning_cleanup (table);
   free (fields), fields = NULL;
 

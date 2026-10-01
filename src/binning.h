@@ -32,7 +32,8 @@ binning_cleanup (table);
 
 1. ~~A different tolerance for each species~~
 1. ~~Avoid empty bins to save memory~~
-1. Energy-conserving remap
+1. Energy-conserving remap: `chemistry.h` does the remap of Goldin et al.
+   (Eq. 5 and 6), not `binning_remap()`
 1. ~~Parallel simulations (each binning is local to the pid)~~
 
 */

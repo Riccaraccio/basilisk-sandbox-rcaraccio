@@ -398,12 +398,17 @@ rank 0 only):
   tuple, divided by the number of ranks. This is the time of a global map
   with a perfect share and no communication.
 
-The gather costs communication, so call it only for a measurement. */
+The gather costs communication, so call it only for a measurement. Without
+MPI the function does nothing.
 
-@if _MPI
+Caution: keep `@if _MPI` inside the body. Around the whole function, it makes
+`qcc` write one `#endif` too many into the code of the full case stack
+(`multicomponent-varprop.h`), and the compiler stops. */
+
 void binning_mpi_report (const BinTable * table, const double * cost,
                          double t, int half, FILE * fp)
 {
+@if _MPI
   int np = npe(), M = table->ntargets, nb = table->nbins;
   double tlocal = 0.;
   for (int i = 0; i < nb; i++)
@@ -476,8 +481,8 @@ void binning_mpi_report (const BinTable * table, const double * cost,
     free (allkeys), free (allcost);
   }
   free (keys);
-}
 @endif
+}
 
 /**
 ## References

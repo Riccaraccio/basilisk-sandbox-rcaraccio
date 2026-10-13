@@ -618,8 +618,16 @@ Theory Model. 13 (2009) 721 (`papers/Goldin2009.md`):
 When the bins hold one cell each, the step is equal to the per-cell step,
 apart from the gate and the tolerance of the Newton solves.
 
-The gate of the per-cell sweep does not apply here. Thus
+`BINNING_GATE` 1 applies the frozen-cell gate of the per-cell sweep before
+step 1, with the same test and the same tolerances. A frozen cell gets the
+explicit update of the gate, and it does not go into a bin. The range of
+each coordinate then covers the cells that react only. With
+`BINNING_GATE` 0 (the default) every reactor cell goes into a bin, and
 `frozen_cell_gate_n` stays 0. */
+
+#ifndef BINNING_GATE
+# define BINNING_GATE 0
+#endif
 
 /**
 Scale the gas tracers (species + temperature) of the current cell by a common
@@ -882,14 +890,58 @@ static void gas_phase_reactions (double dtc, bool second_half)
   the expansion source, the gas mass `wG` for the weight of the means, and
   the total enthalpy `hG`. */
 
-  scalar gasmask[], rho0[], wG[], hG[];
-  foreach() {
+  scalar gasmask[], rho0[], wG[], hG[], frozen[];
+  foreach (reduction(+:frozen_cell_gate_n)) {
     gasmask[] = gas_reactor_cell (point) ? 1. : 0.;
-    rho0[] = 0., wG[] = 0., hG[] = 0.;
+    rho0[] = 0., wG[] = 0., hG[] = 0., frozen[] = 0.;
     if (gasmask[]) {
       scale_gas_tracers (point, 1./(1. - f[]));
       rho0[] = gas_cell_density (point);
       wG[] = rho0[]*(1. - f[]);
+
+#if BINNING_GATE
+      /**
+      The gate of the per-cell sweep (see `FROZEN_CELL_GATE`). A frozen cell
+      leaves the mask of the bins, and `frozen` keeps it in the loop of the
+      expansion source at the end. The fields hold the actual values
+      here. */
+
+      if (dtc > 0.) {
+        double yg[NGS + 1], dy_gate[NGS + 1];
+        for (int jj = 0; jj < NGS; jj++) {
+          scalar YG = YGList_G[jj];
+          yg[jj] = YG[];
+        }
+        yg[NGS] = TG[];
+
+        UserDataODE data;
+        data.P = Pref + p[];
+        data.T = TG[];
+        data.sources = NULL;
+        data.rhog = rhoGv_G[];
+        data.cpg = cpGv_G[];
+        gas_batch_nonisothermal_constantpressure (yg, dtc, dy_gate, &data);
+
+        double dYmax = 0.;
+        for (int jj = 0; jj < NGS; jj++)
+          dYmax = fmax (dYmax, fabs (dy_gate[jj]));
+
+        if (dYmax*dtc < FROZEN_CELL_YTOL &&
+            fabs (dy_gate[NGS])*dtc < FROZEN_CELL_TTOL) {
+          for (int jj = 0; jj < NGS; jj++) {
+            scalar YG = YGList_G[jj];
+            double y = yg[jj] + dtc*dy_gate[jj];
+            YG[] = y > 0. ? y : 0.;
+          }
+          TG[] = yg[NGS] + dtc*dy_gate[NGS];
+          gasmask[] = 0.;
+          frozen[] = 1.;
+          frozen_cell_gate_n++;
+          continue;
+        }
+      }
+#endif // BINNING_GATE
+
       double ys[NGS];
       for (int jj = 0; jj < NGS; jj++) {
         scalar YG = YGList_G[jj];
@@ -1014,21 +1066,35 @@ static void gas_phase_reactions (double dtc, bool second_half)
   this, the condition is false from the start and gave `alpha = 1.5e16` in
   the air bin of `fatehi-combustion`. */
 
+# ifdef CHEMISTRY_LOG
+  /**
+  `alim[b]` is the species that sets `alpha` of the bin `b` (-1: none). */
+
+  int * alim = malloc ((nb > 0 ? nb : 1)*sizeof (int));
+  for (int b = 0; b < nb; b++)
+    alim[b] = -1;
+# endif
+
   foreach (serial) {
     int b = binid[];
     if (b >= 0 && alpha[b] > 0.) {
       Bin * bin = table->bins + b;
       double a = alpha[b];
+      int jlim = -1;
       for (int jj = 0; jj < NGS; jj++) {
         scalar YG = YGList_G[jj];
         double dY = bin->phi[jj] - bin->phi0[jj];
         double lower = min (YG[], 0.) - BINNING_YTOL;
         double upper = max (YG[], 1.) + BINNING_YTOL;
         if (dY < 0. && YG[] + a*dY < lower)
-          a = min (a, (YG[] - lower)/(- dY));
+          a = min (a, (YG[] - lower)/(- dY)), jlim = jj;
         else if (dY > 0. && YG[] + a*dY > upper)
-          a = min (a, (upper - YG[])/dY);
+          a = min (a, (upper - YG[])/dY), jlim = jj;
       }
+# ifdef CHEMISTRY_LOG
+      if (jlim >= 0)
+        alim[b] = jlim;
+# endif
       alpha[b] = max (a, 0.);
     }
   }
@@ -1068,6 +1134,78 @@ static void gas_phase_reactions (double dtc, bool second_half)
         nlimited++;
     }
   }
+
+# ifdef CHEMISTRY_LOG
+  /**
+  Rank 0 writes one line to `bin-limit` for each call, with the values of
+  all ranks:
+
+      t half nbins nlimited n1e-6 n1e-3 n0.1 n0.5 mlim mlost name:count ...
+
+  * `n<x>`: the bins with `alpha` below `x`;
+  * `mlim`: the gas mass of the limited bins over the gas mass of all bins;
+  * `mlost`: the sum of `mass*(1 - alpha)` over the gas mass of all bins.
+    It is the part of the reaction that the remap does not give to the
+    cells;
+  * `name:count`: the 5 species that set `alpha` in the most bins.
+
+  The bins that the sweep did not change (`alpha < 0`) do not count. */
+
+  const double athr[4] = {1e-6, 1e-3, 0.1, 0.5};
+  long lcount[NGS + 5];
+  for (int k = 0; k < NGS + 5; k++)
+    lcount[k] = 0;
+  double lmass[3] = {0., 0., 0.}; // all bins, limited bins, mass*(1 - alpha)
+  for (int b = 0; b < nb; b++) {
+    if (alpha[b] < 0.)
+      continue;
+    double m = table->bins[b].mass;
+    lmass[0] += m;
+    lmass[2] += m*(1. - alpha[b]);
+    if (alpha[b] < 1. - BINNING_ALPHA_ROUNDOFF) {
+      lmass[1] += m;
+      if (alim[b] >= 0)
+        lcount[alim[b]]++;
+      for (int k = 0; k < 4; k++)
+        if (alpha[b] < athr[k])
+          lcount[NGS + k]++;
+    }
+  }
+  lcount[NGS + 4] = nb - nbadbin;
+  long nlim_all = nlimited;
+  mpi_all_reduce_array (lcount, MPI_LONG, MPI_SUM, NGS + 5);
+  mpi_all_reduce_array (lmass, MPI_DOUBLE, MPI_SUM, 3);
+  mpi_all_reduce (nlim_all, MPI_LONG, MPI_SUM);
+  free (alim);
+
+  if (pid() == 0) {
+    static FILE * flim = NULL;
+    if (!flim)
+      flim = fopen ("bin-limit", "w");
+    double mall = lmass[0] > 0. ? lmass[0] : 1.;
+    fprintf (flim, "%g %d %ld %ld %ld %ld %ld %ld %.4g %.4g", t,
+             second_half ? 1 : 0, lcount[NGS + 4], nlim_all,
+             lcount[NGS], lcount[NGS + 1], lcount[NGS + 2], lcount[NGS + 3],
+             lmass[1]/mall, lmass[2]/mall);
+    bool used[NGS];
+    for (int jj = 0; jj < NGS; jj++)
+      used[jj] = false;
+    for (int r = 0; r < 5; r++) {
+      int best = -1;
+      for (int jj = 0; jj < NGS; jj++)
+        if (!used[jj] && lcount[jj] > 0 &&
+            (best < 0 || lcount[jj] > lcount[best]))
+          best = jj;
+      if (best < 0)
+        break;
+      used[best] = true;
+      fprintf (flim, " %s:%ld", OpenSMOKE_NamesOfSpecies (best), lcount[best]);
+    }
+    fprintf (flim, "\n");
+    fflush (flim);
+  }
+# endif
+
   free (alpha);
 
 # ifdef CHEMISTRY_LOG
@@ -1118,16 +1256,22 @@ static void gas_phase_reactions (double dtc, bool second_half)
   binning_nbadbin = nbadbin;
   binning_nbadcell = nbadcell;
 
+# if defined(CHEMISTRY_LOG) && BINNING_GATE
+  if ((second_half || !GAS_CHEMISTRY_STRANG) && pid() == 0)
+    fprintf (stderr, "GATE %g %d\n", t, frozen_cell_gate_n);
+# endif
+
   binning_cleanup (table);
   free (fields), fields = NULL;
   free (targets), targets = NULL;
 
   /**
   Add the expansion of each cell from its two densities. Then change the gas
-  fields back to the tracer form. */
+  fields back to the tracer form. The frozen cells of `BINNING_GATE` are not
+  in `gasmask`, but they need both steps. */
 
   foreach() {
-    if (gasmask[]) {
+    if (gasmask[] || frozen[]) {
       double lnratio = gas_log_density_ratio (rho0[], gas_cell_density (point));
       add_gas_expansion (point, lnratio, second_half);
 

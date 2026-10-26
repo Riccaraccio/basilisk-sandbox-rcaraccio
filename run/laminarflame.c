@@ -58,7 +58,31 @@ To use a different scheme, build with `-DKINFOLDER='"<folder>"'`.
 `biomass/Solid-gas-88` also carries the chain, and it is more complete, but it
 has 87 gas species against the 57 of the default, so it costs more.
 `biomass/Solid-gas-2507` has 36 gas species and no OH and no HO2. Do not use
-it for a flame. */
+it for a flame.
+
+`skeletal/hydrogen-solid` is the gas block of `skeletal/hydrogen` (21
+species, 62 reactions), which the original case uses, plus a dummy solid
+block (CHAR, MOIST, ASH, and the element K for ASH). Use it to compare
+with the original case. The folder is not in the git repository of
+`OpenSMOKEppInterface`. Its sources are `kinetics.CKI`, `thermo.TMD`,
+`transport.TRA` and `kinetics.solid`.
+
+## The settings of the original case
+
+The original case runs at level 7 with `CFL_MAX = 0.1`, a T threshold of
+1 K for the adaptation, and a spark of 1e7 K/s at x = 1.5 mm with a
+diameter of 1.5 mm, from t = 0 to t = 0.005. To use the same settings,
+build with these flags:
+
+~~~bash
+-DKINFOLDER='"skeletal/hydrogen-solid"' -DCFL_VALUE=0.1 -DADAPT_T=1
+-DSPARK_X=1.5e-3 -DSPARK_D=1.5e-3 -DSPARK_Q=1e7 -DSPARK_START=0
+-DSPARK_DURATION=0.005
+~~~
+
+The boundary conditions of T and of the species on the top boundary are
+different: the original case has the default (symmetry), this case has the
+coflow values. The top boundary is 150 mm from the axis. */
 
 #define NO_ADVECTION_DIV 1
 #define SOLVE_TEMPERATURE 1
@@ -108,6 +132,18 @@ different configuration. Repeat the measurement here before you quote it. */
 
 #ifndef FROZEN_CELL_GATE
 # define FROZEN_CELL_GATE 1
+#endif
+
+/**
+`ADAPT_T` is the threshold of the temperature for `adapt_wavelet`, in K.
+`DUMP_EVERY` is the interval between two dumps, in s. */
+
+#ifndef ADAPT_T
+# define ADAPT_T 1e1
+#endif
+
+#ifndef DUMP_EVERY
+# define DUMP_EVERY 0.01
 #endif
 
 #include "axi.h"
@@ -343,10 +379,21 @@ int main() {
   if (pid() == 0)
     fprintf (stderr, "# laminarflame: maxlevel=%d DT=%g CFL=%g Uair=%g"
                      " tend=%g corrCFL=%g frozen=%d strang=%d kin=%s"
-                     " nranks=%d\n",
+                     " adaptT=%g spark=%g,%g,%g,%g,%g dump=%g nranks=%d\n",
              MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, U_AIR,
              (double) TEND, (double) CORRECTIVE_CFL, FROZEN_CELL_GATE,
-             GAS_CHEMISTRY_STRANG, KINFOLDER, npe());
+             GAS_CHEMISTRY_STRANG, KINFOLDER, (double) ADAPT_T,
+             (double) SPARK_X, (double) SPARK_D, (double) SPARK_Q,
+             (double) SPARK_START, (double) SPARK_DURATION,
+             (double) DUMP_EVERY, npe());
+
+  /**
+  OpenSMOKE writes the messages of a failed stiff solve to stdout, with no
+  time. `event steps` writes a marker to stdout at each step. Line buffers
+  keep the two in order in the file and let you read the file while the
+  run goes. */
+
+  setvbuf (stdout, NULL, _IOLBF, 0);
 
   /**
   The initial thermodynamic state of the gas. `TS0` is the solid temperature.
@@ -513,7 +560,7 @@ of the domain are coarsened, so that the outflow does not drive the cost. */
 event adapt (i++) {
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("H2")];
   adapt_wavelet ({fuel, T, u.x, u.y},
-      (double[]){1e-2, 1e1, 1e-1, 1e-1}, maxlevel, minlevel);
+      (double[]){1e-2, ADAPT_T, 1e-1, 1e-1}, maxlevel, minlevel);
   unrefine (x >= 0.9*L0);
 }
 #endif
@@ -531,6 +578,53 @@ suggests a factor 4, while the step counts of the same pair were 186 against
 event logfile (t += 0.005) {
   if (pid() == 0)
     fprintf (stderr, "%g %g %d %g\n", t, dt, i, statsf(T).max);
+}
+
+/**
+## The cost of each step
+
+`steps.dat` gives one line per step: the step, t, dt, the wall clock since
+the start, the wall clock of the step, the number of leaf cells, and the
+limit of the corrective flux on dt (`corrective_dtmax`, one step old). If
+`dt` equals that limit, the corrective flux sets the step. The
+marker `#step` in stdout gives the step and t, so that each message of a
+failed stiff solve has a time. The messages that come after the marker of
+step i belong to step i. */
+
+event steps (i++) {
+  static timer tm;
+  static double wlast = 0.;
+  static FILE * fps = NULL;
+  if (i == 0)
+    tm = timer_start();
+  double w = timer_elapsed (tm);
+  long cells = grid->tn;
+  if (pid() == 0) {
+    if (!fps) {
+      fps = fopen ("steps.dat", "w");
+      if (fps == NULL) {
+        fprintf (stderr, "Error opening steps.dat\n");
+        exit (1);
+      }
+      fprintf (fps, "#i(1) t(2) dt(3) wall(4) wstep(5) cells(6) dtcorr(7)\n");
+    }
+    fprintf (fps, "%d %.9g %g %.3f %.4f %ld %g\n", i, t, dt, w, w - wlast,
+             cells, corrective_dtmax);
+    fflush (fps);
+    printf ("#step %d t=%.9g\n", i, t);
+  }
+  wlast = w;
+}
+
+/**
+## Dumps
+
+One dump every `DUMP_EVERY`, to restart a run from the steady flame. */
+
+event dumps (t += DUMP_EVERY) {
+  char name[80];
+  sprintf (name, "dump-%.3f", t);
+  dump (name);
 }
 
 /**

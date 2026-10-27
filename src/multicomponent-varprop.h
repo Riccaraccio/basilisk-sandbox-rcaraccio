@@ -16,11 +16,12 @@ the solve uses the molar form. */
 
 /**
 `PHASE_PROLONGATION` (value-tested, default 1): the gas species, `TS` and
-`TG` get the bilinear prolongation while the two `tracer_diffusion` events
-hold them as the value of the phase, and the prolongation of the VOF
-tracers comes back before they return to the tracer form. At 0, the ghost
-cells at a change of level use `vof_concentration_refine()` on values that
-are not in the tracer form. See `phase_prolongation()` below. */
+`TG` get the restriction and prolongation of `phase-prolongation.h` while
+the two `tracer_diffusion` events hold them as the value of the phase, and
+the functions of the VOF tracers come back before they return to the
+tracer form. At 0, the ghost cells at a change of level use
+`vof_concentration_refine()` on values that are not in the tracer form.
+See `phase_prolongation()` below. */
 
 #ifndef PHASE_PROLONGATION
 # define PHASE_PROLONGATION 1
@@ -697,21 +698,24 @@ static void diag_species (void)
 
 #if PHASE_PROLONGATION && TREE
 /**
-## The prolongation of the phase values
+## The restriction and prolongation of the phase values
 
 The two `tracer_diffusion` events divide the gas species, `TS` and `TG` by
 the phase fraction, so during the solves and the advection they hold the
-value of the phase. Their prolongation is still `vof_concentration_refine()`:
-it divides the value of the parent by the phase fraction of the parent, and
-multiplies the value of each child by the phase fraction of the child. Next
-to the interface, at a change of level, the ghost cells then get values
-that do not sum to 1. In a fatehi restart at level 11 this gave about 24 000
-negative values of `Y` in the gas at each step, down to -3e-4.
+value of the phase. The functions of the VOF tracers do not fit such a
+field: `vof_concentration_refine()` reads the tracer form, and the plain
+restriction and the bilinear prolongation mix in cells without the phase.
+In a fatehi restart at level 11, the tracer prolongation gave about 24 000
+negative values of `Y` in the gas at each step, down to -3e-4. With the
+bilinear prolongation, 1 to 3 faces at some steps still saw $\sum Y$ off by
+up to 0.125 on one side.
 
-`phase_prolongation (true)` keeps the prolongation of each field and sets
-the bilinear one. `phase_prolongation (false)` puts the kept one back.
-`porosity` is also in phase form in the second event; it keeps its
-prolongation. */
+`phase_prolongation (true)` sets the functions of `phase-prolongation.h`,
+which use only the cells that hold the phase. `phase_prolongation (false)`
+puts the functions of the VOF tracers back. `porosity` is also in phase
+form in the second event; it keeps its functions. */
+
+#include "phase-prolongation.h"
 
 static void phase_prolongation (bool phase)
 {
@@ -720,19 +724,12 @@ static void phase_prolongation (bool phase)
   list = list_add (list, TS);
   list = list_add (list, TG);
 # endif
-  static void (** keep)(Point, scalar) = NULL;
-  if (!keep)
-    keep = malloc (list_len (list)*sizeof (*keep));
-  int k = 0;
-  for (scalar s in list) {
-    if (phase) {
-      keep[k] = s.prolongation;
-      set_prolongation (s, refine_bilinear);
-    }
-    else
-      set_prolongation (s, keep[k]);
-    k++;
+  static void (** keepr)(Point, scalar) = NULL, (** keepp)(Point, scalar) = NULL;
+  if (!keepr) {
+    keepr = malloc (list_len (list)*sizeof (*keepr));
+    keepp = malloc (list_len (list)*sizeof (*keepp));
   }
+  phase_attributes (list, keepr, keepp, phase);
   free (list);
 }
 #endif

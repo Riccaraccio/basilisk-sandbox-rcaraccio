@@ -371,17 +371,22 @@ mgstats coupled_diffusion (scalar * YList, double dt, scalar * DList,
     as NaN in `run/fatehi-combustion.c` (axisymmetric). The cause was not
     found.
 
-  Give the clones the plain average, as `poisson.h` has for its residual.
-  `Yn` holds the value of the phase, not the tracer form, so the plain
-  average is correct. `set_restriction()` also clears the stencil flags.
-  For the same reason `Yn` gets the bilinear prolongation, not the one of
-  the VOF tracers (`vof_concentration_refine`), which reads the tracer
-  form. */
+  `b` gets the plain average, as `poisson.h` has for its residual. `Yn`
+  holds the value of the phase, not the tracer form. If the species still
+  have the functions of the VOF tracers, `Yn` gets the plain average and
+  the bilinear prolongation. If the caller gave the species functions for
+  phase values (`phase-prolongation.h`, as `multicomponent-varprop.h`
+  does), `Yn` keeps them. `set_restriction()` also clears the stencil
+  flags. */
 
 #if TREE
   for (scalar s in Yn) {
-    set_restriction (s, restriction_average);
-    set_prolongation (s, refine_bilinear);
+    if (s.restriction == restriction_volume_average) {
+      set_restriction (s, restriction_average);
+      set_prolongation (s, refine_bilinear);
+    }
+    else
+      set_restriction (s, s.restriction);
   }
   for (scalar s in b)
     set_restriction (s, restriction_average);

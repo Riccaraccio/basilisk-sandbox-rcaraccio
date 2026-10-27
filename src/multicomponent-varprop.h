@@ -579,13 +579,32 @@ static void diag_species (void)
     }
   }
 
+  /**
+  The radius (`y`) of the full gas cell with the largest `|sum Y - 1|` and of
+  the full gas cell with the smallest `Y`. */
+
+  double ye = -1., ym = -1.;
+  foreach (reduction(max:ye) reduction(max:ym)) {
+    if (f[] <= F_ERR) {
+      double sum = 0., ymin = HUGE;
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        sum += YG[], ymin = min (ymin, YG[]);
+      }
+      if (e2 > 0. && fabs (sum - 1.) >= e2)
+        ye = max (ye, y);
+      if (ymin <= m2)
+        ym = max (ym, y);
+    }
+  }
+
   static FILE * fp = NULL;
   if (pid() == 0) {
     if (!fp) {
       fp = fopen ("diffdiag", "a");
       fprintf (fp, "# t dt Co itS itG mskS mskG "
                "pore:err,min,neg cutS:err,min,neg,src "
-               "gas:err,min,neg cutG:err,min,neg,src\n");
+               "gas:err,min,neg cutG:err,min,neg,src y_gaserr y_gasmin\n");
     }
     int itS = -1, itG = -1, mS = -1, mG = -1;
     double co = 0.;
@@ -597,10 +616,10 @@ static void diag_species (void)
 # endif
     fprintf (fp, "%.8e %.4e %.4e %d %d %d %d "
              "%.3e %.4e %d %.3e %.4e %d %.3e "
-             "%.3e %.4e %d %.3e %.4e %d %.3e\n",
+             "%.3e %.4e %d %.3e %.4e %d %.3e %.4e %.4e\n",
              t, dt, co, itS, itG, mS, mG,
              e0, m0, n0, e1, m1, n1, diag_srcS,
-             e2, m2, n2, e3, m3, n3, diag_srcG);
+             e2, m2, n2, e3, m3, n3, diag_srcG, ye, ym);
     fflush (fp);
   }
 }

@@ -15,15 +15,15 @@ the solve uses the molar form. */
 #endif
 
 /**
-`PHASE_PROLONGATION` (value-tested, default 0): at 1, the gas species get
-the bilinear prolongation while `tracer_diffusion` holds them as the value
-of the phase, and the prolongation of the VOF tracers comes back before
-they return to the tracer form. Without it, the ghost cells at a change of
-level use `vof_concentration_refine()` on values that are not in the
-tracer form. See `phase_prolongation()` below. */
+`PHASE_PROLONGATION` (value-tested, default 1): the gas species, `TS` and
+`TG` get the bilinear prolongation while the two `tracer_diffusion` events
+hold them as the value of the phase, and the prolongation of the VOF
+tracers comes back before they return to the tracer form. At 0, the ghost
+cells at a change of level use `vof_concentration_refine()` on values that
+are not in the tracer form. See `phase_prolongation()` below. */
 
 #ifndef PHASE_PROLONGATION
-# define PHASE_PROLONGATION 0
+# define PHASE_PROLONGATION 1
 #endif
 #if COUPLED_DIFFUSION
 # ifndef FICK_CORRECTED
@@ -527,6 +527,60 @@ Only rank 0 writes. The reductions run on all the ranks. */
 
 #if DIFFUSION_DIAG
 static double diag_srcS = 0., diag_srcG = 0.;
+static double diag_in[4], diag_faceS = 0., diag_faceG = 0.;
+static int diag_nfaceS = 0, diag_nfaceG = 0;
+
+/**
+`diag_input()` measures the input of the solves: `max|sum Y - 1|` in the
+four classes of cells, and, for each phase, the largest `|sum Y - 1|` that
+an open face sees on its two sides when both sides hold the phase. A ghost
+cell at a change of level is one of those sides, so this measures the
+prolongation. `diag_nfaceS` and `diag_nfaceG` count the faces above 1e-6. */
+
+static void diag_input (void)
+{
+  double i0 = 0., i1 = 0., i2 = 0., i3 = 0.;
+  foreach (reduction(max:i0) reduction(max:i1) reduction(max:i2)
+           reduction(max:i3)) {
+    bool cut = (f[] > F_ERR && f[] < 1. - F_ERR);
+    double sS = 0., sG = 0.;
+    for (int jj=0; jj<NGS; jj++) {
+      scalar YS = YGList_S[jj], YG = YGList_G[jj];
+      sS += YS[], sG += YG[];
+    }
+    if (f[] > F_ERR) {
+      if (cut) i1 = max (i1, fabs (sS - 1.));
+      else     i0 = max (i0, fabs (sS - 1.));
+    }
+    if (f[] < 1. - F_ERR) {
+      if (cut) i3 = max (i3, fabs (sG - 1.));
+      else     i2 = max (i2, fabs (sG - 1.));
+    }
+  }
+  diag_in[0] = i0, diag_in[1] = i1, diag_in[2] = i2, diag_in[3] = i3;
+
+  double fS_ = 0., fG_ = 0.;
+  int nS = 0, nG = 0;
+  foreach_face (reduction(max:fS_) reduction(max:fG_) reduction(+:nS)
+                reduction(+:nG)) {
+    if (fm.x[] > 0.) {
+      double sSm = 0., sSp = 0., sGm = 0., sGp = 0.;
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YS = YGList_S[jj], YG = YGList_G[jj];
+        sSm += YS[-1], sSp += YS[], sGm += YG[-1], sGp += YG[];
+      }
+      if (fsS.x[] > 0. && f[-1] > F_ERR && f[] > F_ERR) {
+        double e = max (fabs (sSm - 1.), fabs (sSp - 1.));
+        fS_ = max (fS_, e), nS += (e > 1e-6);
+      }
+      if (fsG.x[] > 0. && f[-1] < 1. - F_ERR && f[] < 1. - F_ERR) {
+        double e = max (fabs (sGm - 1.), fabs (sGp - 1.));
+        fG_ = max (fG_, e), nG += (e > 1e-6);
+      }
+    }
+  }
+  diag_faceS = fS_, diag_faceG = fG_, diag_nfaceS = nS, diag_nfaceG = nG;
+}
 
 static void diag_sources (void)
 {
@@ -616,7 +670,8 @@ static void diag_species (void)
       fp = fopen ("diffdiag", "a");
       fprintf (fp, "# t dt Co itS itG mskS mskG "
                "pore:err,min,neg cutS:err,min,neg,src "
-               "gas:err,min,neg cutG:err,min,neg,src y_gaserr y_gasmin\n");
+               "gas:err,min,neg cutG:err,min,neg,src y_gaserr y_gasmin "
+               "in:pore,cutS,gas,cutG face:S,nS,G,nG\n");
     }
     int itS = -1, itG = -1, mS = -1, mG = -1;
     double co = 0.;
@@ -628,10 +683,13 @@ static void diag_species (void)
 # endif
     fprintf (fp, "%.8e %.4e %.4e %d %d %d %d "
              "%.3e %.4e %d %.3e %.4e %d %.3e "
-             "%.3e %.4e %d %.3e %.4e %d %.3e %.4e %.4e\n",
+             "%.3e %.4e %d %.3e %.4e %d %.3e %.4e %.4e "
+             "%.3e %.3e %.3e %.3e %.3e %d %.3e %d\n",
              t, dt, co, itS, itG, mS, mG,
              e0, m0, n0, e1, m1, n1, diag_srcS,
-             e2, m2, n2, e3, m3, n3, diag_srcG, ye, ym);
+             e2, m2, n2, e3, m3, n3, diag_srcG, ye, ym,
+             diag_in[0], diag_in[1], diag_in[2], diag_in[3],
+             diag_faceS, diag_nfaceS, diag_faceG, diag_nfaceG);
     fflush (fp);
   }
 }
@@ -641,30 +699,41 @@ static void diag_species (void)
 /**
 ## The prolongation of the phase values
 
-`tracer_diffusion` divides the gas species by the phase fraction, so during
-the solves they hold the value of the phase. Their prolongation is still
-`vof_concentration_refine()`: it divides the value of the parent by the
-phase fraction of the parent, and multiplies the value of each child by the
-phase fraction of the child. Next to the interface, at a change of level,
-the ghost cells then get values that do not sum to 1.
+The two `tracer_diffusion` events divide the gas species, `TS` and `TG` by
+the phase fraction, so during the solves and the advection they hold the
+value of the phase. Their prolongation is still `vof_concentration_refine()`:
+it divides the value of the parent by the phase fraction of the parent, and
+multiplies the value of each child by the phase fraction of the child. Next
+to the interface, at a change of level, the ghost cells then get values
+that do not sum to 1. In a fatehi restart at level 11 this gave about 24 000
+negative values of `Y` in the gas at each step, down to -3e-4.
 
-`phase_prolongation (true)` keeps the prolongation of each species and
-sets the bilinear one. `phase_prolongation (false)` puts the kept one back. */
+`phase_prolongation (true)` keeps the prolongation of each field and sets
+the bilinear one. `phase_prolongation (false)` puts the kept one back.
+`porosity` is also in phase form in the second event; it keeps its
+prolongation. */
 
 static void phase_prolongation (bool phase)
 {
+  scalar * list = list_concat (YGList_S, YGList_G);
+# ifdef SOLVE_TEMPERATURE
+  list = list_add (list, TS);
+  list = list_add (list, TG);
+# endif
   static void (** keep)(Point, scalar) = NULL;
   if (!keep)
-    keep = malloc (2*NGS*sizeof (*keep));
-  for (int k = 0; k < 2*NGS; k++) {
-    scalar s = k < NGS ? YGList_S[k] : YGList_G[k - NGS];
+    keep = malloc (list_len (list)*sizeof (*keep));
+  int k = 0;
+  for (scalar s in list) {
     if (phase) {
       keep[k] = s.prolongation;
       set_prolongation (s, refine_bilinear);
     }
     else
       set_prolongation (s, keep[k]);
+    k++;
   }
+  free (list);
 }
 #endif
 
@@ -1120,6 +1189,7 @@ event tracer_diffusion (i++) {
 #endif
 
 #if DIFFUSION_DIAG
+  diag_input();
   diag_sources();
 #endif
 
@@ -1563,6 +1633,10 @@ foreach() {
     }
   }
 
+#if PHASE_PROLONGATION && TREE
+  phase_prolongation (true);
+#endif
+
   {
     // porosity is intrinsic here, and 0 where f <= F_ERR
     scalar e1[];
@@ -1602,6 +1676,10 @@ foreach() {
 # ifndef TEMPERATURE_PROFILE
   advection_div({TG}, ufsave, dt);
 # endif
+#endif
+
+#if PHASE_PROLONGATION && TREE
+  phase_prolongation (false);
 #endif
 
   // recover tracer form

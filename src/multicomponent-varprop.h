@@ -2,6 +2,24 @@
   #define MULTICOMPONENT 1
 #endif
 
+/**
+`COUPLED_DIFFUSION` (value-tested, default 0): at 1, `tracer_diffusion`
+solves the gas species of each phase in one implicit system with
+`coupled_diffusion()` of `coupled-diffusion.h`. The Fick correction is then
+part of the solve, `fick_correct_species()` does not run, and the corrective
+flux sets no limit on `dt`. It needs `FICK_CORRECTED`. With `MOLAR_DIFFUSION`
+the solve uses the molar form. */
+
+#ifndef COUPLED_DIFFUSION
+# define COUPLED_DIFFUSION 0
+#endif
+#if COUPLED_DIFFUSION
+# ifndef FICK_CORRECTED
+#  error "COUPLED_DIFFUSION needs FICK_CORRECTED"
+# endif
+# include "coupled-diffusion.h"
+#endif
+
 #include "intgrad.h"
 
 #include "diffusion.h"
@@ -107,7 +125,9 @@ The `tracer_diffusion` event records `max(|u_c|/Delta)` in `corrective_uodx`.
 This event turns that record into a limit on `dtmax`. The record is one step
 old. That is safe, because the corrective velocity changes slowly.
 
-Set `CORRECTIVE_CFL` to 0 to remove the limit. */
+Set `CORRECTIVE_CFL` to 0 to remove the limit. With `COUPLED_DIFFUSION` the
+corrective flux is implicit: the event still records `corrective_uodx`, but
+it does not limit `dtmax`. */
 
 #ifdef FICK_CORRECTED
 # ifndef CORRECTIVE_CFL
@@ -119,7 +139,7 @@ double corrective_uodx = 0.;    // max |u_c|/Delta of the last step
 double corrective_dtmax = HUGE; // the limit that it gives
 
 event stability (i++) {
-  if (CORRECTIVE_CFL > 0. && corrective_uodx > 0.) {
+  if (!COUPLED_DIFFUSION && CORRECTIVE_CFL > 0. && corrective_uodx > 0.) {
     corrective_dtmax = CORRECTIVE_CFL/corrective_uodx;
     if (corrective_dtmax < dtmax)
       dtmax = corrective_dtmax;
@@ -312,6 +332,7 @@ corrective velocity. The `tracer_diffusion` event below calls it once for
 each phase. The correction of one phase does not read the fields of the other
 phase. */
 
+#if !COUPLED_DIFFUSION
 static double fick_correct_species (scalar * YList, scalar * XList,
                                     scalar * DmixList, scalar MWmix,
                                     scalar rhoGv, face vector fs)
@@ -408,6 +429,49 @@ static double fick_correct_species (scalar * YList, scalar * XList,
 
   return uodx;
 }
+#endif // !COUPLED_DIFFUSION
+
+#if COUPLED_DIFFUSION
+/**
+With `COUPLED_DIFFUSION`, `corrective_courant()` gives the largest
+`|U|/(rho*fm*Delta)` of one phase, where `U` is the corrective mass flux of
+the state before the solve. It is a diagnostic only: the corrective Courant
+number of the step is `dt` times this value. */
+
+static double corrective_courant (scalar * YList, scalar * XList,
+                                  scalar * DmixList, scalar MWmix,
+                                  scalar rhoGv, face vector fs)
+{
+  double uodx = 0.;
+  foreach_face (reduction(max:uodx)) {
+    if (fm.x[] > 0. && fs.x[] > 0.) {
+      double U = 0., rhoGf;
+# ifdef VARPROP
+      rhoGf = face_value (rhoGv, 0);
+# else
+      rhoGf = rhoG;
+# endif
+      for (int jj=0; jj<NGS; jj++) {
+        scalar DmixG = DmixList[jj];
+# ifdef MOLAR_DIFFUSION
+        scalar XG = XList[jj];
+        double MWmixf = face_value (MWmix, 0);
+        U += (MWmixf > 0.) ? rhoGf*face_value (DmixG, 0)*face_gradient_x (XG, 0)*gas_MWs[jj]/MWmixf : 0.;
+# else
+        scalar YG = YList[jj];
+        U += rhoGf*face_value (DmixG, 0)*face_gradient_x (YG, 0);
+# endif
+      }
+      if (rhoGf > 0.)
+        uodx = max (uodx, fabs (U)*fs.x[]/(rhoGf*Delta));
+    }
+  }
+  return uodx;
+}
+
+mgstats mgYS, mgYG; // the statistics of the last coupled solve of each phase
+int nmaskS = 0, nmaskG = 0; // the faces that each solve closed (cd_nmasked)
+#endif // COUPLED_DIFFUSION
 #endif // FICK_CORRECTED
 
 
@@ -429,6 +493,118 @@ which ignores the conditions. `qcc -events` shows this. Thus:
 
 Caution: a call of `update_properties()` alone does not change `alphav`,
 `rhov` or `mu`. */
+
+/**
+## The diagnostic of the species solves
+
+With `DIFFUSION_DIAG` (value-tested, default 0), the `tracer_diffusion`
+event writes one line for each step to the file `diffdiag`. The line
+separates the cells in four classes: the full pore cells (`f = 1`), the cut
+cells of the pore gas, the full gas cells (`f = 0`), and the cut cells of
+the external gas. For each class it gives `max|sum Y - 1|`, the smallest `Y`
+and the number of values below -1e-12, all after the species solves.
+
+It also gives, for the cut cells of each phase, `max|dt sum_i r_i/theta|`.
+That is the change of `sum Y` that the interface sources alone make.
+
+Only rank 0 writes. The reductions run on all the ranks. */
+
+#ifndef DIFFUSION_DIAG
+# define DIFFUSION_DIAG 0
+#endif
+
+#if DIFFUSION_DIAG
+static double diag_srcS = 0., diag_srcG = 0.;
+
+static void diag_sources (void)
+{
+  double sS = 0., sG = 0.;
+  foreach (reduction(max:sS) reduction(max:sG)) {
+    if (f[] > F_ERR && f[] < 1. - F_ERR) {
+# ifdef VARPROP
+      double th1 = cm[]*max(rhoGv_S[]*porosity[], F_ERR);
+      double th2 = cm[]*max(fG[]*rhoGv_G[], F_ERR);
+# else
+      double th1 = cm[]*max(rhoG*porosity[], F_ERR);
+      double th2 = cm[]*max(fG[]*rhoG, F_ERR);
+# endif
+      double rS = 0., rG = 0.;
+      for (int jj=0; jj<NGS; jj++) {
+        scalar sSexp = sSexpList[jj], sGexp = sGexpList[jj];
+        rS += sSexp[], rG += sGexp[];
+      }
+      sS = max (sS, fabs (dt*rS/th1));
+      sG = max (sG, fabs (dt*rG/th2));
+    }
+  }
+  diag_srcS = sS, diag_srcG = sG;
+}
+
+static void diag_species (void)
+{
+  // classes: 0 full pore, 1 cut pore, 2 full gas, 3 cut gas
+  double e0 = 0., e1 = 0., e2 = 0., e3 = 0.;
+  double m0 = HUGE, m1 = HUGE, m2 = HUGE, m3 = HUGE;
+  int n0 = 0, n1 = 0, n2 = 0, n3 = 0;
+  foreach (reduction(max:e0) reduction(max:e1) reduction(max:e2)
+           reduction(max:e3) reduction(min:m0) reduction(min:m1)
+           reduction(min:m2) reduction(min:m3) reduction(+:n0)
+           reduction(+:n1) reduction(+:n2) reduction(+:n3)) {
+    bool cut = (f[] > F_ERR && f[] < 1. - F_ERR);
+    if (f[] > F_ERR) {
+      double sum = 0., ymin = HUGE;
+      int nneg = 0;
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YG = YGList_S[jj];
+        sum += YG[], ymin = min (ymin, YG[]);
+        nneg += (YG[] < -1e-12);
+      }
+      if (cut)
+        e1 = max (e1, fabs (sum - 1.)), m1 = min (m1, ymin), n1 += nneg;
+      else
+        e0 = max (e0, fabs (sum - 1.)), m0 = min (m0, ymin), n0 += nneg;
+    }
+    if (f[] < 1. - F_ERR) {
+      double sum = 0., ymin = HUGE;
+      int nneg = 0;
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YG = YGList_G[jj];
+        sum += YG[], ymin = min (ymin, YG[]);
+        nneg += (YG[] < -1e-12);
+      }
+      if (cut)
+        e3 = max (e3, fabs (sum - 1.)), m3 = min (m3, ymin), n3 += nneg;
+      else
+        e2 = max (e2, fabs (sum - 1.)), m2 = min (m2, ymin), n2 += nneg;
+    }
+  }
+
+  static FILE * fp = NULL;
+  if (pid() == 0) {
+    if (!fp) {
+      fp = fopen ("diffdiag", "a");
+      fprintf (fp, "# t dt Co itS itG mskS mskG "
+               "pore:err,min,neg cutS:err,min,neg,src "
+               "gas:err,min,neg cutG:err,min,neg,src\n");
+    }
+    int itS = -1, itG = -1, mS = -1, mG = -1;
+    double co = 0.;
+# ifdef FICK_CORRECTED
+    co = dt*corrective_uodx;
+# endif
+# if COUPLED_DIFFUSION
+    itS = mgYS.i, itG = mgYG.i, mS = nmaskS, mG = nmaskG;
+# endif
+    fprintf (fp, "%.8e %.4e %.4e %d %d %d %d "
+             "%.3e %.4e %d %.3e %.4e %d %.3e "
+             "%.3e %.4e %d %.3e %.4e %d %.3e\n",
+             t, dt, co, itS, itG, mS, mG,
+             e0, m0, n0, e1, m1, n1, diag_srcS,
+             e2, m2, n2, e3, m3, n3, diag_srcG);
+    fflush (fp);
+  }
+}
+#endif // DIFFUSION_DIAG
 
 event tracer_diffusion (i++) {
 
@@ -846,10 +1022,17 @@ event tracer_diffusion (i++) {
   `u_c = phic/rho` is the corrective velocity. The `stability` event of the
   next step reads it. */
 
+# if COUPLED_DIFFUSION
+  double uodx = corrective_courant (YGList_G, XGList_G, DmixGList_G,
+                                    MWmixG_G, rhoGv_G, fsG);
+  uodx = max (uodx, corrective_courant (YGList_S, XGList_S, DmixGList_S,
+                                        MWmixG_S, rhoGv_S, fsS));
+# else
   double uodx = fick_correct_species (YGList_G, XGList_G, DmixGList_G,
                                       MWmixG_G, rhoGv_G, fsG);
   uodx = max (uodx, fick_correct_species (YGList_S, XGList_S, DmixGList_S,
                                           MWmixG_S, rhoGv_S, fsS));
+# endif
   corrective_uodx = uodx;
 #endif // FICK_CORRECTED
 
@@ -869,6 +1052,73 @@ event tracer_diffusion (i++) {
     dri_YG[] = 0.;
   }
 #endif
+
+#if DIFFUSION_DIAG
+  diag_sources();
+#endif
+
+#if COUPLED_DIFFUSION
+
+  /**
+  The coupled solves. `alphaS` and `alphaG` are the face coefficients
+  without the diffusivity. `coupled_diffusion()` does not change `theta1`,
+  `theta2` or the sources, so the `DRI_ON` sums use `theta1` and `theta2`
+  directly. */
+
+  {
+    face vector alphaS[], alphaG[];
+    foreach_face() {
+# ifdef VARPROP
+      alphaS.x[] = face_value (rhoGv_S, 0)*fsS.x[]*fm.x[];
+      alphaG.x[] = face_value (rhoGv_G, 0)*fsG.x[]*fm.x[];
+# else
+      alphaS.x[] = rhoG*fsS.x[]*fm.x[];
+      alphaG.x[] = rhoG*fsG.x[]*fm.x[];
+# endif
+    }
+    foreach() {
+# ifdef VARPROP
+      theta1[] = cm[]*max(rhoGv_S[]*porosity[], F_ERR); // porosity is already multiplied by fS
+      theta2[] = cm[]*max(fG[]*rhoGv_G[], F_ERR);
+# else
+      theta1[] = cm[]*max(rhoG*porosity[], F_ERR);
+      theta2[] = cm[]*max(fG[]*rhoG, F_ERR);
+# endif
+    }
+
+# ifdef MOLAR_DIFFUSION
+    double * cdMWs = gas_MWs;
+# else
+    double * cdMWs = NULL;
+# endif
+
+# if DRI_ON
+    foreach()
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YS = YGList_S[jj], YG = YGList_G[jj];
+        dri_YS[] -= theta1[]*YS[]/gas_MWs[jj];
+        dri_YG[] -= theta2[]*YG[]/gas_MWs[jj];
+      }
+# endif
+
+    mgYS = coupled_diffusion (YGList_S, dt, DmixGList_S, alphaS, theta1,
+                              rList = sSexpList, MWs = cdMWs);
+    nmaskS = cd_nmasked;
+    mgYG = coupled_diffusion (YGList_G, dt, DmixGList_G, alphaG, theta2,
+                              rList = sGexpList, MWs = cdMWs);
+    nmaskG = cd_nmasked;
+
+# if DRI_ON
+    foreach()
+      for (int jj=0; jj<NGS; jj++) {
+        scalar YS = YGList_S[jj], YG = YGList_G[jj];
+        dri_YS[] += theta1[]*YS[]/gas_MWs[jj];
+        dri_YG[] += theta2[]*YG[]/gas_MWs[jj];
+      }
+# endif
+  }
+
+#else // !COUPLED_DIFFUSION
 
   // Internal gas diffusion
   for (int jj=0; jj<NGS; jj++) {
@@ -948,6 +1198,11 @@ event tracer_diffusion (i++) {
       dri_YG[] += dri_thY[]*YG[]/gas_MWs[jj];
 #endif
   }
+#endif // !COUPLED_DIFFUSION
+
+#if DIFFUSION_DIAG
+  diag_species();
+#endif
 
 #if DRI_ON
 

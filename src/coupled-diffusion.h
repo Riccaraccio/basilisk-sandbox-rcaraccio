@@ -60,11 +60,25 @@ dominance, and the relaxation diverges: in `test/coupled-diffusion.c` it
 diverges at a corrective Courant number between 1.6 and 4.1. Use `upwind`
 there.
 
+## The cells without the phase
+
+A cell can have a face with $f_s > 0$ and hold no phase: the phase-change
+cases set $Y = 0$ where the phase fraction is below `F_ERR`. There $MW = 0$
+and $\tilde{X} = 0$ for any $Y$, so the row of that cell has no diagonal
+except $\theta/\Delta t$, and $\theta$ is the floor `F_ERR`. The neighbours
+then push a flux into it, and its $Y$ grows without a bound. In
+`run/fatehi-combustion.c` this made the solve of the pore gas diverge.
+
+Thus a face carries a flux only when the two cells hold the phase,
+$\sum Y^n > 0.5$. A cell without the phase keeps $Y^n$ (plus its source).
+`cd_nmasked` gives the number of faces with $\alpha > 0$ that the last call
+closed. The per-species `diffusion()` lets a small flux into such a cell.
+
 ## Memory
 
 The solver uses $4N$ temporary cell fields for $N$ species: the frozen
 $Y^n$, the right-hand side, and the correction and residual of `mg_solve()`.
-It also writes the coarse levels of `DList`, `alpha` and `theta`. */
+It also writes the coarse levels of `DList` and `theta`. */
 
 #include "poisson.h"
 
@@ -77,6 +91,8 @@ struct CoupledDiffusion {
   double dt;
   bool upwind;
 };
+
+int cd_nmasked = 0; // the faces that the last call closed, see above
 
 static inline double cd_face (double qm, double qp, double u, bool upwind)
 {
@@ -341,11 +357,36 @@ mgstats coupled_diffusion (scalar * YList, double dt, scalar * DList,
   assert (!rList || list_len (rList) == n);
 
   scalar * Yn = list_clone (YList), * b = list_clone (YList);
-  scalar MW[], sg[];
-  face vector un[];
+
+
+  /**
+  Caution: `list_clone()` copies the attributes of the species, and the
+  species of the phase-change cases are VOF tracers. Two of those attributes
+  broke the multigrid:
+
+  * the stencil flag `s_restriction` ("the restriction is up-to-date"), so
+    `restriction()` can skip the clone;
+  * the restriction `restriction_volume_average`. With it, the coarse levels
+    of `Yn`, and of the residual that `mg_solve()` clones from `b`, came out
+    as NaN in `run/fatehi-combustion.c` (axisymmetric). The cause was not
+    found.
+
+  Give the clones the plain average, as `poisson.h` has for its residual.
+  `Yn` holds the value of the phase, not the tracer form, so the plain
+  average is correct. `set_restriction()` also clears the stencil flags. */
+
+#if TREE
+  for (scalar s in Yn)
+    set_restriction (s, restriction_average);
+  for (scalar s in b)
+    set_restriction (s, restriction_average);
+#endif
+  scalar MW[], sg[], ph[];
+  face vector un[], am[];
 
   foreach() {
     MW[] = 0.;
+    ph[] = 0.;
     double s = 0.;
     for (int i = 0; i < n; i++) {
       scalar Y = YList[i], Y0 = Yn[i], bi = b[i];
@@ -357,12 +398,24 @@ mgstats coupled_diffusion (scalar * YList, double dt, scalar * DList,
       }
       if (MWs)
         s += Y[]/MWs[i];
+      ph[] += Y[];
     }
     if (MWs && s > 0.)
       MW[] = 1./s;
   }
 
-  struct CoupledDiffusion p = {n, Yn, DList, alpha, un, theta, MW, MWs, dt,
+  /**
+  `am` is `alpha` with the faces closed next to a cell without the phase. */
+
+  int nm = 0;
+  foreach_face (reduction(+:nm)) {
+    am.x[] = alpha.x[];
+    if (alpha.x[] > 0. && (ph[] < 0.5 || ph[-1] < 0.5))
+      am.x[] = 0., nm++;
+  }
+  cd_nmasked = nm;
+
+  struct CoupledDiffusion p = {n, Yn, DList, am, un, theta, MW, MWs, dt,
                                upwind};
 
   /**
@@ -377,7 +430,7 @@ mgstats coupled_diffusion (scalar * YList, double dt, scalar * DList,
   restriction (Yn);
   restriction (DList);
   restriction ({MW, theta});
-  restriction ((scalar *){alpha, un});
+  restriction ((scalar *){am, un});
 
   mgstats s = mg_solve (YList, b, cd_residual, cd_relax, &p,
                         nrelax, NULL, max(1, minlevel),

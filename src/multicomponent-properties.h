@@ -452,8 +452,14 @@ void update_divergence (void) {
 
   /**
   We add diffusion correction contributions to the chemical species
-  mass fraction derivatives. */
+  mass fraction derivatives.
 
+  With `COUPLED_DIFFUSION` and `DRI_ON`, the coupled solve moves the species
+  with the correction and with the molar drift, and the `DRI_ON` sums after
+  the solve already count that change. Skip these terms there, or the
+  expansion counts them two times. */
+
+#if !(COUPLED_DIFFUSION && DRI_ON)
   face vector phicGtot[];
   foreach_face() {
     phicGtot.x[] = 0.;
@@ -502,6 +508,7 @@ void update_divergence (void) {
       foreach_dimension()
         DYDtGjj[] -= (phicGjj.x[1] - phicGjj.x[])/Delta;
   }
+#endif // !(COUPLED_DIFFUSION && DRI_ON)
 
   // INTERNAL GAS PHASE
   /**
@@ -531,6 +538,7 @@ void update_divergence (void) {
   }
 #endif // !DRI_ON
 
+#if !(COUPLED_DIFFUSION && DRI_ON)
   face vector phicStot[];
   foreach_face() {
     phicStot.x[] = 0.;
@@ -579,6 +587,7 @@ void update_divergence (void) {
       foreach_dimension()
         DYDtGjj[] -= (phicSjj.x[1] - phicSjj.x[])/Delta;
   }
+#endif // !(COUPLED_DIFFUSION && DRI_ON)
 
   // We calculate the one-field divergence by volume-averaging the liquid and the
   // gas-phase contributions.

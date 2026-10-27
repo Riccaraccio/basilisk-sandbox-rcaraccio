@@ -154,16 +154,7 @@ static void cd_corrective (scalar * Yl, scalar sg, face vector U,
 /**
 ## The residual
 
-The residual uses the full fields. The value that `mg_solve()` compares with
-the tolerance is $\max |r| \max(1, \Delta t/\theta)$. Where
-$\theta/\Delta t \ge 1$ this is the absolute test of `diffusion()`. In a cell
-of small volume (next to the axis of an axisymmetric case) it becomes a test
-on $Y$ itself.
-
-Caution: the mode of $\sum Y$ has no diffusion, so only $\theta/\Delta t$
-damps its error. With the absolute test alone, a fatehi restart at level 11
-kept $|\sum Y - 1|$ up to 2.7e-2 next to the axis, where $\theta/\Delta t$ is
-near 0.06. The face flux of each species is
+The residual uses the full fields. The face flux of each species is
 $F_i = G_i - [Y_i]_f U^n - [Y_i^n]_f (U - U^n)$. As in `poisson.h`, the
 fluxes go into a face vector first, so the coarse and fine faces of a tree
 stay conservative. */
@@ -203,9 +194,8 @@ static double cd_residual (scalar * al, scalar * bl, scalar * resl,
       res[] = b[] + theta[]/p->dt*Y[];
       foreach_dimension()
         res[] -= (g.x[1] - g.x[])/Delta;
-      double w = theta[] > 0. ? max (1., p->dt/theta[]) : 1.;
-      if (w*fabs (res[]) > maxres)
-        maxres = w*fabs (res[]);
+      if (fabs (res[]) > maxres)
+        maxres = fabs (res[]);
     }
   }
   return maxres;
@@ -383,11 +373,16 @@ mgstats coupled_diffusion (scalar * YList, double dt, scalar * DList,
 
   Give the clones the plain average, as `poisson.h` has for its residual.
   `Yn` holds the value of the phase, not the tracer form, so the plain
-  average is correct. `set_restriction()` also clears the stencil flags. */
+  average is correct. `set_restriction()` also clears the stencil flags.
+  For the same reason `Yn` gets the bilinear prolongation, not the one of
+  the VOF tracers (`vof_concentration_refine`), which reads the tracer
+  form. */
 
 #if TREE
-  for (scalar s in Yn)
+  for (scalar s in Yn) {
     set_restriction (s, restriction_average);
+    set_prolongation (s, refine_bilinear);
+  }
   for (scalar s in b)
     set_restriction (s, restriction_average);
 #endif

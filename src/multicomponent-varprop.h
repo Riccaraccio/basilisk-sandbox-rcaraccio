@@ -13,6 +13,18 @@ the solve uses the molar form. */
 #ifndef COUPLED_DIFFUSION
 # define COUPLED_DIFFUSION 0
 #endif
+
+/**
+`PHASE_PROLONGATION` (value-tested, default 0): at 1, the gas species get
+the bilinear prolongation while `tracer_diffusion` holds them as the value
+of the phase, and the prolongation of the VOF tracers comes back before
+they return to the tracer form. Without it, the ghost cells at a change of
+level use `vof_concentration_refine()` on values that are not in the
+tracer form. See `phase_prolongation()` below. */
+
+#ifndef PHASE_PROLONGATION
+# define PHASE_PROLONGATION 0
+#endif
 #if COUPLED_DIFFUSION
 # ifndef FICK_CORRECTED
 #  error "COUPLED_DIFFUSION needs FICK_CORRECTED"
@@ -625,6 +637,37 @@ static void diag_species (void)
 }
 #endif // DIFFUSION_DIAG
 
+#if PHASE_PROLONGATION && TREE
+/**
+## The prolongation of the phase values
+
+`tracer_diffusion` divides the gas species by the phase fraction, so during
+the solves they hold the value of the phase. Their prolongation is still
+`vof_concentration_refine()`: it divides the value of the parent by the
+phase fraction of the parent, and multiplies the value of each child by the
+phase fraction of the child. Next to the interface, at a change of level,
+the ghost cells then get values that do not sum to 1.
+
+`phase_prolongation (true)` keeps the prolongation of each species and
+sets the bilinear one. `phase_prolongation (false)` puts the kept one back. */
+
+static void phase_prolongation (bool phase)
+{
+  static void (** keep)(Point, scalar) = NULL;
+  if (!keep)
+    keep = malloc (2*NGS*sizeof (*keep));
+  for (int k = 0; k < 2*NGS; k++) {
+    scalar s = k < NGS ? YGList_S[k] : YGList_G[k - NGS];
+    if (phase) {
+      keep[k] = s.prolongation;
+      set_prolongation (s, refine_bilinear);
+    }
+    else
+      set_prolongation (s, keep[k]);
+  }
+}
+#endif
+
 event tracer_diffusion (i++) {
 
 
@@ -649,6 +692,10 @@ event tracer_diffusion (i++) {
       YG[] = ((1. - f[]) > F_ERR) ? YG[]/(1. - f[]) : 0.;
     }
   }
+
+#if PHASE_PROLONGATION && TREE
+  phase_prolongation (true);
+#endif
 
 #ifdef MOLAR_DIFFUSION
   update_mole_fields();
@@ -1371,6 +1418,10 @@ Measure the interface balance again, now with the new fields. `TS` and `TG`
 still hold the value of one phase here; the block below puts them back into
 tracer form. */
 
+#endif
+
+#if PHASE_PROLONGATION && TREE
+  phase_prolongation (false);
 #endif
 
   //recover tracer form

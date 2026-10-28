@@ -93,6 +93,7 @@ struct CoupledDiffusion {
 };
 
 int cd_nmasked = 0; // the faces that the last call closed, see above
+int cd_nsplit = 0;  // the splits of a step since the start, see below
 
 static inline double cd_face (double qm, double qp, double u, bool upwind)
 {
@@ -207,18 +208,75 @@ static double cd_residual (scalar * al, scalar * bl, scalar * resl,
 The relaxation is a block Gauss-Seidel: in each cell it updates all the
 species together. It first computes the local defect $e = r - L(\delta Y)$
 with the fluxes of the operator on level `l`. It then solves $M c = e$ and
-adds $c$ to the correction. $M$ is an approximation of the diagonal block of
-the operator: it takes the face values $[Y_i^n]_f$ at the cell value.
+adds $c$ to the correction. $M$ is the exact diagonal block of the operator
+of `cd_residual()`.
 
-With $a'_i = \sum_f A_{i,f}/\Delta^2$ (times $MW/MW_i$ for the molar form),
-$m_k = MW/MW_k$ and $y = Y^n$ of the cell, the block is
+With $a_{i,f} = A_{i,f}/\Delta^2$ on the face $f$ (times $MW_i/MW_f$ for the
+molar form), $a'_i = \sum_f a_{i,f}$, $m_k = MW/MW_k$ and $y = Y^n$ of the
+cell, the block is
 $$
-M = -\mathrm{diag}(d) + (a' \circ y)\, m^T + y \left(a' - (a'\cdot y)\, m\right)^T
+M = -\mathrm{diag}(d) + (a' \circ m \circ y)\, m^T + \sum_f y_f\, w_f^T,
+\qquad w_{f,j} = m_j \left(a_{j,f} - \sum_k a_{k,f}\, m_k y_k\right)
 $$
-with $d_i = a'_i + o + \theta/\Delta t$, where $o$ is the outflow part of
-$U^n$. Without `MWs`, $m = 0$. $M$ is a diagonal plus a rank-2 term, so the
-Woodbury identity solves it with a $2\times 2$ system. The cost is $O(N)$
-for each cell, and no $N\times N$ matrix is stored. */
+with $d_i = a'_i m_i + o + \theta/\Delta t$, where $o$ is the outflow part
+of $U^n$. $y_f$ is the face value $[Y^n]_f$ of the residual. Without `MWs`,
+$m_k = 1$ in $d$ and $w_f$, and the second term is absent.
+
+The faces where the cell is upwind have $y_f = y$, so they share one term.
+Each other face adds one term with the $Y^n$ of the neighbour (half of it
+for the central face value), unless that value is close to $y$ (see
+`cd_add_face()`). $M$ is therefore a diagonal plus at most
+$2 + 2d$ terms of rank 1 in $d$ dimensions, and the Woodbury identity solves
+it with a small dense system. The cost is $O(N)$ for each cell, and no
+$N\times N$ matrix is stored.
+
+Caution: do not replace $y_f$ with the cell value $y$ in the block. The
+first version did that. At a sharp step of a major species the two differ
+by up to the height of the step. For a step of 0.98 at an angle to the grid
+the relaxation then diverged for $Fo \geq 4$ and the solve stopped with a
+SIGFPE (`test/coupled-sharp-front.c`). */
+
+#define CD_MAXTERMS (2 + 2*dimension) // the cell, the molar term, the faces
+
+/**
+`cd_add_face()` adds the term of the face `A` (the $A_{k,f}$ of the face)
+when the neighbour gives a part `1 - wown` of the face value: `wown` is 1
+if the cell is upwind, 0 if the neighbour is, 1/2 for the central value.
+`yb` is the $Y^n$ of the neighbour. `vsub` collects the parts that the
+term of the cell must not count.
+
+When the face value differs from the cell value by less than `CD_YFTOL` for
+all the species, the face stays in the term of the cell, as in the first
+version. The block is then not exact, but the smoother needs only an
+approximation there, and a term less saves $O(m N)$ operations. With 88
+species, the exact terms on all the faces cost 30 per cent more per cycle
+and gave the same number of cycles on smooth fields. */
+
+#define CD_YFTOL 1e-2
+
+static void cd_add_face (int n, bool molar, double idx2, const double * A,
+                         const double * mk, const double * yb,
+                         const double * yn, double wown, double * vsub,
+                         double (* u)[n], double (* v)[n], int * m)
+{
+  if (wown >= 1.)
+    return;
+  double dy = 0., sa = 0.;
+  for (int j = 0; j < n; j++)
+    dy = max (dy, fabs (yb[j] - yn[j])), sa += A[j];
+  if ((1. - wown)*dy < CD_YFTOL || sa == 0.)
+    return;
+  double beta = 0.;
+  if (molar)
+    for (int k = 0; k < n; k++)
+      beta += A[k]*idx2*mk[k]*yn[k];
+  for (int j = 0; j < n; j++) {
+    double w = molar ? mk[j]*(A[j]*idx2 - beta) : A[j]*idx2;
+    u[*m][j] = yb[j], v[*m][j] = (1. - wown)*w;
+    vsub[j] += (1. - wown)*w;
+  }
+  (*m)++;
+}
 
 static void cd_relax (scalar * dal, scalar * resl, int l, void * data)
 {
@@ -231,7 +289,9 @@ static void cd_relax (scalar * dal, scalar * resl, int l, void * data)
   foreach_level_or_leaf (l, nowarning) {
     double e[n], ap[n], yn[n], mk[n];
     double Xm[n], X0[n], Xp[n], G0[n], G1[n], A0[n], A1[n];
+    double yb[n], vsub[n], u[CD_MAXTERMS][n], v[CD_MAXTERMS][n];
     double idt = theta[]/p->dt, o = 0.;
+    int m = molar ? 2 : 1; // 0: the faces where the cell is upwind, 1: molar
 
     for (int i = 0; i < n; i++) {
       scalar da = dal[i], res = resl[i], Yn = p->Yn[i];
@@ -239,6 +299,7 @@ static void cd_relax (scalar * dal, scalar * resl, int l, void * data)
       ap[i] = 0.;
       yn[i] = Yn[];
       mk[i] = (molar && MW[] > 0.) ? MW[]/p->MWs[i] : 0.;
+      vsub[i] = 0.;
     }
 
     foreach_dimension() {
@@ -291,71 +352,172 @@ static void cd_relax (scalar * dal, scalar * resl, int l, void * data)
       o += (upwind ?
             max (un.x[1], 0.) + max (- un.x[], 0.) :
             (un.x[1] - un.x[])/2.)/Delta;
+
+      /**
+      The terms $y_f w_f^T$ of the two faces. On the face 0 the cell is
+      upwind when $U^n \leq 0$, on the face 1 when $U^n > 0$, as in
+      `cd_face()`. */
+
+      for (int side = 0; side <= 1; side++) {
+        double uf = side ? un.x[1] : un.x[];
+        double wown = !upwind ? 0.5 : side ? (uf > 0.) : (uf <= 0.);
+        if (wown < 1.) {
+          for (int j = 0; j < n; j++) {
+            scalar Yn = p->Yn[j];
+            yb[j] = side ? Yn[1] : Yn[-1];
+          }
+          cd_add_face (n, molar, 1./sq(Delta), side ? A1 : A0, mk, yb, yn,
+                       wown, vsub, u, v, &m);
+        }
+      }
     }
 
     /**
-    The Woodbury solve of $M c = e$ with $M = -\mathrm{diag}(d) + u_1 v_1^T
-    + u_2 v_2^T$. */
+    The Woodbury solve of $M c = e$ with $M = -\mathrm{diag}(d) +
+    \sum_c u_c v_c^T$: $c = (U z - e)/d$, where $K z = r$ with
+    $K = I - V^T D^{-1} U$ and $r = -V^T D^{-1} e$. */
+
+    /**
+    The term of the cell: the sum of $w_f$ over all the faces is
+    $m \circ (a' - (a' \cdot (m \circ y)))$, from which the faces with a
+    term of their own are taken away. */
 
     double ay = 0.;
+    if (molar)
+      for (int i = 0; i < n; i++)
+        ay += ap[i]*mk[i]*yn[i];
     for (int i = 0; i < n; i++) {
-      if (molar)
+      v[0][i] = (molar ? mk[i]*(ap[i] - ay) : ap[i]) - vsub[i];
+      u[0][i] = yn[i];
+      if (molar) {
         ap[i] *= mk[i];
-      ay += ap[i]*yn[i];
+        u[1][i] = ap[i]*yn[i], v[1][i] = mk[i];
+      }
     }
 
-    double K11 = 1., K12 = 0., K21 = 0., K22 = 1., r1 = 0., r2 = 0.;
+    double K[m][m + 1], d[n], z[m];
+    for (int a = 0; a < m; a++)
+      for (int b = 0; b <= m; b++)
+        K[a][b] = (a == b);
     bool ok = true;
-    for (int i = 0; i < n; i++) {
-      double d = ap[i] + o + idt;
-      if (d <= 0.) {
-        ok = false;
-        break;
-      }
-      double u1 = ap[i]*yn[i], u2 = yn[i];
-      double v1 = mk[i], v2 = ap[i] - ay*mk[i];
-      K11 -= v1*u1/d, K12 -= v1*u2/d;
-      K21 -= v2*u1/d, K22 -= v2*u2/d;
-      r1 -= v1*e[i]/d, r2 -= v2*e[i]/d;
+    for (int i = 0; i < n && ok; i++) {
+      d[i] = ap[i] + o + idt;
+      if ((ok = (d[i] > 0.)))
+        for (int a = 0; a < m; a++) {
+          double va = v[a][i]/d[i];
+          for (int b = 0; b < m; b++)
+            K[a][b] -= va*u[b][i];
+          K[a][m] -= va*e[i];
+        }
     }
-    double det = K11*K22 - K12*K21;
-    if (ok && fabs (det) > 1e-12) {
-      double z1 = (r1*K22 - K12*r2)/det, z2 = (K11*r2 - K21*r1)/det;
+
+    /**
+    Gauss elimination with partial pivoting. A pivot below `1e-12` of the
+    largest entry of its column skips the update of the cell. */
+
+    for (int c = 0; c < m && ok; c++) {
+      int pv = c;
+      double big = 0.;
+      for (int a = c; a < m; a++) {
+        if (fabs (K[a][c]) > fabs (K[pv][c]))
+          pv = a;
+        big = max (big, fabs (K[a][c]));
+      }
+      for (int a = 0; a < c; a++)
+        big = max (big, fabs (K[a][c]));
+      if (big == 0. || fabs (K[pv][c]) <= 1e-12*big)
+        ok = false;
+      else {
+        if (pv != c)
+          for (int b = 0; b <= m; b++)
+            swap (double, K[c][b], K[pv][b]);
+        for (int a = c + 1; a < m; a++) {
+          double fct = K[a][c]/K[c][c];
+          for (int b = c; b <= m; b++)
+            K[a][b] -= fct*K[c][b];
+        }
+      }
+    }
+
+    if (ok) {
+      for (int a = m - 1; a >= 0; a--) {
+        double s = K[a][m];
+        for (int b = a + 1; b < m; b++)
+          s -= K[a][b]*z[b];
+        z[a] = s/K[a][a];
+      }
       for (int i = 0; i < n; i++) {
         scalar da = dal[i];
-        double d = ap[i] + o + idt;
-        da[] += (ap[i]*yn[i]*z1 + yn[i]*z2 - e[i])/d;
+        double c = - e[i];
+        for (int b = 0; b < m; b++)
+          c += u[b][i]*z[b];
+        da[] += c/d[i];
       }
     }
   }
 }
 
 /**
-## User interface
+## The multigrid loop
 
-The function solves the system and returns the statistics of `mg_solve()`.
-`rList` is optional. When it is given, it must have one field for each
-species. The function does not change `rList` or `theta`. */
+`cd_mg()` is the loop of `mg_solve()`, with the same tuning of `nrelax`,
+plus a test of divergence. It stops when the residual is not finite or
+grows above `CD_DIVERGE` times its initial value. `*failed` is then true,
+and it is also true when the loop ends above the tolerance. With `stop`
+false, the loop runs as `mg_solve()` and never stops early. */
 
-trace
-mgstats coupled_diffusion (scalar * YList, double dt, scalar * DList,
-                           face vector alpha, scalar theta,
-                           scalar * rList = NULL,
-                           double * MWs = NULL,
-                           bool upwind = true,
-                           double tolerance = 0.,
-                           int nrelax = 4,
-                           int minlevel = 0)
+#define CD_DIVERGE 1e3
+
+static mgstats cd_mg (scalar * a, scalar * b, struct CoupledDiffusion * p,
+                      int nrelax, int minlevel, double tolerance,
+                      bool stop, bool * failed)
 {
-  if (dt == 0.) {
-    mgstats s = {0};
-    return s;
+  scalar * da = list_clone (a), * res = list_clone (b);
+  for (int ib = 0; ib < nboundary; ib++)
+    for (scalar s in da)
+      s.boundary[ib] = s.boundary_homogeneous[ib];
+
+  mgstats s = {0};
+  s.nrelax = nrelax > 0 ? nrelax : 4;
+  double resb = s.resb = s.resa = cd_residual (a, b, res, p);
+  *failed = false;
+  for (s.i = 0;
+       s.i < NITERMAX && (s.i < NITERMIN || s.resa > tolerance);
+       s.i++) {
+    mg_cycle (a, res, da, cd_relax, p, s.nrelax, minlevel, grid->maxdepth);
+    s.resa = cd_residual (a, b, res, p);
+    if (stop && !(s.resa <= CD_DIVERGE*s.resb)) {
+      *failed = true;
+      break;
+    }
+    if (s.resa > tolerance) {
+      if (resb/s.resa < 1.2 && s.nrelax < 100)
+        s.nrelax++;
+      else if (resb/s.resa > 10 && s.nrelax > 2)
+        s.nrelax--;
+    }
+    resb = s.resa;
   }
+  s.minlevel = minlevel;
+  if (s.resa > tolerance)
+    *failed = true;
+  delete (res), free (res);
+  delete (da), free (da);
+  return s;
+}
 
+/**
+## One step
+
+`cd_step()` solves the system for one step. With `stop`, a failed solve
+gives back $Y^n$ and sets `*failed`. */
+
+static mgstats cd_step (scalar * YList, double dt, scalar * DList,
+                        face vector alpha, scalar theta, scalar * rList,
+                        double * MWs, bool upwind, double tolerance,
+                        int nrelax, int minlevel, bool stop, bool * failed)
+{
   int n = list_len (YList);
-  assert (list_len (DList) == n);
-  assert (!rList || list_len (rList) == n);
-
   scalar * Yn = list_clone (YList), * b = list_clone (YList);
 
 
@@ -442,11 +604,90 @@ mgstats coupled_diffusion (scalar * YList, double dt, scalar * DList,
   restriction ({MW, theta});
   restriction ((scalar *){am, un});
 
-  mgstats s = mg_solve (YList, b, cd_residual, cd_relax, &p,
-                        nrelax, NULL, max(1, minlevel),
-                        tolerance ? tolerance : TOLERANCE);
+  mgstats s = cd_mg (YList, b, &p, nrelax, max(1, minlevel), tolerance,
+                     stop, failed);
+
+  /**
+  A failed solve gives back $Y^n$, so that the caller can split the step. */
+
+  if (stop && *failed)
+    foreach()
+      for (int i = 0; i < n; i++) {
+        scalar Y = YList[i], Y0 = Yn[i];
+        Y[] = Y0[];
+      }
 
   delete (Yn), free (Yn);
   delete (b), free (b);
   return s;
+}
+
+/**
+## User interface
+
+The function solves the system and returns the statistics of the solve.
+`rList` is optional. When it is given, it must have one field for each
+species. The function does not change `rList` or `theta`.
+
+When a solve fails (see `cd_mg()`), the function does two steps of `dt/2`
+instead, down to `dt/2^CD_MAXSPLIT`. At that depth it keeps the last
+iterate and prints a warning, as `mg_solve()` does. The statistics then
+add the cycles of all the solves, and `resa` is the one of the last solve.
+The rate sources `rList` stay the same in each part of the step.
+
+Caution: the split costs at least one failed solve, thus up to `NITERMAX`
+cycles. It is a safety net for rare cells, not a substitute for a smaller
+timestep. A solve fails, for example, at a discontinuous step of 0.98 of
+a major species on a change of level, at $Fo \geq 16$
+(`test/coupled-sharp-front.c`). */
+
+#define CD_MAXSPLIT 4
+
+static mgstats cd_split (scalar * YList, double dt, scalar * DList,
+                         face vector alpha, scalar theta, scalar * rList,
+                         double * MWs, bool upwind, double tolerance,
+                         int nrelax, int minlevel, int depth)
+{
+  bool failed = false, last = (depth >= CD_MAXSPLIT);
+  mgstats s = cd_step (YList, dt, DList, alpha, theta, rList, MWs, upwind,
+                       tolerance, nrelax, minlevel, !last, &failed);
+  if (!failed)
+    return s;
+  if (last) {
+    scalar v = YList[0];
+    fprintf (ferr, "coupled-diffusion.h: warning: convergence for %s not "
+             "reached at dt %g after %d splits\n  res: %g nrelax: %d "
+             "tolerance: %g\n", v.name, dt, depth, s.resa, s.nrelax,
+             tolerance), fflush (ferr);
+    return s;
+  }
+  cd_nsplit++;
+  mgstats s1 = cd_split (YList, dt/2., DList, alpha, theta, rList, MWs,
+                         upwind, tolerance, nrelax, minlevel, depth + 1);
+  mgstats s2 = cd_split (YList, dt/2., DList, alpha, theta, rList, MWs,
+                         upwind, tolerance, nrelax, minlevel, depth + 1);
+  s2.i += s.i + s1.i;
+  s2.resb = s.resb;
+  s2.nrelax = max (s2.nrelax, max (s.nrelax, s1.nrelax));
+  return s2;
+}
+
+trace
+mgstats coupled_diffusion (scalar * YList, double dt, scalar * DList,
+                           face vector alpha, scalar theta,
+                           scalar * rList = NULL,
+                           double * MWs = NULL,
+                           bool upwind = true,
+                           double tolerance = 0.,
+                           int nrelax = 4,
+                           int minlevel = 0)
+{
+  if (dt == 0.) {
+    mgstats s = {0};
+    return s;
+  }
+  assert (list_len (DList) == list_len (YList));
+  assert (!rList || list_len (rList) == list_len (YList));
+  return cd_split (YList, dt, DList, alpha, theta, rList, MWs, upwind,
+                   tolerance ? tolerance : TOLERANCE, nrelax, minlevel, 0);
 }

@@ -519,6 +519,9 @@ and the number of values below -1e-12, all after the species solves.
 
 It also gives, for the cut cells of each phase, `max|dt sum_i r_i/theta|`.
 That is the change of `sum Y` that the interface sources alone make.
+The last column, `nsplit`, is `cd_nsplit` of `coupled-diffusion.h`: the
+number of solves since the start that failed and were split (-1 without
+`COUPLED_DIFFUSION`).
 
 Only rank 0 writes. The reductions run on all the ranks. */
 
@@ -672,25 +675,25 @@ static void diag_species (void)
       fprintf (fp, "# t dt Co itS itG mskS mskG "
                "pore:err,min,neg cutS:err,min,neg,src "
                "gas:err,min,neg cutG:err,min,neg,src y_gaserr y_gasmin "
-               "in:pore,cutS,gas,cutG face:S,nS,G,nG\n");
+               "in:pore,cutS,gas,cutG face:S,nS,G,nG nsplit\n");
     }
-    int itS = -1, itG = -1, mS = -1, mG = -1;
+    int itS = -1, itG = -1, mS = -1, mG = -1, nsplit = -1;
     double co = 0.;
 # ifdef FICK_CORRECTED
     co = dt*corrective_uodx;
 # endif
 # if COUPLED_DIFFUSION
-    itS = mgYS.i, itG = mgYG.i, mS = nmaskS, mG = nmaskG;
+    itS = mgYS.i, itG = mgYG.i, mS = nmaskS, mG = nmaskG, nsplit = cd_nsplit;
 # endif
     fprintf (fp, "%.8e %.4e %.4e %d %d %d %d "
              "%.3e %.4e %d %.3e %.4e %d %.3e "
              "%.3e %.4e %d %.3e %.4e %d %.3e %.4e %.4e "
-             "%.3e %.3e %.3e %.3e %.3e %d %.3e %d\n",
+             "%.3e %.3e %.3e %.3e %.3e %d %.3e %d %d\n",
              t, dt, co, itS, itG, mS, mG,
              e0, m0, n0, e1, m1, n1, diag_srcS,
              e2, m2, n2, e3, m3, n3, diag_srcG, ye, ym,
              diag_in[0], diag_in[1], diag_in[2], diag_in[3],
-             diag_faceS, diag_nfaceS, diag_faceG, diag_nfaceG);
+             diag_faceS, diag_nfaceS, diag_faceG, diag_nfaceG, nsplit);
     fflush (fp);
   }
 }

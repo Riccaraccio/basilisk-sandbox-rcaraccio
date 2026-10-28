@@ -612,7 +612,7 @@ static void diag_sources (void)
   diag_srcS = sS, diag_srcG = sG;
 }
 
-static void diag_species (scalar theta1, scalar theta2)
+static void diag_species (void)
 {
   // classes: 0 full pore, 1 cut pore, 2 full gas, 3 cut gas
   double e0 = 0., e1 = 0., e2 = 0., e3 = 0.;
@@ -674,7 +674,13 @@ static void diag_species (scalar theta1, scalar theta2)
   The mass that the clipping of `check_and_correct_fractions()` adds at the
   next step: the negative values of each species, with the weight
   $\theta\Delta^d$ of the solves ($\theta$ includes `cm`, the density and
-  the phase fraction). `clip` is that mass over the gas mass of the phase.
+  the phase fraction).
+
+  Caution: do not read `theta1` and `theta2` here. `diffusion()` multiplies
+  its `theta` by $-1/\Delta t$ in place, so after the per-species solves
+  they hold $-\theta/\Delta t$, and the clipped mass came out as zero in
+  the first version. The weights below repeat the expressions of the
+  solves. `clip` is that mass over the gas mass of the phase.
   `spc` is the largest ratio, over the species, of that mass to the
   inventory $\sum \theta\Delta^d |Y_i|$ of the species, and `isp` its
   index. A species that exists only as negative values gives 1. */
@@ -687,14 +693,20 @@ static void diag_species (scalar theta1, scalar theta2)
     foreach (serial) {
       double dv = pow (Delta, dimension);
       for (int ph = 0; ph < 2; ph++) {
-        scalar th = ph ? theta2 : theta1;
         if (ph ? f[] >= 1. - F_ERR : f[] <= F_ERR)
           continue;
-        tot[ph] += th[]*dv;
+# ifdef VARPROP
+        double th = ph ? cm[]*max (fG[]*rhoGv_G[], F_ERR) :
+          cm[]*max (rhoGv_S[]*porosity[], F_ERR);
+# else
+        double th = ph ? cm[]*max (fG[]*rhoG, F_ERR) :
+          cm[]*max (rhoG*porosity[], F_ERR);
+# endif
+        tot[ph] += th*dv;
         for (int jj = 0; jj < NGS; jj++) {
           scalar YG = ph ? YGList_G[jj] : YGList_S[jj];
-          neg[ph*NGS + jj] += th[]*dv*max (- YG[], 0.);
-          inv[ph*NGS + jj] += th[]*dv*fabs (YG[]);
+          neg[ph*NGS + jj] += th*dv*max (- YG[], 0.);
+          inv[ph*NGS + jj] += th*dv*fabs (YG[]);
         }
       }
     }
@@ -1384,7 +1396,7 @@ event tracer_diffusion (i++) {
 #endif // !COUPLED_DIFFUSION
 
 #if DIFFUSION_DIAG
-  diag_species (theta1, theta2);
+  diag_species();
 #endif
 
 #if DRI_ON

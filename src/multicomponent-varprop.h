@@ -521,7 +521,9 @@ It also gives, for the cut cells of each phase, `max|dt sum_i r_i/theta|`.
 That is the change of `sum Y` that the interface sources alone make.
 The last column, `nsplit`, is `cd_nsplit` of `coupled-diffusion.h`: the
 number of solves since the start that failed and were split (-1 without
-`COUPLED_DIFFUSION`).
+`COUPLED_DIFFUSION`). The six columns after it give the mass that the
+clipping of the negative values adds, for the pore gas and the external gas
+(see `diag_species()`).
 
 Only rank 0 writes. The reductions run on all the ranks. */
 
@@ -610,7 +612,7 @@ static void diag_sources (void)
   diag_srcS = sS, diag_srcG = sG;
 }
 
-static void diag_species (void)
+static void diag_species (scalar theta1, scalar theta2)
 {
   // classes: 0 full pore, 1 cut pore, 2 full gas, 3 cut gas
   double e0 = 0., e1 = 0., e2 = 0., e3 = 0.;
@@ -668,6 +670,48 @@ static void diag_species (void)
     }
   }
 
+  /**
+  The mass that the clipping of `check_and_correct_fractions()` adds at the
+  next step: the negative values of each species, with the weight
+  $\theta\Delta^d$ of the solves ($\theta$ includes `cm`, the density and
+  the phase fraction). `clip` is that mass over the gas mass of the phase.
+  `spc` is the largest ratio, over the species, of that mass to the
+  inventory $\sum \theta\Delta^d |Y_i|$ of the species, and `isp` its
+  index. A species that exists only as negative values gives 1. */
+
+  double clip[2] = {0., 0.}, spc[2] = {0., 0.};
+  int isp[2] = {-1, -1};
+  {
+    double * neg = calloc (4*NGS, sizeof (double)), * inv = neg + 2*NGS;
+    double tot[2] = {0., 0.};
+    foreach (serial) {
+      double dv = pow (Delta, dimension);
+      for (int ph = 0; ph < 2; ph++) {
+        scalar th = ph ? theta2 : theta1;
+        if (ph ? f[] >= 1. - F_ERR : f[] <= F_ERR)
+          continue;
+        tot[ph] += th[]*dv;
+        for (int jj = 0; jj < NGS; jj++) {
+          scalar YG = ph ? YGList_G[jj] : YGList_S[jj];
+          neg[ph*NGS + jj] += th[]*dv*max (- YG[], 0.);
+          inv[ph*NGS + jj] += th[]*dv*fabs (YG[]);
+        }
+      }
+    }
+    mpi_all_reduce_array (neg, MPI_DOUBLE, MPI_SUM, 4*NGS); // inv too
+    mpi_all_reduce_array (tot, MPI_DOUBLE, MPI_SUM, 2);
+    for (int ph = 0; ph < 2; ph++)
+      for (int jj = 0; jj < NGS; jj++) {
+        double n = neg[ph*NGS + jj], m = inv[ph*NGS + jj];
+        clip[ph] += n;
+        if (m > 0. && n/m > spc[ph])
+          spc[ph] = n/m, isp[ph] = jj;
+      }
+    for (int ph = 0; ph < 2; ph++)
+      clip[ph] = tot[ph] > 0. ? clip[ph]/tot[ph] : 0.;
+    free (neg);
+  }
+
   static FILE * fp = NULL;
   if (pid() == 0) {
     if (!fp) {
@@ -675,7 +719,8 @@ static void diag_species (void)
       fprintf (fp, "# t dt Co itS itG mskS mskG "
                "pore:err,min,neg cutS:err,min,neg,src "
                "gas:err,min,neg cutG:err,min,neg,src y_gaserr y_gasmin "
-               "in:pore,cutS,gas,cutG face:S,nS,G,nG nsplit\n");
+               "in:pore,cutS,gas,cutG face:S,nS,G,nG nsplit "
+               "clip:S,spcS,ispS,G,spcG,ispG\n");
     }
     int itS = -1, itG = -1, mS = -1, mG = -1, nsplit = -1;
     double co = 0.;
@@ -688,12 +733,14 @@ static void diag_species (void)
     fprintf (fp, "%.8e %.4e %.4e %d %d %d %d "
              "%.3e %.4e %d %.3e %.4e %d %.3e "
              "%.3e %.4e %d %.3e %.4e %d %.3e %.4e %.4e "
-             "%.3e %.3e %.3e %.3e %.3e %d %.3e %d %d\n",
+             "%.3e %.3e %.3e %.3e %.3e %d %.3e %d %d "
+             "%.3e %.3e %d %.3e %.3e %d\n",
              t, dt, co, itS, itG, mS, mG,
              e0, m0, n0, e1, m1, n1, diag_srcS,
              e2, m2, n2, e3, m3, n3, diag_srcG, ye, ym,
              diag_in[0], diag_in[1], diag_in[2], diag_in[3],
-             diag_faceS, diag_nfaceS, diag_faceG, diag_nfaceG, nsplit);
+             diag_faceS, diag_nfaceS, diag_faceG, diag_nfaceG, nsplit,
+             clip[0], spc[0], isp[0], clip[1], spc[1], isp[1]);
     fflush (fp);
   }
 }
@@ -1337,7 +1384,7 @@ event tracer_diffusion (i++) {
 #endif // !COUPLED_DIFFUSION
 
 #if DIFFUSION_DIAG
-  diag_species();
+  diag_species (theta1, theta2);
 #endif
 
 #if DRI_ON

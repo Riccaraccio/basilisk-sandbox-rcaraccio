@@ -84,6 +84,24 @@ face vector fsS[], fsG[]; // face fractions
 
 bool restarted = false;
 
+/**
+`LIMITED_TRACER_SLOPE` (value-tested, default 1) gives the gas species and
+the two temperatures the `minmod2` slope. The BCG fluxes of `vof.h` and of
+`advection_div()` read `s.gradient`. When it is NULL, they use the unlimited
+centred slope, and the advection is not monotone. On a tree, the refinement
+of these fields reads the same slope, so a new child cell also gets no new
+extremum.
+
+Caution: do not set it to 0 for a production run. In `run/laminarflame.c`
+with the unlimited slope, the advection held one cell at the lip of the fuel
+nozzle at 36 K (level 7) and at -164 K (level 8), between the 300 K inlet
+and the 1440 K flame. With `minmod2` that cell went to 360 K in 0.005 s.
+Set it to 0 only to compare with a run made before this switch. */
+
+#ifndef LIMITED_TRACER_SLOPE
+# define LIMITED_TRACER_SLOPE 1
+#endif
+
 event defaults (i = 0) {
 
   /*
@@ -324,6 +342,17 @@ for (int jj=0; jj<NGS; jj++) {
 
   f.tracers = list_append (f.tracers, TS);
   f.tracers = list_append (f.tracers, TG);
+#endif
+
+#if LIMITED_TRACER_SLOPE
+  for (scalar s in YGList_S)
+    s.gradient = minmod2;
+  for (scalar s in YGList_G)
+    s.gradient = minmod2;
+# ifdef SOLVE_TEMPERATURE
+  TS.gradient = minmod2;
+  TG.gradient = minmod2;
+# endif
 #endif
 
 #ifdef VARPROP

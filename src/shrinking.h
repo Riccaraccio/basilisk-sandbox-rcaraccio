@@ -243,11 +243,29 @@ event tracer_diffusion (i++) {
 }
 
 /**
-The velocity 'ubf' can also be used to determine the timestep.
-*/
+The velocity `ubf` also limits the timestep. This event only lowers
+`dtmax`. The `stability` event of the centered solver runs after it, and it
+calls `timestep()` and `dtnext()` once for the two velocities.
+
+Do not call `dtnext()` here. A second call in the same step sees
+`tnext - t` from the first call. When the limit of `uf` is between half of
+that interval and the interval, `dtnext()` cuts the step in half. Do not call
+`timestep()` here either: its growth limit is a static value, and two calls
+in one step change it two times. */
+
+double ubf_dtmax = HUGE; // the CFL limit of ubf, for output only
 
 event stability (i++, last) {
-  dt = dtnext (timestep (ubf, dtmax));
+  double dtb = HUGE;
+  foreach_face (reduction(min:dtb))
+    if (ubf.x[] != 0.) {
+      double dtf = Delta*fm.x[]/fabs (ubf.x[]);
+      if (dtf < dtb)
+        dtb = dtf;
+    }
+  ubf_dtmax = CFL*dtb;
+  if (ubf_dtmax < dtmax)
+    dtmax = ubf_dtmax;
 }
 
 event cleanup (t = end) {

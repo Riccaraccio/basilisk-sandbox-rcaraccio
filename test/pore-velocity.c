@@ -32,6 +32,11 @@ with `u`. The tag `oscillation-campaign-2026-09` still builds it with
 | interstitial, `SLAB_SHIFT=0.5` | 6.25e-4 | 0.0242 | 0.0411 |
 | previous, `SLAB_SHIFT=0.5` | 6.25e-4 | 0.1017 | 0.1960 |
 
+2026-10-29: the `stability` event of `shrinking.h` no longer calls
+`timestep()`. Before, the growth limit of `timestep()` ran two times in each
+step, thus `dt` grew by 21 % per step at the start, not by 10 %. The first
+row is now t50 = 0.0219 and t10 = 0.0385, with 491 steps in place of 486.
+
 The ratio of the flush times is 0.22 (t50) and 0.20 (t10), which is `eps0`.
 The plug flow gives t50 = 0.02 s and t10 = 0.036 s. The previous code gives
 the dump of commit 93ed0a0 bit for bit. */

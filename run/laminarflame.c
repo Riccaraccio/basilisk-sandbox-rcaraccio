@@ -146,12 +146,61 @@ different configuration. Repeat the measurement here before you quote it. */
 # define DUMP_EVERY 0.01
 #endif
 
+/**
+To run on a uniform multigrid at `MAXLEVEL`, build with `-grid=multigrid`
+in `CFLAGS`. The `adapt` event then does not exist. Use it to measure what
+the adaptation removes from the cost of the chemistry.
+
+Caution: do not select the grid with an `#include "grid/..."` inside an
+`#if`. `qcc` reads the grid include as text, before the preprocessor, and
+it then registers that grid also when the `#if` removes the include.
+
+Caution: a multigrid run cannot restore a dump of a tree run. Each grid
+needs its own steady flame to restart from.
+
+Caution: a uniform multigrid at level 7 does not hold this flame. A run
+from t = 0 kept the tree run to t = 0.025, and then the velocity grew to
+14 m/s in the flame base (t = 0.03) and to 54 m/s in the far field
+(t = 0.04). The step fell from 5e-5 to 2e-6 s. The tree run stays below
+6 m/s. At t = 0.05 more gas entered than left through the right boundary,
+at 37 m/s, with the old zero-gradient outflow. The backflow is the probable
+cause; see the boundary conditions of `u`. No multigrid run has used the
+new outflow.
+
+`ADAPT` (default 1) at 0 removes the `adapt` event on the tree. A restart
+then refines every cell with x < 0.9 L0 to `MAXLEVEL`. This gives the cells
+of a uniform grid from the steady flame of a tree run. The cells with
+x >= 0.9 L0 keep the coarse levels of the dump, as the tree run coarsens
+them, so that both grids have the same outlet.
+
+`LF_BINNING` makes the gas chemistry integrate bins of similar cells
+(`binning.h`). `BIN_TOL` and `BIN_M` set `binning_tol` and `binning_M`. */
+
+#ifndef ADAPT
+# define ADAPT 1
+#endif
+
+#ifndef LF_BINNING
+# define LF_BINNING 0
+#endif
+
+#ifndef BIN_TOL
+# define BIN_TOL 0.05
+#endif
+
+#ifndef BIN_M
+# define BIN_M 4
+#endif
+
 #include "axi.h"
 #include "navier-stokes/centered-phasechange.h"
 #include "opensmoke-properties.h"
 #include "two-phase.h"
 #include "gravity.h"
 #include "shrinking.h"
+#if LF_BINNING
+# include "binning.h"
+#endif
 #include "multicomponent-varprop.h"
 #include "spark.h"
 #include "view.h"
@@ -191,7 +240,19 @@ p[left]    = neumann (0.);
 pf[left]   = neumann (0.);
 psi[left]  = dirichlet (0.);
 
-u.n[right] = neumann (0.);
+/**
+The right boundary is an outflow. Where the flow of the inner cell goes back
+into the domain, `u.n` is 0 on that face, so the outflow cannot feed an eddy
+through the boundary. The temperature and the species do the same in `init`.
+
+Caution: do not go back to `u.n[right] = neumann (0.)` alone. With a zero
+gradient, the gas that enters takes the state of the inner cell, so the hot
+gas comes back hot and the eddy feeds itself. The tree run hid this, because
+it coarsens x >= 0.9 L0. A tree with no adaptation at level 7 had 22 per cent
+of its outflow back at r = 25-59 mm and 781 K at t = 0.2; the uniform
+multigrid had more inflow than outflow at t = 0.05, at 37 m/s. */
+
+u.n[right] = u.x[] > 0. ? neumann (0.) : dirichlet (0.);
 u.t[right] = neumann (0.);
 p[right]   = dirichlet (0.);
 pf[right]  = dirichlet (0.);
@@ -468,7 +529,11 @@ int main() {
   TOLERANCE = 1e-5;
   NITERMIN = 2;
 
+#if TREE
   init_grid (1 << min (maxlevel, 7));
+#else
+  init_grid (1 << maxlevel);
+#endif
   run();
 }
 
@@ -482,15 +547,33 @@ event init (i = 0) {
 
   CFL = CFL_VALUE;
 
+#if LF_BINNING
+  binning_tol = BIN_TOL;
+  binning_M = BIN_M;
+#endif
+
   /**
+  A file `restart` in the run directory restarts the run from that dump.
+  `restarted` then stops the `init` event of `memoryallocation-varprop.h`
+  from filling the gas fields again.
+
   No cell holds solid. `f` and `porosity` stay at 0 for the whole run, because
   `shrinking.h` advects them with `ubf`, and no source creates them. */
 
-  foreach() {
-    f[] = 0.;
-    porosity[] = 0.;
-    u.x[] = U_AIR;
+  if (restore (file = "restart", list = all)) {
+    restarted = true;
+    if (pid() == 0)
+      fprintf (stderr, "# restart from the file 'restart'\n");
+#if TREE && !ADAPT
+    refine (level < maxlevel && x < 0.9*L0);
+#endif
   }
+  else
+    foreach() {
+      f[] = 0.;
+      porosity[] = 0.;
+      u.x[] = U_AIR;
+    }
 
   /**
   The domain starts full of the oxidizer stream. `memoryallocation-varprop.h`
@@ -522,30 +605,38 @@ event init (i = 0) {
   /**
   The boundary conditions of the temperature and of the species live here.
   Those fields do not exist in the global scope, because the header allocates
-  them in its `defaults` event. */
+  them in its `defaults` event.
+
+  On the right boundary, the gas that leaves keeps a zero gradient, and the
+  gas that enters is ambient air at `T_IN`. See the block above the boundary
+  conditions of `u` for the reason. */
 
   TG[left]   = dirichlet (T_IN);
   TG[top]    = dirichlet (T_IN);
-  TG[right]  = neumann (0.);
+  TG[right]  = u.x[] < 0. ? dirichlet (T_IN) : neumann (0.);
   TG[bottom] = neumann (0.);
 
   for (int jj = 0; jj < NGS; jj++) {
     scalar YG = YGList_G[jj];
     if (jj == OpenSMOKE_IndexOfSpecies ("H2")) {
-      YG[left] = dirichlet (y <= R ? H2_IN : 0.);
-      YG[top]  = dirichlet (0.);
+      YG[left]  = dirichlet (y <= R ? H2_IN : 0.);
+      YG[top]   = dirichlet (0.);
+      YG[right] = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
     }
     else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
-      YG[left] = dirichlet (y <= R ? 0. : O2_IN);
-      YG[top]  = dirichlet (O2_IN);
+      YG[left]  = dirichlet (y <= R ? 0. : O2_IN);
+      YG[top]   = dirichlet (O2_IN);
+      YG[right] = u.x[] < 0. ? dirichlet (O2_IN) : neumann (0.);
     }
     else if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
-      YG[left] = dirichlet (y <= R ? 1. - H2_IN : 1. - O2_IN);
-      YG[top]  = dirichlet (1. - O2_IN);
+      YG[left]  = dirichlet (y <= R ? 1. - H2_IN : 1. - O2_IN);
+      YG[top]   = dirichlet (1. - O2_IN);
+      YG[right] = u.x[] < 0. ? dirichlet (1. - O2_IN) : neumann (0.);
     }
     else {
-      YG[left] = dirichlet (0.);
-      YG[top]  = dirichlet (0.);
+      YG[left]  = dirichlet (0.);
+      YG[top]   = dirichlet (0.);
+      YG[right] = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
     }
   }
 }
@@ -556,7 +647,7 @@ event init (i = 0) {
 The grid follows the fuel, the temperature, and the velocity. The last cells
 of the domain are coarsened, so that the outflow does not drive the cost. */
 
-#if TREE
+#if TREE && ADAPT
 event adapt (i++) {
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("H2")];
   adapt_wavelet ({fuel, T, u.x, u.y},
@@ -595,8 +686,11 @@ event steps (i++) {
   static timer tm;
   static double wlast = 0.;
   static FILE * fps = NULL;
-  if (i == 0)
+  static bool started = false;
+  if (!started) {
     tm = timer_start();
+    started = true;
+  }
   double w = timer_elapsed (tm);
   long cells = grid->tn;
   if (pid() == 0) {

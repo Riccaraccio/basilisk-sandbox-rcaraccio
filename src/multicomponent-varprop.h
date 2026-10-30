@@ -346,6 +346,26 @@ each phase. The correction of one phase does not read the fields of the other
 phase. */
 
 #if !COUPLED_DIFFUSION
+
+/**
+`CORRECTIVE_SLOPE` (value-tested, default 1) sets the slope of the face value
+of `Y` in the corrective flux. At 1, the `minmod2` slope gives a limited
+second-order face value. At 0, the slope is zero, thus the face value is the
+value of the upwind cell, as in `coupled-diffusion.h`. Use 0 only to compare
+the two paths: it adds a numerical diffusion `|u_c| Delta/2` to each
+species. */
+
+#ifndef CORRECTIVE_SLOPE
+# define CORRECTIVE_SLOPE 1
+#endif
+
+#if !CORRECTIVE_SLOPE
+static double corrective_zero_slope (double s0, double s1, double s2)
+{
+  return 0.;
+}
+#endif
+
 static double fick_correct_species (scalar * YList, scalar * XList,
                                     scalar * DmixList, scalar MWmix,
                                     scalar rhoGv, face vector fs)
@@ -425,7 +445,11 @@ static double fick_correct_species (scalar * YList, scalar * XList,
     }
 
     double (* gradient_backup)(double, double, double) = YG.gradient; // we need to backup the gradient function
+#if CORRECTIVE_SLOPE
     YG.gradient = minmod2; // NULL means the unlimited centred slope, not no slope
+#else
+    YG.gradient = corrective_zero_slope;
+#endif
     face vector flux[];
     tracer_fluxes (YG, phicjj, flux, dt, zeroc); //calculate the fluxes using the corrective velocity
     YG.gradient = gradient_backup; // restore the gradient function

@@ -359,6 +359,27 @@ species. */
 # define CORRECTIVE_SLOPE 1
 #endif
 
+/**
+`CORRECTIVE_CAPACITY` (value-tested, default 0) sets the capacity of the
+corrective step. The solve of the same species divides by `theta`, which is
+`cm*rho*porosity` for the pore gas (porosity in tracer form, `eps*f`) and
+`cm*rho*fG` for the external gas. At 0, the corrective step divides by
+`cm*rho` only. Then the step is `eps*f` times too weak in the pore gas and
+`fG` times too weak in a cut cell, and `check_and_correct_fractions()`
+hides the error of `sum Y`. At 1, the step divides by the same capacity as
+the solve. In the gas with `fG = 1`, the two values give the same result.
+
+`test/diffusion-pores.c` shows that only 1 converges to the coupled path in
+the pore gas. The default stays 0 until a fatehi run checks the cut cells.
+
+Caution: at 1 the step is explicit with the capacity of a cut cell. The
+limit `CORRECTIVE_CFL` uses `fm`, not `fG`, so a gas sliver can get a
+corrective Courant number above 1. */
+
+#ifndef CORRECTIVE_CAPACITY
+# define CORRECTIVE_CAPACITY 0
+#endif
+
 #if !CORRECTIVE_SLOPE
 static double corrective_zero_slope (double s0, double s1, double s2)
 {
@@ -368,7 +389,7 @@ static double corrective_zero_slope (double s0, double s1, double s2)
 
 static double fick_correct_species (scalar * YList, scalar * XList,
                                     scalar * DmixList, scalar MWmix,
-                                    scalar rhoGv, face vector fs)
+                                    scalar rhoGv, face vector fs, scalar vf)
 {
   double uodx = 0.;
   face vector phictot[];
@@ -459,9 +480,15 @@ static double fick_correct_species (scalar * YList, scalar * XList,
       flux.x[] *= rhocjj.x[];
 
     // apply the corrective fluxes
-    foreach()
+    foreach() {
+#if CORRECTIVE_CAPACITY
+      double cap = max (rhoGv[]*vf[], F_ERR); // as theta1 and theta2, without cm
+#else
+      double cap = rhoGv[];
+#endif
       foreach_dimension()
-        YG[] += (rhoGv[] > 0.) ? dt/(rhoGv[])*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.;
+        YG[] += (rhoGv[] > 0.) ? dt/cap*(flux.x[] - flux.x[1])/(Delta*cm[]) : 0.;
+    }
   }
 
   return uodx;
@@ -1240,18 +1267,26 @@ event tracer_diffusion (i++) {
   `u_c = phic/rho` is the corrective velocity. The `stability` event of the
   next step reads it. */
 
+  /**
+  Caution: `max()` is a macro. It evaluates its second argument again when
+  that argument is the larger one. Do not put a call of
+  `fick_correct_species()` in `max()`. Before 2026-11-02 the code did, and
+  the corrective step of the pore gas ran two times in each step where the
+  pore gas had the larger `|u_c|/Delta`. Call each function once into a
+  variable. */
+
 # if COUPLED_DIFFUSION
-  double uodx = corrective_courant (YGList_G, XGList_G, DmixGList_G,
-                                    MWmixG_G, rhoGv_G, fsG);
-  uodx = max (uodx, corrective_courant (YGList_S, XGList_S, DmixGList_S,
-                                        MWmixG_S, rhoGv_S, fsS));
+  double uodxG = corrective_courant (YGList_G, XGList_G, DmixGList_G,
+                                     MWmixG_G, rhoGv_G, fsG);
+  double uodxS = corrective_courant (YGList_S, XGList_S, DmixGList_S,
+                                     MWmixG_S, rhoGv_S, fsS);
 # else
-  double uodx = fick_correct_species (YGList_G, XGList_G, DmixGList_G,
-                                      MWmixG_G, rhoGv_G, fsG);
-  uodx = max (uodx, fick_correct_species (YGList_S, XGList_S, DmixGList_S,
-                                          MWmixG_S, rhoGv_S, fsS));
+  double uodxG = fick_correct_species (YGList_G, XGList_G, DmixGList_G,
+                                       MWmixG_G, rhoGv_G, fsG, fG);
+  double uodxS = fick_correct_species (YGList_S, XGList_S, DmixGList_S,
+                                       MWmixG_S, rhoGv_S, fsS, porosity);
 # endif
-  corrective_uodx = uodx;
+  corrective_uodx = max (uodxG, uodxS);
 #endif // FICK_CORRECTED
 
   scalar theta1[], theta2[];

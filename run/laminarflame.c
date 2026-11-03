@@ -664,11 +664,16 @@ One line per output step, so that a run can be followed while it goes.
 Caution: `dt` here is the step of ONE instant, not a mean. Do not compare the
 cost of two runs with it. A pair at t = 0.02 read 6.7e-5 against 1.5e-5, which
 suggests a factor 4, while the step counts of the same pair were 186 against
-197, which is 6 per cent. Compare the column `i`, which counts every step. */
+197, which is 6 per cent. Compare the column `i`, which counts every step.
+
+Caution: `statsf()` is collective. Call it on every rank, before the test of
+`pid()`. If only rank 0 calls it, the MPI run stops at the first log line and
+the ranks wait for ever. */
 
 event logfile (t += 0.005) {
+  double Tmax = statsf(T).max;
   if (pid() == 0)
-    fprintf (stderr, "%g %g %d %g\n", t, dt, i, statsf(T).max);
+    fprintf (stderr, "%g %g %d %g\n", t, dt, i, Tmax);
 }
 
 /**

@@ -210,7 +210,7 @@ them, so that both grids have the same outlet.
 
 The geometry, the inlet velocity, and the inlet composition follow the 50 cm/s
 case of Toro et al. The mass fractions give a fuel stream of 0.0666 H2 in N2
-and an oxidizer stream of air. */
+and an oxidizer stream of air. `LF_FUEL` below can change the fuel stream. */
 
 #define FUEL_NOZZLE 9e-3
 #define AIR_NOZZLE  95e-3
@@ -219,6 +219,76 @@ and an oxidizer stream of air. */
 #define H2_IN       0.066637
 #define O2_IN       0.231442
 #define T_IN        300.
+
+/**
+## The fuel stream
+
+`LF_FUEL` selects the composition of the fuel stream:
+
+- 0 (default): the H2/N2 stream of Toro et al., at `T_IN`.
+- 1: a surrogate of the pyrolysis gas of `fatehi-combustion.c`, at `T_FUEL`
+  (default 800 K). Use it with `biomass/Solid-gas-88`, which is the scheme of
+  fatehi.
+
+The surrogate is the mean of the gas cells of the fatehi run `std3` (level 11,
+per cell) at t = 15.2 s with Y_O2 < 1e-3 and T < 900 K. These are 1082 cells
+with a mean T of 809 K, and the weight is the gas volume of the cell. The list
+keeps the 25 species with the largest mass fraction. They hold 97.8 per cent
+of the mass, and `init` scales them so that the stream sums to 1.
+
+This stream gives the flame a gas state like the fuel-rich core of fatehi,
+where the binning had its largest error. The data of Toro et al. do not apply
+to this stream. The reference is the per-cell run of the same build.
+
+Caution: every name must exist in the kinetic scheme. `init` stops the run if
+a name is not in the scheme. */
+
+#ifndef LF_FUEL
+# define LF_FUEL 0
+#endif
+
+#ifndef T_FUEL
+# if LF_FUEL
+#  define T_FUEL 800.
+# else
+#  define T_FUEL T_IN
+# endif
+#endif
+
+typedef struct { const char * name; double y; } LFSpecies;
+
+#if LF_FUEL == 1
+static const LFSpecies lf_fuel[] = {
+  {"N2", 0.2099}, {"C6H10O5", 0.1741}, {"H2O", 0.1692}, {"CO2", 0.1202},
+  {"CO", 0.0973}, {"FURFURAL", 0.0386}, {"C5H8O4", 0.0310},
+  {"C6H6O3", 0.0234}, {"CH2OHCHO", 0.0151}, {"FURAN", 0.0106},
+  {"C2H4", 0.0105}, {"MLINO", 0.0093}, {"CH3CO2H", 0.0079}, {"CH2O", 0.0078},
+  {"C2H2", 0.0075}, {"CH4", 0.0071}, {"C2H5CHO", 0.0068},
+  {"CH3COCH3", 0.0059}, {"CHOCHO", 0.0052}, {"CH3OH", 0.0046},
+  {"CH2OHCH2CHO", 0.0039}, {"VANILLIN", 0.0037}, {"C6H8O4", 0.0034},
+  {"HCOOH", 0.0029}, {"H2", 0.0025},
+  {NULL, 0.}
+};
+#elif LF_FUEL == 0
+static const LFSpecies lf_fuel[] = {
+  {"H2", H2_IN}, {"N2", 1. - H2_IN},
+  {NULL, 0.}
+};
+#else
+# error "LF_FUEL must be 0 or 1"
+#endif
+
+/**
+The boundary values of the species. `init` fills one entry for each field
+index, from the table of the stream. The boundary condition reads the entry
+of its own field: in a boundary expression, qcc replaces the name of the field
+with `_s`, so `YG.i` is the index of the field that the condition belongs to.
+
+`lf_fuel_sum` is the sum of the mass fractions of the fuel stream with no
+N2, H2O and CO2. The adaptation uses it to scale its threshold. */
+
+double * lf_yfuel = NULL, * lf_yair = NULL;
+double lf_fuel_sum = 0.;
 
 /**
 The inlet velocity of the fuel follows a parabolic profile, which is more
@@ -440,13 +510,14 @@ int main() {
   if (pid() == 0)
     fprintf (stderr, "# laminarflame: maxlevel=%d DT=%g CFL=%g Uair=%g"
                      " tend=%g corrCFL=%g frozen=%d strang=%d kin=%s"
-                     " adaptT=%g spark=%g,%g,%g,%g,%g dump=%g nranks=%d\n",
+                     " adaptT=%g spark=%g,%g,%g,%g,%g dump=%g nranks=%d"
+                     " fuel=%d Tfuel=%g\n",
              MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, U_AIR,
              (double) TEND, (double) CORRECTIVE_CFL, FROZEN_CELL_GATE,
              GAS_CHEMISTRY_STRANG, KINFOLDER, (double) ADAPT_T,
              (double) SPARK_X, (double) SPARK_D, (double) SPARK_Q,
              (double) SPARK_START, (double) SPARK_DURATION,
-             (double) DUMP_EVERY, npe());
+             (double) DUMP_EVERY, npe(), LF_FUEL, (double) T_FUEL);
 
   /**
   OpenSMOKE writes the messages of a failed stiff solve to stdout, with no
@@ -611,34 +682,60 @@ event init (i = 0) {
   gas that enters is ambient air at `T_IN`. See the block above the boundary
   conditions of `u` for the reason. */
 
-  TG[left]   = dirichlet (T_IN);
+  TG[left]   = dirichlet (y <= R ? T_FUEL : T_IN);
   TG[top]    = dirichlet (T_IN);
   TG[right]  = u.x[] < 0. ? dirichlet (T_IN) : neumann (0.);
   TG[bottom] = neumann (0.);
 
+  /**
+  The tables of the boundary values. See the block above `lf_yfuel`. The
+  scale of the fuel stream applies only when its sum differs from 1, so the
+  H2 stream keeps its exact values. */
+
+  int nfields = 0;
+  for (scalar s in all)
+    nfields = max (nfields, s.i + 1);
+  lf_yfuel = (double *) calloc (nfields, sizeof (double));
+  lf_yair  = (double *) calloc (nfields, sizeof (double));
+
+  double ysum = 0.;
+  for (int k = 0; lf_fuel[k].name; k++)
+    ysum += lf_fuel[k].y;
+  if (fabs (ysum - 1.) < 1e-12)
+    ysum = 1.;
+
+  lf_fuel_sum = 0.;
+  for (int k = 0; lf_fuel[k].name; k++) {
+    int jj = OpenSMOKE_IndexOfSpeciesWithoutError (lf_fuel[k].name);
+    if (jj < 0 || jj >= NGS) {
+      fprintf (stderr, "# laminarflame: species %s of the fuel stream is not"
+               " in %s\n", lf_fuel[k].name, KINFOLDER);
+      exit (1);
+    }
+    scalar YG = YGList_G[jj];
+    lf_yfuel[YG.i] = lf_fuel[k].y/ysum;
+    if (strcmp (lf_fuel[k].name, "N2") && strcmp (lf_fuel[k].name, "H2O") &&
+        strcmp (lf_fuel[k].name, "CO2"))
+      lf_fuel_sum += lf_fuel[k].y/ysum;
+  }
+  lf_yair[YGList_G[OpenSMOKE_IndexOfSpecies ("O2")].i] = O2_IN;
+  lf_yair[YGList_G[OpenSMOKE_IndexOfSpecies ("N2")].i] = 1. - O2_IN;
+
+  if (pid() == 0)
+    fprintf (stderr, "# fuel stream: LF_FUEL=%d T=%g sum=%g fuel part=%g\n",
+             LF_FUEL, (double) T_FUEL, ysum, lf_fuel_sum);
+
   for (int jj = 0; jj < NGS; jj++) {
     scalar YG = YGList_G[jj];
-    if (jj == OpenSMOKE_IndexOfSpecies ("H2")) {
-      YG[left]  = dirichlet (y <= R ? H2_IN : 0.);
-      YG[top]   = dirichlet (0.);
-      YG[right] = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
-    }
-    else if (jj == OpenSMOKE_IndexOfSpecies ("O2")) {
-      YG[left]  = dirichlet (y <= R ? 0. : O2_IN);
-      YG[top]   = dirichlet (O2_IN);
-      YG[right] = u.x[] < 0. ? dirichlet (O2_IN) : neumann (0.);
-    }
-    else if (jj == OpenSMOKE_IndexOfSpecies ("N2")) {
-      YG[left]  = dirichlet (y <= R ? 1. - H2_IN : 1. - O2_IN);
-      YG[top]   = dirichlet (1. - O2_IN);
-      YG[right] = u.x[] < 0. ? dirichlet (1. - O2_IN) : neumann (0.);
-    }
-    else {
-      YG[left]  = dirichlet (0.);
-      YG[top]   = dirichlet (0.);
-      YG[right] = u.x[] < 0. ? dirichlet (0.) : neumann (0.);
-    }
+    YG[left]  = dirichlet (y <= R ? lf_yfuel[YG.i] : lf_yair[YG.i]);
+    YG[top]   = dirichlet (lf_yair[YG.i]);
+    YG[right] = u.x[] < 0. ? dirichlet (lf_yair[YG.i]) : neumann (0.);
   }
+}
+
+event lf_free (t = end) {
+  free (lf_yfuel), lf_yfuel = NULL;
+  free (lf_yair), lf_yair = NULL;
 }
 
 /**
@@ -648,10 +745,42 @@ The grid follows the fuel, the temperature, and the velocity. The last cells
 of the domain are coarsened, so that the outflow does not drive the cost. */
 
 #if TREE && ADAPT
+/**
+With `LF_FUEL = 1` the fuel is a mixture, so the grid follows the sum of the
+mass fractions of the species that `lf_yfuel` holds, with no N2, H2O and CO2.
+The threshold keeps the same fraction of the inlet value as the threshold of
+H2 in the H2 stream: 1e-2 of 0.0666, which is 15 per cent. */
+
+#if LF_FUEL
+scalar fuelmix[];
+#endif
+
 event adapt (i++) {
+#if LF_FUEL
+  int ncomb = 0, comb[NGS];
+  for (int jj = 0; jj < NGS; jj++) {
+    scalar YG = YGList_G[jj];
+    const char * name = OpenSMOKE_NamesOfSpecies (jj);
+    if (lf_yfuel[YG.i] > 0. && strcmp (name, "N2") && strcmp (name, "H2O") &&
+        strcmp (name, "CO2"))
+      comb[ncomb++] = jj;
+  }
+  foreach() {
+    double sum = 0.;
+    for (int k = 0; k < ncomb; k++) {
+      scalar YG = YGList_G[comb[k]];
+      sum += YG[];
+    }
+    fuelmix[] = sum;
+  }
+  scalar fuel = fuelmix;
+  double fueltol = 1e-2*lf_fuel_sum/H2_IN;
+#else
   scalar fuel = YGList_G[OpenSMOKE_IndexOfSpecies ("H2")];
+  double fueltol = 1e-2;
+#endif
   adapt_wavelet ({fuel, T, u.x, u.y},
-      (double[]){1e-2, ADAPT_T, 1e-1, 1e-1}, maxlevel, minlevel);
+      (double[]){fueltol, ADAPT_T, 1e-1, 1e-1}, maxlevel, minlevel);
   unrefine (x >= 0.9*L0);
 }
 #endif

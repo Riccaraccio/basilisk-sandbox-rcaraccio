@@ -65,7 +65,8 @@ The knobs below are overridable with `-D`.
 
 `FATEHI_DUMMY = 1` selects `biomass/dummy-solid-gas` and a solid of BIOMASS,
 MOIST and ASH. It is for a quick check of a build. That mechanism has no OH,
-so the OH outputs are off with it. */
+so the OH outputs are off with it. It also has gas reaction orders that are
+not integers, so `FATEHI_DUMMY` sets `GAS_RHS_CLIP` to 1 (see `reactors.h`). */
 
 #ifndef FATEHI_DUMMY
 # define FATEHI_DUMMY 0
@@ -73,6 +74,7 @@ so the OH outputs are off with it. */
 
 #if FATEHI_DUMMY
 # define FATEHI_KINFOLDER "biomass/dummy-solid-gas"
+# define GAS_RHS_CLIP 1 // gas reaction orders that are not integers
 #else
 # define FATEHI_KINFOLDER "biomass/Solid-gas-88"
 #endif

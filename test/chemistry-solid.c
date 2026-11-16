@@ -35,6 +35,11 @@ generation rate per unit solid volume) into the cell field `omega[]`.
 #define F_ERR 1e-10
 #define SOLVE_TEMPERATURE 1      // integrate the solid temperature TS[]
 #define STORE_SOURCES 1          // copy the full data.sources vector into sourcesList
+
+/**
+The scheme `biomass/dummy-solid-gas` has gas reaction orders that are not
+integers. Keep the clip of the negative mass fractions (see `reactors.h`). */
+#define GAS_RHS_CLIP 1
 // no GAS_PHASE_REACTIONS -> pure solid-gas pyrolysis
 
 scalar f[];           // solid volume fraction (= 1 everywhere here -> all solid)

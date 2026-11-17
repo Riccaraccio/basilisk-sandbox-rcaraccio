@@ -83,6 +83,11 @@ Run with `make strang-cell.tst` from `test/`, or with `qcc` directly. */
 #define F_ERR 1e-10
 #define SOLVE_TEMPERATURE 1
 
+/**
+The scheme `biomass/dummy-solid-gas` has gas reaction orders that are not
+integers. Keep the clip of the negative mass fractions (see `reactors.h`). */
+#define GAS_RHS_CLIP 1
+
 #include <time.h>
 
 scalar f[];

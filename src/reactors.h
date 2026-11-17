@@ -280,7 +280,34 @@ solve chemical species reactions in the gas phase
 * *dt*: simulation time step
 * *dy*: right-hand-side of the batch system of equations
 * *args*: structure with additional arguments to be passed to the system
-*/
+
+### The clip of the negative mass fractions
+
+`GAS_RHS_CLIP` (value-tested, default 0) controls the clip of the negative
+mass fractions in this function. At 0, the function uses the mass fractions
+of the solver as they are. At 1, it sets each negative mass fraction to 0.
+
+Keep the flag at 0 for a scheme with integer reaction orders. The clip
+makes the right-hand side flat below 0. If the solver computes the Jacobian
+at a state with a negative mass fraction, the Jacobian does not contain the
+destruction of that species. For a fast radical with a small steady value,
+the step size then stays at the explicit limit, and the solver stops at its
+maximum number of steps. In the isobutanol flame of `run/laminarflame.c`,
+OCHO (k = 1.1e11 1/s) caused all these failures. One failure cost 12-17 s.
+Without the clip, the same state needs 107 calls.
+
+Set the flag to 1 for a scheme with a reaction order that is not an
+integer (`FORD`, or a fractional coefficient of a reactant), for example
+`biomass/dummy-solid-gas`. OpenSMOKE++ computes such an order with
+`pow (C, order)` and no guard. A negative C gives FE_INVALID, and the run
+stops with SIGFPE.
+
+The solid reactor above always clips its gas and solid masses. The char
+oxidation of the biomass schemes has the order 0.78 for O2. */
+
+#ifndef GAS_RHS_CLIP
+# define GAS_RHS_CLIP 0
+#endif
 
 void gas_batch_nonisothermal_constantpressure (const double * y, const double dt, double * dy, void * args) {
 
@@ -294,7 +321,11 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   // Unpack mass fractions
   double gasmassfracs[NGS], gasmolefracs[NGS];
   for (int jj=0; jj<NGS; jj++)
+#if GAS_RHS_CLIP
     gasmassfracs[jj] = y[jj] < 0. ? 0. : y[jj];
+#else
+    gasmassfracs[jj] = y[jj];
+#endif
 
   // Calculate mole fractions and mixture molecular weight
   double MWMix;

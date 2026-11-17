@@ -97,6 +97,11 @@ error, because it uses the exact form. */
 # define NREF 400
 #endif
 #define SOLVE_TEMPERATURE 1
+
+/**
+The scheme `biomass/dummy-solid-gas` has gas reaction orders that are not
+integers. Keep the clip of the negative mass fractions (see `reactors.h`). */
+#define GAS_RHS_CLIP 1
 #define GAS_PHASE_REACTIONS 1
 
 scalar f[];

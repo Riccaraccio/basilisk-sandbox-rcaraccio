@@ -168,16 +168,40 @@ cause; see the boundary conditions of `u`. No multigrid run has used the
 new outflow.
 
 `ADAPT` (default 1) at 0 removes the `adapt` event on the tree. A restart
-then refines every cell with x < 0.9 L0 to `MAXLEVEL`. This gives the cells
-of a uniform grid from the steady flame of a tree run. The cells with
-x >= 0.9 L0 keep the coarse levels of the dump, as the tree run coarsens
-them, so that both grids have the same outlet.
+then refines the cells to `MAXLEVEL`. This gives the cells of a uniform grid
+from the steady flame of a tree run. A run from t = 0 with `ADAPT` 0 starts
+on a uniform grid at level 7 (see `main`) and keeps it.
+
+`REFINE_OUTLET` (value-tested, default 1) lets the grid reach `MAXLEVEL` up
+to the outlet. The `adapt` event then follows the plume to the right
+boundary, and a restart with `ADAPT` 0 refines the whole domain. At 0, the
+`adapt` event coarsens every cell with x >= 0.9 L0, and a restart with
+`ADAPT` 0 refines only x < 0.9 L0. Runs made before 2026-11-09 used 0.
+Caution: at 0 the hot plume leaves through 1 to 5 cells of 4.7-37.5 mm,
+and on a uniform grid the level falls from `MAXLEVEL` to 5 within a few
+cells at x = 0.9 L0. The isobutanol flame of `LF_FUEL = 2` grew an eddy there
+on the uniform grids (level 7 and 8, t > 0.33), and level 8 stopped.
 
 `LF_BINNING` makes the gas chemistry integrate bins of similar cells
-(`binning.h`). `BIN_TOL` and `BIN_M` set `binning_tol` and `binning_M`. */
+(`binning.h`). `BIN_TOL` and `BIN_M` set `binning_tol` and `binning_M`.
+
+`BIN_FORCED` (value-tested, default 0): at 1, the binning forces IC4H9OH,
+CO, H and OH into the coordinates, after T and before the most abundant
+species. With no forced species, the coordinates of the isobutanol flame were
+T, N2, O2 and CO2, and O, IC4H9OH and H then set `alpha` in 25 % of the bins.
+Set `BIN_M` to 6 or more with `BIN_FORCED`. At 4, the forced species take
+every place after T, and no coordinate tracks the mixture fraction. */
 
 #ifndef ADAPT
 # define ADAPT 1
+#endif
+
+#ifndef REFINE_OUTLET
+# define REFINE_OUTLET 1
+#endif
+
+#ifndef OUTLET_HYDROSTATIC
+# define OUTLET_HYDROSTATIC 1
 #endif
 
 #ifndef LF_BINNING
@@ -190,6 +214,10 @@ them, so that both grids have the same outlet.
 
 #ifndef BIN_M
 # define BIN_M 4
+#endif
+
+#ifndef BIN_FORCED
+# define BIN_FORCED 0
 #endif
 
 #include "axi.h"
@@ -210,12 +238,20 @@ them, so that both grids have the same outlet.
 
 The geometry, the inlet velocity, and the inlet composition follow the 50 cm/s
 case of Toro et al. The mass fractions give a fuel stream of 0.0666 H2 in N2
-and an oxidizer stream of air. `LF_FUEL` below can change the fuel stream. */
+and an oxidizer stream of air. `LF_FUEL` below can change the fuel stream.
+
+`U_AIR` is a switch: it sets the coflow and half the peak of the fuel jet.
+The isobutanol flame of `LF_FUEL = 2` lifted off the lip at 0.5 m/s (level 7,
+2026-11-04). A lower value moves the flow below the speed of the edge flame.
+Caution: a lower `U_AIR` gives a longer time of one flow through the domain.
+Increase `TEND` of the warm-up by the same factor. */
 
 #define FUEL_NOZZLE 9e-3
 #define AIR_NOZZLE  95e-3
 #define LENGTH      150e-3
-#define U_AIR       0.5
+#ifndef U_AIR
+# define U_AIR      0.5
+#endif
 #define H2_IN       0.066637
 #define O2_IN       0.231442
 #define T_IN        300.
@@ -240,6 +276,24 @@ This stream gives the flame a gas state like the fuel-rich core of fatehi,
 where the binning had its largest error. The data of Toro et al. do not apply
 to this stream. The reference is the per-cell run of the same build.
 
+- 2: isobutanol (IC4H9OH) in N2, at `T_FUEL` (default 400 K, above the
+  boiling point of 381 K). Use it with `skeletal/isobuthanol-solid` (55 gas
+  species, 464 reactions): the DRGEP scheme of `skeletal/isobuthanol` plus
+  the dummy solid block of `skeletal/hydrogen-solid`.
+
+The mass fraction `IC4_IN` gives the same stoichiometric mixture fraction as
+the H2 stream, Z_st = 0.304, so that the flame keeps about the same length.
+With s = 6 W_O2/W_IC4H9OH = 2.590 kg O2 per kg fuel,
+Y_F = (O2_IN/s) (1/Z_st - 1) = 0.2042. A stream of pure fuel gives
+Z_st = 0.082, and the flame becomes about 4 times longer than the domain
+allows. The data of Toro et al. do not apply to this stream either.
+
+`IC4_IN` is a switch. At 0.2042 the flame lifted off the lip at level 7
+(2026-11-04): the stoichiometric mixture holds about 75 per cent of the fuel
+of a stoichiometric fuel-air mixture, and its edge flame is slow. A larger
+value gives a hotter and faster edge flame, but a smaller Z_st and a longer
+flame: 0.40 gives Z_st = 0.183, 0.55 gives Z_st = 0.140.
+
 Caution: every name must exist in the kinetic scheme. `init` stops the run if
 a name is not in the scheme. */
 
@@ -248,8 +302,10 @@ a name is not in the scheme. */
 #endif
 
 #ifndef T_FUEL
-# if LF_FUEL
+# if LF_FUEL == 1
 #  define T_FUEL 800.
+# elif LF_FUEL == 2
+#  define T_FUEL 400.
 # else
 #  define T_FUEL T_IN
 # endif
@@ -269,13 +325,21 @@ static const LFSpecies lf_fuel[] = {
   {"HCOOH", 0.0029}, {"H2", 0.0025},
   {NULL, 0.}
 };
+#elif LF_FUEL == 2
+# ifndef IC4_IN
+#  define IC4_IN 0.2042
+# endif
+static const LFSpecies lf_fuel[] = {
+  {"IC4H9OH", IC4_IN}, {"N2", 1. - IC4_IN},
+  {NULL, 0.}
+};
 #elif LF_FUEL == 0
 static const LFSpecies lf_fuel[] = {
   {"H2", H2_IN}, {"N2", 1. - H2_IN},
   {NULL, 0.}
 };
 #else
-# error "LF_FUEL must be 0 or 1"
+# error "LF_FUEL must be 0, 1 or 2"
 #endif
 
 /**
@@ -312,8 +376,25 @@ psi[left]  = dirichlet (0.);
 
 /**
 The right boundary is an outflow. Where the flow of the inner cell goes back
-into the domain, `u.n` is 0 on that face, so the outflow cannot feed an eddy
-through the boundary. The temperature and the species do the same in `init`.
+into the domain, `u.n` is 0 on that face, and the temperature and the
+species are those of the air (see `init`). The gas that comes in is then
+cold air, so the outflow cannot feed an eddy with hot gas.
+
+Caution: `u.n = 0` does not stop the inflow. The projection sets the flux
+through the boundary from `p`. The uniform isobutanol runs of 2026-11-06 had
+inflow on 30-84 per cent of the outlet, down to -13 m/s.
+
+The pressure. `gravity.h` uses the reduced form: the `p` of the solver is
+p_true - rho*phi, with phi = G.x*(x - Z.x) and rho the local gas density.
+`OUTLET_HYDROSTATIC` (value-tested, default 1) sets Z.x = L0 in `main`. Then
+phi = 0 on the outlet, and `p = 0` there gives p_true = 0 on the whole
+outlet, as for a free plume. On the top boundary the gas is air, and `p = 0`
+gives the hydrostatic pressure of the air. A constant shift of phi does not
+change the flow in the domain: it only changes what `p` means.
+At 0 (Z.x = 0, the runs made before 2026-11-09), `p = 0` on the outlet gives
+p_true = rho*phi, so the hot plume (rho 0.19) leaves at about 1.45 Pa above
+the air at the same height, against a dynamic pressure of about 0.6 Pa in
+the plume and 0.15 Pa in the coflow.
 
 Caution: do not go back to `u.n[right] = neumann (0.)` alone. With a zero
 gradient, the gas that enters takes the state of the inner cell, so the hot
@@ -511,13 +592,16 @@ int main() {
     fprintf (stderr, "# laminarflame: maxlevel=%d DT=%g CFL=%g Uair=%g"
                      " tend=%g corrCFL=%g frozen=%d strang=%d kin=%s"
                      " adaptT=%g spark=%g,%g,%g,%g,%g dump=%g nranks=%d"
-                     " fuel=%d Tfuel=%g\n",
+                     " fuel=%d Tfuel=%g adapt=%d refout=%d hydro=%d"
+                     " bin=%d bintol=%g binM=%d binforced=%d\n",
              MAXLEVEL, (double) DT_VALUE, (double) CFL_VALUE, U_AIR,
              (double) TEND, (double) CORRECTIVE_CFL, FROZEN_CELL_GATE,
              GAS_CHEMISTRY_STRANG, KINFOLDER, (double) ADAPT_T,
              (double) SPARK_X, (double) SPARK_D, (double) SPARK_Q,
              (double) SPARK_START, (double) SPARK_DURATION,
-             (double) DUMP_EVERY, npe(), LF_FUEL, (double) T_FUEL);
+             (double) DUMP_EVERY, npe(), LF_FUEL, (double) T_FUEL, ADAPT,
+             REFINE_OUTLET, OUTLET_HYDROSTATIC, LF_BINNING, (double) BIN_TOL,
+             BIN_M, BIN_FORCED);
 
   /**
   OpenSMOKE writes the messages of a failed stiff solve to stdout, with no
@@ -556,6 +640,9 @@ int main() {
 
   L0 = LENGTH;
   G.x = -9.81;
+#if OUTLET_HYDROSTATIC
+  Z.x = L0;
+#endif
   DT = DT_VALUE;
 
   kinfolder = KINFOLDER;
@@ -621,6 +708,13 @@ event init (i = 0) {
 #if LF_BINNING
   binning_tol = BIN_TOL;
   binning_M = BIN_M;
+# if BIN_FORCED
+  binning_forced[0] = "IC4H9OH";
+  binning_forced[1] = "CO";
+  binning_forced[2] = "H";
+  binning_forced[3] = "OH";
+  binning_forced[4] = NULL;
+# endif
 #endif
 
   /**
@@ -636,7 +730,7 @@ event init (i = 0) {
     if (pid() == 0)
       fprintf (stderr, "# restart from the file 'restart'\n");
 #if TREE && !ADAPT
-    refine (level < maxlevel && x < 0.9*L0);
+    refine (level < maxlevel && (REFINE_OUTLET || x < 0.9*L0));
 #endif
   }
   else
@@ -746,8 +840,9 @@ of the domain are coarsened, so that the outflow does not drive the cost. */
 
 #if TREE && ADAPT
 /**
-With `LF_FUEL = 1` the fuel is a mixture, so the grid follows the sum of the
-mass fractions of the species that `lf_yfuel` holds, with no N2, H2O and CO2.
+With `LF_FUEL` > 0 the grid follows the sum of the mass fractions of the
+species that `lf_yfuel` holds, with no N2, H2O and CO2 (with `LF_FUEL = 2`,
+only IC4H9OH).
 The threshold keeps the same fraction of the inlet value as the threshold of
 H2 in the H2 stream: 1e-2 of 0.0666, which is 15 per cent. */
 
@@ -781,7 +876,9 @@ event adapt (i++) {
 #endif
   adapt_wavelet ({fuel, T, u.x, u.y},
       (double[]){fueltol, ADAPT_T, 1e-1, 1e-1}, maxlevel, minlevel);
+#if !REFINE_OUTLET
   unrefine (x >= 0.9*L0);
+#endif
 }
 #endif
 

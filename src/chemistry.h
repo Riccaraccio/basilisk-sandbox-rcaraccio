@@ -144,8 +144,45 @@ void RungeKutta45EXP(odefunction ode, unsigned int neq, double dt, double *y, vo
   y[NGS+NSS] = clamp (y[NGS+NSS], 0., 1.); // Ensure boundness for porosity
 }
 
+#if defined(BINNING) && !TURN_OFF_GAS_REACTIONS
+/**
+## The bin of each cell: the field `binid`
+
+`binid` gives the bin of each gas cell after the last call of the gas
+chemistry. In a step with the Strang split, these are the bins of the second
+half. A cell that is not in a bin (no gas, or a frozen cell of
+`BINNING_GATE`) holds `nodata`. The field is a global field, thus `dump()`
+writes it, and jview can show it.
+
+The numbers are local to each MPI rank, because each rank makes its own
+bins. Two ranks can give the same number to two different bins.
+
+The default refine and restriction functions average the values. A mean of
+two bin numbers is not a bin number. Thus a new cell of `adapt` gets the
+number of its parent, and a coarse cell gets the number of one of its
+children. The next call of the chemistry writes the field again in all
+cells. */
+
+scalar binid[];
+
+static void restriction_binid (Point point, scalar s)
+{
+  double v = nodata;
+  foreach_child()
+    if (s[] != nodata)
+      v = s[];
+  s[] = v;
+}
+#endif // BINNING && !TURN_OFF_GAS_REACTIONS
+
 event init (i = 0) {
   OpenSMOKE_InitODESolver ();
+#if defined(BINNING) && !TURN_OFF_GAS_REACTIONS
+  binid.refine = binid.prolongation = refine_injection;
+  binid.restriction = restriction_binid;
+  foreach()
+    binid[] = nodata;
+#endif
 }
 
 event cleanup (t = end) {
@@ -1143,7 +1180,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
   scalar * targets = binning_select_targets (gasmask, wG);
 
   BinTable * table = binning (fields, targets, binning_tol, wG, gasmask);
-  scalar binid = table->id;
+  scalar cellbin = table->id;
 
   /**
   `alpha` of each bin. A bin with `alpha < 0` is a bin that the sweep does
@@ -1256,7 +1293,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
 # endif
 
   foreach (serial) {
-    int b = binid[];
+    int b = cellbin[];
     if (b >= 0 && alpha[b] > 0.) {
       Bin * bin = table->bins + b;
       double a = alpha[b];
@@ -1281,7 +1318,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
 
   long nbadcell = 0;
   foreach (reduction(+:nbadcell)) {
-    int b = binid[];
+    int b = cellbin[];
     if (b >= 0 && alpha[b] >= 0.) {
       Bin * bin = table->bins + b;
       double a = alpha[b];
@@ -1441,6 +1478,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
     fprintf (stderr, "GATE %g %d\n", t, frozen_cell_gate_n);
 # endif
 
+  binning_ids (table, binid);
   binning_cleanup (table);
   free (fields), fields = NULL;
   free (targets), targets = NULL;

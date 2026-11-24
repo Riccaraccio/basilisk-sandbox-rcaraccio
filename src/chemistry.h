@@ -49,11 +49,6 @@ The `BINNING` path uses the same Strang split. It does not use the gate. */
 
 #define CHEMISTRY_H 1
 
-#if defined(BINNING) && !defined(VARPROP)
-# error "BINNING requires VARPROP (it uses rhoGv_G/cpGv_G and drhodt_chem)"
-#endif
-
-
 #ifndef TURN_OFF_REACTIONS
 
 /**
@@ -144,45 +139,9 @@ void RungeKutta45EXP(odefunction ode, unsigned int neq, double dt, double *y, vo
   y[NGS+NSS] = clamp (y[NGS+NSS], 0., 1.); // Ensure boundness for porosity
 }
 
-#if defined(BINNING) && !TURN_OFF_GAS_REACTIONS
-/**
-## The bin of each cell: the field `binid`
-
-`binid` gives the bin of each gas cell after the last call of the gas
-chemistry. In a step with the Strang split, these are the bins of the second
-half. A cell that is not in a bin (no gas, or a frozen cell of
-`BINNING_GATE`) holds `nodata`. The field is a global field, thus `dump()`
-writes it, and jview can show it.
-
-The numbers are local to each MPI rank, because each rank makes its own
-bins. Two ranks can give the same number to two different bins.
-
-The default refine and restriction functions average the values. A mean of
-two bin numbers is not a bin number. Thus a new cell of `adapt` gets the
-number of its parent, and a coarse cell gets the number of one of its
-children. The next call of the chemistry writes the field again in all
-cells. */
-
-scalar binid[];
-
-static void restriction_binid (Point point, scalar s)
-{
-  double v = nodata;
-  foreach_child()
-    if (s[] != nodata)
-      v = s[];
-  s[] = v;
-}
-#endif // BINNING && !TURN_OFF_GAS_REACTIONS
 
 event init (i = 0) {
   OpenSMOKE_InitODESolver ();
-#if defined(BINNING) && !TURN_OFF_GAS_REACTIONS
-  binid.refine = binid.prolongation = refine_injection;
-  binid.restriction = restriction_binid;
-  foreach()
-    binid[] = nodata;
-#endif
 }
 
 event cleanup (t = end) {
@@ -504,8 +463,9 @@ static bool gas_reactor_cell (Point point)
 
 The two sweeps have the same signature, `gas_phase_reactions (dtc,
 second_half)`, and the events below do not know which sweep they call. Each
-sweep is in its own file. The files hold functions only, not events, so the
-order of the events does not depend on them. */
+sweep is in its own file. The files hold no event of the chemistry step, so
+the order of these events does not depend on them. `chemistry-binning.h`
+holds only an `init` event, which sets up the field `binid`. */
 
 #if !TURN_OFF_GAS_REACTIONS
 # ifdef BINNING

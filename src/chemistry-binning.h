@@ -50,9 +50,49 @@ each coordinate then covers the cells that react only. With
 `BINNING_GATE` 0 (the default) every reactor cell goes into a bin, and
 `frozen_cell_gate_n` stays 0. */
 
+#if !defined(VARPROP)
+# error "BINNING requires VARPROP (it uses rhoGv_G/cpGv_G and drhodt_chem)"
+#endif
+
 #ifndef BINNING_GATE
 # define BINNING_GATE 0
 #endif
+
+/**
+## The bin of each cell: the field `binid`
+
+`binid` gives the bin of each gas cell after the last call of the gas
+chemistry. In a step with the Strang split, these are the bins of the second
+half. A cell that is not in a bin (no gas, or a frozen cell of
+`BINNING_GATE`) holds `nodata`. The field is a global field, thus `dump()`
+writes it, and jview can show it.
+
+The numbers are local to each MPI rank, because each rank makes its own
+bins. Two ranks can give the same number to two different bins.
+
+The default refine and restriction functions average the values. A mean of
+two bin numbers is not a bin number. Thus a new cell of `adapt` gets the
+number of its parent, and a coarse cell gets the number of one of its
+children. The next call of the chemistry writes the field again in all
+cells. */
+
+scalar binid[];
+
+static void restriction_binid (Point point, scalar s)
+{
+  double v = nodata;
+  foreach_child()
+    if (s[] != nodata)
+      v = s[];
+  s[] = v;
+}
+
+event init (i = 0) {
+  binid.refine = binid.prolongation = refine_injection;
+  binid.restriction = restriction_binid;
+  foreach()
+    binid[] = nodata;
+}
 
 /**
 Scale the gas tracers (species + temperature) of the current cell by a common

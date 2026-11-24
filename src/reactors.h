@@ -395,3 +395,150 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   dy[NGS] *= 0.;
 #endif
 }
+
+/**
+## *gas_batch_nonisothermal_constantpressure_jacobian()*
+Jacobian of `gas_batch_nonisothermal_constantpressure()` for
+`OpenSMOKE_ODESolver_Jacobian()`
+
+* *y*, *t*, *args*: as for the right-hand side
+* *J*: J = df/dy, dense, column-major, (NGS+1) x (NGS+1):
+  J[i + (NGS+1)*j] = df_i/dy_j
+
+The right-hand side is, with w_i the formation rates [kmol/m3/s]:
+
+    f_i = MW_i w_i(c, T)/rho                  i < NGS
+    f_T = (Q + q_rad)/(rho cp)                Q = -sum_i H_i w_i
+    c_k = rho Y_k/MW_k                        rho = P MW/(R T)
+
+The species columns are analytic. `OpenSMOKE_GasProp_FormationRatesJacobian()`
+gives dw/dc at constant cTot. At constant P and T, cTot = P/(R T) does not
+change with Y, so the chain rule is:
+
+    dc_k/dY_j = (rho/MW_k) delta_kj - c_k MW/MW_j
+    B_ij = dw_i/dY_j = (dw_i/dc_j) rho/MW_j - (MW/MW_j) sum_k (dw_i/dc_k) c_k
+    df_i/dY_j = (MW_i/rho) B_ij + f_i MW/MW_j
+    df_T/dY_j = -sum_i H_i B_ij/(rho cp) - f_T ((cp_j - cp)/(cp sum_k Y_k) - MW/MW_j)
+
+`OpenSMOKE_GasProp_HeatCapacity()` gives cp = sum_k Y_k cp_k / sum_k Y_k
+(the mass fractions are not normalized), thus d cp/dY_j = (cp_j - cp)/sum_k Y_k.
+Without `VARPROP`, rho and cp are constant: the two terms of f_i MW/MW_j and
+of f_T are 0. The chain rule of c stays, because c uses its own density.
+The derivative of q_rad with respect to Y is not in the T row. An
+approximate J changes only the Newton iterations, not the accuracy, because
+the error control of the solver uses the right-hand side.
+
+The T column is a forward difference: one call of the right-hand side at
+T + h, then one at T. The second call puts the kinetic map back to T, so
+the call of the formation rates Jacobian after it does not compute the
+kinetic constants again.
+
+With `GAS_RHS_CLIP` 1, the columns of the species with Y < 0 are 0 (the
+right-hand side does not change with them). With `TURN_OFF_HEAT_OF_REACTION`,
+the T row is 0. If the interface does not support the mechanism (CABR
+reactions), the species columns are forward differences of the right-hand
+side. */
+
+void gas_batch_nonisothermal_constantpressure_jacobian (const double * y, const double t, double * J, void * args) {
+
+  const int neq = NGS + 1;
+  UserDataODE data = *(UserDataODE *)args;
+  data.sources = NULL;
+
+  // T column: forward difference, the call at T last
+  double yp[neq], fp[neq], f[neq];
+  for (int jj=0; jj<neq; jj++)
+    yp[jj] = y[jj];
+  const double hT = 1e-7*fabs (y[NGS]) + 1e-6;
+  yp[NGS] += hT;
+  gas_batch_nonisothermal_constantpressure (yp, t, fp, &data);
+  gas_batch_nonisothermal_constantpressure (y, t, f, &data);
+  for (int ii=0; ii<neq; ii++)
+    J[ii + neq*NGS] = (fp[ii] - f[ii])/hT;
+
+  // The state of the right-hand side at T (the kinetic map is at T and P)
+  double Temperature = clamp_temperature (y[NGS]);
+  double Pressure = clamp_pressure (data.P);
+  double gasmassfracs[NGS], gasmolefracs[NGS], cgas[NGS], MWMix, sumY = 0.;
+  for (int jj=0; jj<NGS; jj++) {
+#if GAS_RHS_CLIP
+    gasmassfracs[jj] = y[jj] < 0. ? 0. : y[jj];
+#else
+    gasmassfracs[jj] = y[jj];
+#endif
+    sumY += gasmassfracs[jj];
+  }
+  OpenSMOKE_MoleFractions_From_MassFractions (gasmolefracs, &MWMix, gasmassfracs);
+  double ctot = Pressure/(R_GAS*1000*Temperature);
+  for (int jj=0; jj<NGS; jj++)
+    cgas[jj] = ctot*gasmolefracs[jj];
+  const double rhoc = ctot*MWMix;   // the density in c
+#ifdef VARPROP
+  const double rho = rhoc;
+  const double cp = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
+#else
+  const double rho = data.rhog;
+  const double cp = data.cpg;
+#endif
+
+  // dw/dc at constant cTot (the interface is not thread safe: one buffer)
+  static double * dwdc = NULL;
+  if (!dwdc)
+    dwdc = malloc (NGS*NGS*sizeof(double));
+  if (OpenSMOKE_GasProp_FormationRatesJacobian (cgas, dwdc)) {
+    // not supported: forward differences of the right-hand side
+    for (int jj=0; jj<NGS; jj++) {
+      for (int kk=0; kk<neq; kk++)
+        yp[kk] = y[kk];
+      const double h = 1e-7*fabs (y[jj]) + 1e-12;
+      yp[jj] += h;
+      gas_batch_nonisothermal_constantpressure (yp, t, fp, &data);
+      for (int ii=0; ii<neq; ii++)
+        J[ii + neq*jj] = (fp[ii] - f[ii])/h;
+    }
+    return;
+  }
+
+  // s_i = sum_k (dw_i/dc_k) c_k
+  double s[NGS], hmol[NGS];
+  for (int ii=0; ii<NGS; ii++)
+    s[ii] = 0.;
+  for (int kk=0; kk<NGS; kk++)
+    for (int ii=0; ii<NGS; ii++)
+      s[ii] += dwdc[ii + NGS*kk]*cgas[kk];
+  OpenSMOKE_GasProp_Enthalpy_PureSpecies (hmol);   // J/kg
+  for (int ii=0; ii<NGS; ii++)
+    hmol[ii] *= gas_MWs[ii];                       // J/kmol
+#ifdef VARPROP
+  double cpk[NGS];
+  OpenSMOKE_GasProp_HeatCapacity_PureSpecies (cpk); // J/kg/K
+#endif
+
+  for (int jj=0; jj<NGS; jj++) {
+    double * Jj = J + neq*jj;
+#if GAS_RHS_CLIP
+    if (y[jj] < 0.) {
+      for (int ii=0; ii<neq; ii++)
+        Jj[ii] = 0.;
+      continue;
+    }
+#endif
+    const double a = rhoc/gas_MWs[jj], b = MWMix/gas_MWs[jj];
+    double dQ = 0.;
+    for (int ii=0; ii<NGS; ii++) {
+      const double B = dwdc[ii + NGS*jj]*a - b*s[ii];
+      dQ -= hmol[ii]*B;
+      Jj[ii] = gas_MWs[ii]/rho*B;
+#ifdef VARPROP
+      Jj[ii] += f[ii]*b;
+#endif
+    }
+    Jj[NGS] = dQ/(rho*cp);
+#ifdef VARPROP
+    Jj[NGS] -= f[NGS]*((cpk[jj] - cp)/(cp*sumY) - b);
+#endif
+#ifdef TURN_OFF_HEAT_OF_REACTION
+    Jj[NGS] = 0.;
+#endif
+  }
+}

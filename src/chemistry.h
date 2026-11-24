@@ -471,15 +471,35 @@ holds only an `init` event, which sets up the field `binid`. */
 /**
 Both sweeps call `gas_stiff_solve()` for each stiff solve of the gas
 reactor. With `GAS_DRG` 1, `drg.h` gives the solve with the DRG reduction.
-Without it, the solve integrates the full mechanism. */
+Without it, the solve integrates the full mechanism.
+
+`GAS_ANALYTICAL_JACOBIAN` (value-tested, default 0): at 1, the solve of the
+full mechanism uses the Jacobian of
+`gas_batch_nonisothermal_constantpressure_jacobian()` (`reactors.h`). At
+0, the solver computes the Jacobian with NGS + 1 finite differences of the
+right-hand side. The DRG solve has its own reduced system, thus the build
+stops if the two flags are 1. */
+
+# ifndef GAS_ANALYTICAL_JACOBIAN
+#  define GAS_ANALYTICAL_JACOBIAN 0
+# endif
 
 # if GAS_DRG
+#  if GAS_ANALYTICAL_JACOBIAN
+#   error "GAS_ANALYTICAL_JACOBIAN is for the full mechanism: do not use it with GAS_DRG"
+#  endif
 #  include "drg.h"
 # else
 static void gas_stiff_solve (double * y, double dtc, UserDataODE * data)
 {
+#  if GAS_ANALYTICAL_JACOBIAN
+  OpenSMOKE_ODESolver_Jacobian (&gas_batch_nonisothermal_constantpressure,
+                                &gas_batch_nonisothermal_constantpressure_jacobian,
+                                NGS + 1, dtc, y, data);
+#  else
   OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
                        NGS + 1, dtc, y, data);
+#  endif
 }
 # endif
 

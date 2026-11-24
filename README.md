@@ -14,15 +14,17 @@ For more information, questions, or errors, contact me at "riccardo.caraccio@pol
 
 ## Publications
 ~~~bib
-@article{caraccio2025,
-  title={A volume-of-fluid model for biomass particle pyrolysis},
-  author={Caraccio, Riccardo and Cipriano, Edoardo and Frassoldati, Alessio and Faravelli, Tiziano},
-  journal={arXiv preprint arXiv:2510.17588},
-  year={2025},
-  month={November},
-  http={https://arxiv.org/abs/2510.17588},
-  DOI={10.48550/arXiv.2510.17588},
-  pdf={https://arxiv.org/pdf/2510.17588.pdf}
+@article{CARACCIO2026174297,
+  title = {Multiphase modeling of anisotropic biomass particle pyrolysis accounting for particle deformation and coupled gas-phase dynamics},
+  journal = {Chemical Engineering Journal},
+  volume = {531},
+  pages = {174297},
+  year = {2026},
+  issn = {1385-8947},
+  doi = {10.1016/j.cej.2026.174297},
+  url = {https://www.sciencedirect.com/science/article/pii/S1385894726017560},
+  author = {Riccardo Caraccio and Edoardo Cipriano and Alessio Frassoldati and Tiziano Faravelli},
+  keywords = {Biomass, Volume of fluid, Porous, Shrinking, Pyrolysis, CFD}
 }
 ~~~
 

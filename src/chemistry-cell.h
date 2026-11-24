@@ -49,6 +49,10 @@ file in the order of the loop. */
 # define CHEMISTRY_DUMP 0
 #endif
 
+#if CHEMISTRY_DUMP && GAS_DRG
+# error "CHEMISTRY_DUMP solves the full mechanism: do not use it with GAS_DRG"
+#endif
+
 #if CHEMISTRY_DUMP
 # if _OPENMP
 #  error "CHEMISTRY_DUMP needs a build without OpenMP"
@@ -236,7 +240,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
         }
         else
 #endif
-        OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure, NGS + 1, dtc, y0ode, &data);
+        gas_stiff_solve (y0ode, dtc, &data);
       }
 
 #if CHEMISTRY_DUMP

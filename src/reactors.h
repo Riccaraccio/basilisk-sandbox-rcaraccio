@@ -33,6 +33,28 @@ The flag covers the per-cell path and the `BINNING` path of `chemistry.h`. */
 # define TURN_OFF_GAS_REACTIONS 0
 #endif
 
+/**
+## The reduction of the gas mechanism (DRG)
+
+`GAS_DRG` at 1 reduces the gas mechanism for each stiff solve of the gas
+reactor, with the Directed Relation Graph. `chemistry.h` then includes
+`drg.h`, which holds the settings and the solve. The default is 0, and the
+test is `#if`.
+
+The default and `gas_drg_active` live here, because the gas right-hand side
+below reads them, and `chemistry.h` includes this file before `drg.h`.
+`gas_drg_active` is true only during a reduced solve of `drg.h`. The
+frozen-cell gate and the solid reactor call the right-hand side outside of
+that solve, so they always use the full mechanism. */
+
+#ifndef GAS_DRG
+# define GAS_DRG 0
+#endif
+
+#if GAS_DRG
+static bool gas_drg_active = false;
+#endif
+
 #define R_GAS 8.31446261815324
 
 /**
@@ -342,8 +364,15 @@ void gas_batch_nonisothermal_constantpressure (const double * y, const double dt
   data.rhog = ctot*MWMix;
   data.cpg = OpenSMOKE_GasProp_HeatCapacity (gasmolefracs);
 #endif
-  OpenSMOKE_GasProp_ReactionRates (cgas);
-  OpenSMOKE_GasProp_FormationRates (rgas); //[kmol/m3_gas/s]
+#if GAS_DRG
+  if (gas_drg_active)
+    OpenSMOKE_DRG_ReducedFormationRates (cgas, rgas); //[kmol/m3_gas/s]
+  else
+#endif
+  {
+    OpenSMOKE_GasProp_ReactionRates (cgas);
+    OpenSMOKE_GasProp_FormationRates (rgas); //[kmol/m3_gas/s]
+  }
 
   OpenSMOKE_OpticallyThinProperties otp;
   otp.T = Temperature;

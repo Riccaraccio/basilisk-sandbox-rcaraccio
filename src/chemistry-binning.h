@@ -480,8 +480,7 @@ static void gas_phase_reactions (double dtc, bool second_half)
     struct timespec c0, c1;
     clock_gettime (CLOCK_MONOTONIC, &c0);
 # endif
-    OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
-        NGS + 1, dtc, y0ode, &data);
+    gas_stiff_solve (y0ode, dtc, &data);
 # ifdef BINNING_MPI_DIAG
     clock_gettime (CLOCK_MONOTONIC, &c1);
     cost[i] = (c1.tv_sec - c0.tv_sec) + (c1.tv_nsec - c0.tv_nsec)*1e-9;

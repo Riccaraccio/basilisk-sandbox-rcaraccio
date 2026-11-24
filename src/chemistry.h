@@ -468,6 +468,21 @@ the order of these events does not depend on them. `chemistry-binning.h`
 holds only an `init` event, which sets up the field `binid`. */
 
 #if !TURN_OFF_GAS_REACTIONS
+/**
+Both sweeps call `gas_stiff_solve()` for each stiff solve of the gas
+reactor. With `GAS_DRG` 1, `drg.h` gives the solve with the DRG reduction.
+Without it, the solve integrates the full mechanism. */
+
+# if GAS_DRG
+#  include "drg.h"
+# else
+static void gas_stiff_solve (double * y, double dtc, UserDataODE * data)
+{
+  OpenSMOKE_ODESolver (&gas_batch_nonisothermal_constantpressure,
+                       NGS + 1, dtc, y, data);
+}
+# endif
+
 # ifdef BINNING
 #  include "chemistry-binning.h"
 # else
